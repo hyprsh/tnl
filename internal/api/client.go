@@ -95,5 +95,9 @@ func (c *Client) dialError(err error) error {
 	case errors.Is(err, syscall.ENOENT), errors.Is(err, syscall.ECONNREFUSED):
 		return fmt.Errorf("no Edge is running: nothing answers on %s (start it with `tnl edge`, or pass --state-dir or set TNL_STATE_DIR to the state directory of the one to talk to)", c.socket())
 	}
+	var oe *net.OpError
+	if errors.As(err, &oe) && oe.Op == "dial" {
+		return fmt.Errorf("no Edge is running: can't connect to %s: %v", c.socket(), oe.Err)
+	}
 	return err
 }
