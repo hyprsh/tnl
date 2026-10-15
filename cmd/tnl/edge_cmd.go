@@ -2,10 +2,87 @@
 
 package main
 
-import "errors"
+import (
+	"context"
+	"errors"
+	"flag"
+	"fmt"
+	"io"
+	"log/slog"
+	"os"
+	"os/signal"
+	"syscall"
+
+	"github.com/hyprsh/tnl/internal/edge"
+	"github.com/hyprsh/tnl/internal/logx"
+)
 
 // Edge-only commands register from //go:build !outpost files like this one.
-// The Edge itself arrives with the Caddy side.
 func init() {
-	commands["edge"] = func([]string) error { return errors.New("tnl edge is not built yet") }
+	commands["edge"] = runEdge
+}
+
+type edgeSettings struct {
+	cfg edge.Config
+	log *logx.Config
+}
+
+func parseEdgeFlags(args []string, usageOut io.Writer) (edgeSettings, error) {
+	var s edgeSettings
+	fs := flag.NewFlagSet("tnl edge", flag.ContinueOnError)
+	fs.SetOutput(usageOut)
+	fs.StringVar(&s.cfg.Address, "address", os.Getenv("TNL_ADDRESS"),
+		"the DNS name Outposts dial (TNL_ADDRESS, required); a name is better than an IP")
+	fs.StringVar(&s.cfg.StateDir, "state-dir", envOr("TNL_STATE_DIR", "/var/lib/tnl"),
+		"the state directory (TNL_STATE_DIR)")
+	s.log = logx.AddFlags(fs)
+	if err := fs.Parse(args); err != nil {
+		if err == flag.ErrHelp {
+			return s, err
+		}
+		return s, configError{err}
+	}
+	if fs.NArg() > 0 {
+		return s, configError{fmt.Errorf("unexpected argument %q", fs.Arg(0))}
+	}
+	if s.cfg.Address == "" {
+		return s, configError{fmt.Errorf("--address (TNL_ADDRESS) is required: the DNS name Outposts dial")}
+	}
+	if _, err := s.log.Logger(io.Discard, ""); err != nil {
+		return s, configError{err}
+	}
+	return s, nil
+}
+
+func envOr(name, def string) string {
+	if v := os.Getenv(name); v != "" {
+		return v
+	}
+	return def
+}
+
+func runEdge(args []string) error {
+	s, err := parseEdgeFlags(args, os.Stderr)
+	if err == flag.ErrHelp {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	lg, err := s.log.Logger(os.Stderr, os.Getenv("JOURNAL_STREAM"))
+	if err != nil {
+		return configError{err}
+	}
+	slog.SetDefault(lg)
+	s.cfg.Log = lg
+	s.cfg.Version, s.cfg.Build = versionInfo()
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+	err = edge.Run(ctx, s.cfg)
+	var logged *edge.LoggedError
+	if errors.As(err, &logged) {
+		return loggedError{err}
+	}
+	return err
 }
