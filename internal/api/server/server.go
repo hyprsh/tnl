@@ -54,6 +54,8 @@ func (s *Server) routes() {
 	endpoint(s, http.MethodGet, api.PathZones, s.zoneList)
 	endpoint(s, http.MethodPost, api.PathZones, s.zoneAdd)
 	endpoint(s, http.MethodPost, api.PathOutposts, s.outpostAdd)
+	endpoint(s, http.MethodGet, api.PathRoutes, s.routeList)
+	endpoint(s, http.MethodPost, api.PathRoutes, s.routeAdd)
 }
 
 type actorKey struct{}
