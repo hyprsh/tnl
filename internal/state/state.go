@@ -147,7 +147,7 @@ func (s *State) Validate() error {
 			return invalid(e, "Tunnel address %s is also outpost %q's", o.Address, prev)
 		}
 		addrs[o.Address] = o.Name
-		idx, ok := addrIndex(o.Address)
+		idx, ok := addr.OutpostIndex(o.Address)
 		if !ok {
 			return invalid(e, "Tunnel address %s is not an Outpost address in %s", o.Address, addr.Range)
 		}
@@ -190,23 +190,6 @@ func (s *State) InZone(host string) bool {
 		}
 	}
 	return false
-}
-
-// addrIndex returns n such that a == addr.Outpost(n).
-func addrIndex(a netip.Addr) (int, bool) {
-	if !a.Is4() || !addr.Range.Contains(a) {
-		return 0, false
-	}
-	n := ip32(a) - ip32(addr.Edge) - 1
-	if n < 0 {
-		return 0, false
-	}
-	return int(n), true
-}
-
-func ip32(a netip.Addr) int64 {
-	b := a.As4()
-	return int64(b[0])<<24 | int64(b[1])<<16 | int64(b[2])<<8 | int64(b[3])
 }
 
 // On-disk form. Keys are text there, and parsed here so a bad one is reported
