@@ -51,7 +51,7 @@ func start(t *testing.T, version string, actor api.Actor) *fixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv := server.New(server.Config{Store: store, Log: lg, Version: version, Build: "abc", Role: "edge"})
+	srv := server.New(server.Config{Store: store, Log: lg, Version: version, Build: "abc", Role: "edge", Address: "tnl.example.com", WireGuardPort: 51820})
 	ln, err := server.ListenSocket(dir)
 	if err != nil {
 		t.Fatal(err)
