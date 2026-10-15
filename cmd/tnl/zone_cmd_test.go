@@ -32,7 +32,7 @@ func runningEdge(t *testing.T) {
 		t.Fatal(err)
 	}
 	v, b := versionInfo()
-	srv := server.New(server.Config{Store: store, Log: lg, Version: v, Build: b, Role: "edge"})
+	srv := server.New(server.Config{Store: store, Log: lg, Version: v, Build: b, Role: "edge", Address: "tnl.example.com", WireGuardPort: 51820})
 	ln, err := server.ListenSocket(dir)
 	if err != nil {
 		t.Fatal(err)

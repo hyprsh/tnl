@@ -35,6 +35,8 @@ func parseEdgeFlags(args []string, usageOut io.Writer) (edgeSettings, error) {
 		"the DNS name Outposts dial (TNL_ADDRESS, required); a name is better than an IP")
 	fs.StringVar(&s.cfg.StateDir, "state-dir", envOr("TNL_STATE_DIR", "/var/lib/tnl"),
 		"the state directory (TNL_STATE_DIR)")
+	fs.IntVar(&s.cfg.WireGuardPort, "wireguard-port", envInt("TNL_WIREGUARD_PORT", 51820),
+		"the UDP port WireGuard listens on (TNL_WIREGUARD_PORT)")
 	s.log = logx.AddFlags(fs)
 	if err := fs.Parse(args); err != nil {
 		if err == flag.ErrHelp {
@@ -47,6 +49,9 @@ func parseEdgeFlags(args []string, usageOut io.Writer) (edgeSettings, error) {
 	}
 	if s.cfg.Address == "" {
 		return s, configError{fmt.Errorf("--address (TNL_ADDRESS) is required: the DNS name Outposts dial")}
+	}
+	if s.cfg.WireGuardPort < 1 || s.cfg.WireGuardPort > 65535 {
+		return s, configError{fmt.Errorf("--wireguard-port (TNL_WIREGUARD_PORT) must be a port from 1 to 65535, got %d", s.cfg.WireGuardPort)}
 	}
 	if _, err := s.log.Logger(io.Discard, ""); err != nil {
 		return s, configError{err}

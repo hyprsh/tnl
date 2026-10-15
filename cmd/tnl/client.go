@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"sort"
+	"strconv"
 
 	"github.com/hyprsh/tnl/internal/api"
 )
@@ -81,6 +82,20 @@ func envOr(name, def string) string {
 		return v
 	}
 	return def
+}
+
+// envInt reads an integer variable. A value that isn't one becomes -1, which
+// the flag's range check then refuses.
+func envInt(name string, def int) int {
+	v := os.Getenv(name)
+	if v == "" {
+		return def
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		return -1
+	}
+	return n
 }
 
 func (c *clientCommand) client() *api.Client {
