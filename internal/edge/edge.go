@@ -1,6 +1,6 @@
 // Package edge assembles the Edge's runtime: the state store, WireGuard with
-// one peer per Outpost, the API on tnl.sock and the start-up log. Caddy joins
-// it in a later ticket and itself stays in edge/caddyx.
+// one peer per Outpost, the API on tnl.sock, Caddy (web.go) and the start-up
+// log. Caddy's own code stays in edge/caddyx.
 package edge
 
 import (
