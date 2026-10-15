@@ -2,6 +2,7 @@ package harness
 
 import (
 	"context"
+	"crypto/x509"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -28,47 +29,118 @@ type RealEdge struct {
 	StateDir string      // short enough for tnl.sock
 	API      *api.Client // talks to tnl.sock
 	Store    *state.Store
+
+	stop func()
 }
 
 // harnessVersion is the version the real Edge, the Outposts and the API client
 // all report, so the CLI-style exact-version check passes.
 const harnessVersion = "v0.0.0-test"
 
+// EdgeOptions tunes StartEdgeWith. The zero value is StartEdge: no Caddy.
+type EdgeOptions struct {
+	// StateDir reuses a state directory, as a restarted Edge does. Empty makes
+	// a fresh temporary one.
+	StateDir string
+	// Pebble starts Caddy beside the Tunnel, as `tnl edge` does, getting its
+	// certificates from this ACME CA. RealEdge.Caddy is then set. Caddy is a
+	// process singleton, so only one such Edge runs at a time.
+	Pebble *Pebble
+}
+
 // StartEdge runs edge.Run on a temporary state directory, WireGuard on a free
-// loopback-reachable port and --address 127.0.0.1. It stops when the test ends.
-func StartEdge(t testing.TB) *RealEdge {
+// loopback-reachable port and --address 127.0.0.1, without Caddy. It stops when
+// the test ends.
+func StartEdge(t testing.TB) *RealEdge { return StartEdgeWith(t, EdgeOptions{}) }
+
+// StartEdgeWith is StartEdge with options.
+func StartEdgeWith(t testing.TB, opts EdgeOptions) *RealEdge {
 	t.Helper()
-	// Unix socket paths are short on macOS, so keep the directory name short.
-	dir, err := os.MkdirTemp("", "tnl")
-	if err != nil {
-		t.Fatal(err)
+	dir := opts.StateDir
+	if dir == "" {
+		// Unix socket paths are short on macOS, so keep the directory name short.
+		var err error
+		dir, err = os.MkdirTemp("", "tnl")
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { os.RemoveAll(dir) })
 	}
-	t.Cleanup(func() { os.RemoveAll(dir) })
+
+	cfg := edge.Config{
+		Address: "127.0.0.1", StateDir: dir, Version: harnessVersion, Build: "test",
+		Log: logx.New(logx.Options{Level: slog.LevelWarn, Out: testWriter{t}}),
+	}
+	var ce *CaddyEdge
+	if p := opts.Pebble; p != nil {
+		httpsPort := freePort(t, true)
+		httpPort := freePort(t, false)
+		cfg.Web = &edge.Web{
+			HTTPListen: fmt.Sprintf("127.0.0.1:%d", httpPort), HTTPSListen: fmt.Sprintf("127.0.0.1:%d", httpsPort),
+			HTTPPort: httpPort, HTTPSPort: httpsPort,
+			ACMECA: p.DirectoryURL, ACMEEmail: "ops@example.com", ACMETrustedRoots: []string{p.certFile},
+		}
+		ce = &CaddyEdge{HTTPPort: httpPort, HTTPSPort: httpsPort, StateDir: dir, Roots: x509.NewCertPool()}
+		ce.Roots.AddCert(p.Root)
+		// Caddy's data directory comes from the environment; put it back afterwards.
+		if old, ok := os.LookupEnv("XDG_DATA_HOME"); ok {
+			t.Cleanup(func() { os.Setenv("XDG_DATA_HOME", old) })
+		} else {
+			t.Cleanup(func() { os.Unsetenv("XDG_DATA_HOME") })
+		}
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	up := make(chan *edge.Running, 1)
 	done := make(chan error, 1)
-	go func() {
-		done <- edge.Run(ctx, edge.Config{
-			Address: "127.0.0.1", StateDir: dir, Version: harnessVersion, Build: "test",
-			Log:     logx.New(logx.Options{Level: slog.LevelWarn, Out: testWriter{t}}),
-			Started: func(r *edge.Running) { up <- r },
-		})
-	}()
-	t.Cleanup(func() { cancel(); <-done })
+	cfg.Started = func(r *edge.Running) { up <- r }
+	go func() { done <- edge.Run(ctx, cfg) }()
+	var stopped bool
+	stop := func() {
+		if !stopped {
+			stopped = true
+			cancel()
+			<-done
+		}
+	}
+	t.Cleanup(stop)
 	var r *edge.Running
 	select {
 	case r = <-up:
 	case err := <-done:
+		stopped = true
 		t.Fatalf("edge.Run: %v", err)
-	case <-time.After(10 * time.Second):
+	case <-time.After(30 * time.Second):
 		t.Fatal("the Edge did not start")
 	}
+	e := &Edge{Routes: new(routes.Mem), Outposts: new(routes.MemOutposts), Tunnel: r.Tunnel, Net: r.Tunnel.Net, Port: r.WireGuardPort, Caddy: ce}
 	return &RealEdge{
-		Edge:     &Edge{Routes: new(routes.Mem), Outposts: new(routes.MemOutposts), Tunnel: r.Tunnel, Net: r.Tunnel.Net, Port: r.WireGuardPort},
+		Edge:     e,
 		StateDir: dir,
 		API:      &api.Client{StateDir: dir, Version: harnessVersion},
 		Store:    r.Store,
+		stop:     stop,
+	}
+}
+
+// Stop stops the Edge, as a restart would. The test's end stops it too.
+func (e *RealEdge) Stop() { e.stop() }
+
+// AddZone calls `zone add` on the running Edge.
+func (e *RealEdge) AddZone(t testing.TB, name string) {
+	t.Helper()
+	if _, err := api.Call[api.ZoneInfo](context.Background(), e.API, http.MethodPost, api.PathZones, api.ZoneAddRequest{Name: name}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// AddRoute calls `route add` on the running Edge.
+func (e *RealEdge) AddRoute(t testing.TB, hostname, serviceURL, outpost string) {
+	t.Helper()
+	_, err := api.Call[api.RouteInfo](context.Background(), e.API, http.MethodPost, api.PathRoutes,
+		api.RouteAddRequest{Hostname: hostname, Service: serviceURL, Outpost: outpost})
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 

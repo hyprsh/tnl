@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"time"
 
 	"github.com/caddyserver/caddy/v2"
@@ -181,6 +182,12 @@ func (c Config) JSON() ([]byte, error) {
 	return json.Marshal(cfg)
 }
 
+var loads atomic.Int64
+
+// Loads counts how many times Start has loaded a config in this process. Tests
+// use it to show that a new Route reloads nothing.
+func Loads() int64 { return loads.Load() }
+
 // Start loads the config. A second Start is a reload: it restarts Caddy's apps
 // with fresh module instances, and Runtime state carries over. Caddy is a
 // process singleton, so only one Edge runs per process.
@@ -198,6 +205,7 @@ func Start(c Config) error {
 		return err
 	}
 	caddy.DefaultStorage = &certmagic.FileStorage{Path: caddy.AppDataDir()}
+	loads.Add(1)
 	return caddy.Load(b, true)
 }
 

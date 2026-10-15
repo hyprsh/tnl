@@ -29,6 +29,8 @@ type Config struct {
 
 	// WireGuardPort is the UDP port WireGuard listens on; 0 picks a free one.
 	WireGuardPort int
+	// Web starts Caddy beside the Tunnel; nil starts none.
+	Web *Web
 	// Started, if set, is called once the Edge is serving. The harness, and
 	// the ticket that adds Caddy, use it to reach the running parts.
 	Started func(*Running)
@@ -88,6 +90,14 @@ func Run(ctx context.Context, cfg Config) error {
 	})
 	served := make(chan error, 1)
 	go func() { served <- srv.Serve(ctx, ln, api.ActorLocal) }()
+
+	if cfg.Web != nil {
+		stopWeb, err := startWeb(cfg.Web, cfg.StateDir, store, tun, cfg.Log)
+		if err != nil {
+			return refuse(err)
+		}
+		defer stopWeb()
+	}
 
 	st := store.Snapshot()
 	cfg.Log.Info("edge started",
