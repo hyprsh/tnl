@@ -37,6 +37,11 @@ func parseEdgeFlags(args []string, usageOut io.Writer) (edgeSettings, error) {
 		"the state directory (TNL_STATE_DIR)")
 	fs.IntVar(&s.cfg.WireGuardPort, "wireguard-port", envInt("TNL_WIREGUARD_PORT", 51820),
 		"the UDP port WireGuard listens on (TNL_WIREGUARD_PORT)")
+	s.cfg.Web = &edge.Web{}
+	fs.StringVar(&s.cfg.Web.ACMEEmail, "acme-email", os.Getenv("TNL_ACME_EMAIL"),
+		"the contact email for the ACME account (TNL_ACME_EMAIL, optional)")
+	fs.StringVar(&s.cfg.Web.ACMECA, "acme-ca", os.Getenv("TNL_ACME_CA"),
+		"the ACME directory URL to get certificates from (TNL_ACME_CA); default Let's Encrypt production")
 	s.log = logx.AddFlags(fs)
 	if err := fs.Parse(args); err != nil {
 		if err == flag.ErrHelp {
