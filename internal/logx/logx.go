@@ -180,3 +180,10 @@ func WireGuardLogger(lg *slog.Logger) *device.Logger {
 	}
 	return &device.Logger{Verbosef: dbg, Errorf: dbg}
 }
+
+// LoggedError wraps an error that was already logged at error, so the caller
+// only needs to exit.
+type LoggedError struct{ Err error }
+
+func (e *LoggedError) Error() string { return e.Err.Error() }
+func (e *LoggedError) Unwrap() error { return e.Err }

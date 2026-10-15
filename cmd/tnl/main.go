@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"os"
 	"sort"
+
+	"github.com/hyprsh/tnl/internal/logx"
 )
 
 // exitConfig is EX_CONFIG: a flag, variable or value the operator must fix.
@@ -16,11 +18,6 @@ const exitConfig = 78
 type configError struct{ error }
 
 func (e configError) Unwrap() error { return e.error }
-
-// loggedError is an error the command already logged at error; main only exits.
-type loggedError struct{ error }
-
-func (e loggedError) Unwrap() error { return e.error }
 
 func exitCode(err error) int {
 	var ce configError
@@ -51,7 +48,7 @@ func main() {
 		os.Exit(2)
 	}
 	if err := run(os.Args[2:]); err != nil {
-		var logged loggedError
+		var logged *logx.LoggedError
 		if !errors.As(err, &logged) { // already logged at error
 			fmt.Fprintf(os.Stderr, "tnl: %v\n", err)
 		}

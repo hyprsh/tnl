@@ -25,6 +25,15 @@ const (
 	PathRoutes   = "/v1/routes"   // GET: list; POST: add a Route
 )
 
+// Role is what a running tnl process is.
+type Role string
+
+// The roles.
+const (
+	RoleEdge    Role = "edge"
+	RoleOutpost Role = "outpost"
+)
+
 // Actor is who a listener says the caller is. The listener sets it; it sets
 // both the caller's rights and the actor= field in the logs.
 type Actor string
@@ -60,7 +69,7 @@ type errorBody struct {
 
 // Info answers PathInfo.
 type Info struct {
-	Role    string `json:"role"` // "edge" or "outpost"
+	Role    Role   `json:"role"`
 	Version string `json:"version"`
 	Build   string `json:"build"`
 }

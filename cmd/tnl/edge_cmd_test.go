@@ -93,6 +93,18 @@ func TestEdgeWireGuardPort(t *testing.T) {
 	}
 }
 
+func TestEdgeWireGuardPortFromTheEnvironmentMustBeAnInteger(t *testing.T) {
+	t.Setenv("TNL_WIREGUARD_PORT", "four")
+	var ce configError
+	if _, err := parse(t, "--address", "a"); !errors.As(err, &ce) || !strings.Contains(err.Error(), "TNL_WIREGUARD_PORT") {
+		t.Fatalf("bad variable: %v", err)
+	}
+	// A flag overrides the variable, so a bad variable is no reason to refuse.
+	if s, err := parse(t, "--address", "a", "--wireguard-port", "4000"); err != nil || s.cfg.WireGuardPort != 4000 {
+		t.Fatalf("flag over bad variable: %+v %v", s.cfg, err)
+	}
+}
+
 func TestEdgeACMEFlagsAndEnvironment(t *testing.T) {
 	t.Setenv("TNL_ACME_EMAIL", "")
 	t.Setenv("TNL_ACME_CA", "")
