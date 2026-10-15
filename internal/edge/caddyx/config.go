@@ -35,6 +35,17 @@ func DefaultTimeouts() Timeouts {
 	}
 }
 
+// ACME is the ACME CA the Edge gets its certificates from.
+type ACME struct {
+	// CA is the directory URL; empty is Let's Encrypt production.
+	CA string
+	// Email is the account contact; optional.
+	Email string
+	// TrustedRoots are PEM files of roots to trust for the CA's own TLS, for a
+	// CA that isn't publicly trusted, such as Pebble in the harness.
+	TrustedRoots []string
+}
+
 // Config is what the Caddy config is built from.
 type Config struct {
 	// EdgeID names the Runtime registered with Register.
@@ -48,6 +59,9 @@ type Config struct {
 	// HTTPPort and HTTPSPort are the ports Visitors reach. They default to 80 and
 	// 443; a harness sets them to the ports it listens on.
 	HTTPPort, HTTPSPort int
+	// ACME turns on certificates from an ACME CA, issued on demand for Hostnames
+	// that have a Route. Nil keeps Caddy's internal CA, which tests use.
+	ACME *ACME
 	// Timeouts defaults to DefaultTimeouts.
 	Timeouts *Timeouts
 }
@@ -86,6 +100,33 @@ func (c Config) JSON() ([]byte, error) {
 		location += fmt.Sprintf(":%d", c.HTTPSPort)
 	}
 	location += "{http.request.uri}"
+
+	automation := map[string]any{
+		"policies": []any{map[string]any{
+			"on_demand": true,
+			"issuers":   []any{map[string]any{"module": "internal"}},
+		}},
+	}
+	if a := c.ACME; a != nil {
+		iss := map[string]any{"module": "acme", "ca": a.CA}
+		if a.CA == "" {
+			iss["ca"] = certmagic.LetsEncryptProductionCA
+		}
+		if a.Email != "" {
+			iss["email"] = a.Email
+		}
+		if len(a.TrustedRoots) > 0 {
+			iss["trusted_roots_pem_files"] = a.TrustedRoots
+		}
+		automation = map[string]any{
+			// Issuance only for Hostnames that have a Route.
+			"on_demand": map[string]any{"permission": map[string]any{"module": "tnl", "edge": c.EdgeID}},
+			"policies": []any{map[string]any{
+				"on_demand": true,
+				"issuers":   []any{iss},
+			}},
+		}
+	}
 
 	cfg := map[string]any{
 		"admin":   map[string]any{"disabled": true, "config": map[string]any{"persist": false}},
@@ -134,13 +175,7 @@ func (c Config) JSON() ([]byte, error) {
 			"pki": map[string]any{"certificate_authorities": map[string]any{
 				"local": map[string]any{"install_trust": false},
 			}},
-			// Certificates come from Caddy's internal CA until ACME arrives.
-			"tls": map[string]any{"automation": map[string]any{
-				"policies": []any{map[string]any{
-					"on_demand": true,
-					"issuers":   []any{map[string]any{"module": "internal"}},
-				}},
-			}},
+			"tls": map[string]any{"automation": automation},
 		},
 	}
 	return json.Marshal(cfg)

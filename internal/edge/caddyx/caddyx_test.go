@@ -1,7 +1,9 @@
 package caddyx
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/netip"
@@ -12,6 +14,7 @@ import (
 
 	"github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
+	"github.com/caddyserver/caddy/v2/modules/caddytls"
 
 	"github.com/hyprsh/tnl/internal/edge/routes"
 )
@@ -154,5 +157,83 @@ func TestTransportSettings(t *testing.T) {
 	other := routes.Route{Hostname: "other.test", Outpost: "o", Service: "s:1"}
 	if rt.pool.transport(rt, other, addr) == tr {
 		t.Error("two Routes share a transport")
+	}
+}
+
+func issuerOf(t *testing.T, c Config) (policy map[string]any, onDemand map[string]any) {
+	t.Helper()
+	b, err := c.JSON()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cfg struct {
+		Apps struct {
+			TLS struct {
+				Automation struct {
+					OnDemand map[string]any   `json:"on_demand"`
+					Policies []map[string]any `json:"policies"`
+				} `json:"automation"`
+			} `json:"tls"`
+		} `json:"apps"`
+	}
+	if err := json.Unmarshal(b, &cfg); err != nil {
+		t.Fatal(err)
+	}
+	a := cfg.Apps.TLS.Automation
+	if len(a.Policies) != 1 {
+		t.Fatalf("policies = %v", a.Policies)
+	}
+	return a.Policies[0], a.OnDemand
+}
+
+func TestACMEDefaultsToLetsEncryptProduction(t *testing.T) {
+	p, od := issuerOf(t, Config{EdgeID: "e", StateDir: "/s", ACME: &ACME{}})
+	iss := p["issuers"].([]any)[0].(map[string]any)
+	if iss["module"] != "acme" || iss["ca"] != "https://acme-v02.api.letsencrypt.org/directory" {
+		t.Errorf("issuer = %v", iss)
+	}
+	if _, ok := iss["email"]; ok {
+		t.Errorf("email set without one: %v", iss)
+	}
+	if p["on_demand"] != true {
+		t.Errorf("policy = %v, want on_demand", p)
+	}
+	perm, _ := od["permission"].(map[string]any)
+	if perm["module"] != "tnl" || perm["edge"] != "e" {
+		t.Errorf("permission = %v, want the tnl module for this Edge", od)
+	}
+}
+
+func TestACMETakesCAAndEmail(t *testing.T) {
+	p, _ := issuerOf(t, Config{EdgeID: "e", StateDir: "/s", ACME: &ACME{CA: "https://ca.test/dir", Email: "ops@example.com"}})
+	iss := p["issuers"].([]any)[0].(map[string]any)
+	if iss["ca"] != "https://ca.test/dir" || iss["email"] != "ops@example.com" {
+		t.Errorf("issuer = %v", iss)
+	}
+}
+
+func TestWithoutACMEThePolicyUsesTheInternalIssuer(t *testing.T) {
+	p, _ := issuerOf(t, Config{EdgeID: "e", StateDir: "/s"})
+	iss := p["issuers"].([]any)[0].(map[string]any)
+	if iss["module"] != "internal" {
+		t.Errorf("issuer = %v", iss)
+	}
+}
+
+func TestPermissionRefusesHostnamesWithoutARoute(t *testing.T) {
+	tbl := new(routes.Mem)
+	tbl.Swap([]routes.Route{{Hostname: "app.test", Outpost: "o", Service: "s:1"}})
+	p := &Permission{Edge: "perm"}
+	unreg := Register("perm", &Runtime{Table: tbl})
+	defer unreg()
+	if err := p.Provision(caddy.Context{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.CertificateAllowed(context.Background(), "App.test"); err != nil {
+		t.Errorf("routed Hostname refused: %v", err)
+	}
+	err := p.CertificateAllowed(context.Background(), "nope.test")
+	if !errors.Is(err, caddytls.ErrPermissionDenied) {
+		t.Errorf("err = %v, want it to wrap caddytls.ErrPermissionDenied", err)
 	}
 }
