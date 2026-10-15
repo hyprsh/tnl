@@ -4,7 +4,6 @@ import (
 	"context"
 	"net/http"
 	"sort"
-	"strings"
 
 	"github.com/hyprsh/tnl/internal/api"
 	"github.com/hyprsh/tnl/internal/state"
@@ -36,11 +35,11 @@ func (s *Server) routeAdd(_ context.Context, actor api.Actor, req api.RouteAddRe
 	if req.Outpost == "" {
 		return api.RouteInfo{}, api.Errorf(http.StatusBadRequest, "the Route needs an Outpost: pass --outpost NAME")
 	}
-	service, _, err := state.ParseService(req.Service)
+	service, err := state.ParseService(req.Service)
 	if err != nil {
 		return api.RouteInfo{}, api.Errorf(http.StatusBadRequest, "%v", err)
 	}
-	r := state.Route{Hostname: host, Outpost: req.Outpost, Service: service}
+	r := state.Route{Hostname: host, Outpost: req.Outpost, Service: service.Canonical}
 	err = s.cfg.Store.Update(actor.String(), func(st *state.State) error {
 		for _, have := range st.Routes {
 			if have.Hostname == host {
@@ -54,11 +53,7 @@ func (s *Server) routeAdd(_ context.Context, actor api.Actor, req api.RouteAddRe
 		if !known {
 			return api.Errorf(http.StatusBadRequest, "unknown Outpost %q; add it first with `tnl outpost add %s`", req.Outpost, req.Outpost)
 		}
-		inZone := false
-		for _, z := range st.Zones {
-			inZone = inZone || host == z.Name || strings.HasSuffix(host, "."+z.Name)
-		}
-		if !inZone {
+		if !st.InZone(host) {
 			return api.Errorf(http.StatusBadRequest, "%s is outside every Zone; add its Zone first with `tnl zone add`", host)
 		}
 		st.Routes = append(st.Routes, r)

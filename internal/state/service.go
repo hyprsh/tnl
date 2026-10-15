@@ -8,10 +8,28 @@ import (
 	"strings"
 )
 
-// ParseService checks a Service URL and returns it in its stored form, and the
-// host:port the Outpost dials. Slice 1 takes http:// only: a host and an
+// Service is a parsed Service URL.
+type Service struct {
+	Canonical string // the stored form
+	HostPort  string // what the Outpost dials
+}
+
+// HostPort is the host:port the Outpost dials for the Route. Validate has
+// already accepted the Route's Service URL, so it cannot fail on a Route from
+// the state.
+func (r Route) HostPort() string {
+	svc, _ := ParseService(r.Service)
+	return svc.HostPort
+}
+
+// ParseService checks a Service URL. Slice 1 takes http:// only: a host and an
 // optional port (default 80), with no path, query, fragment or user.
-func ParseService(raw string) (canonical, hostPort string, err error) {
+func ParseService(raw string) (Service, error) {
+	canonical, hostPort, err := parseService(raw)
+	return Service{canonical, hostPort}, err
+}
+
+func parseService(raw string) (canonical, hostPort string, err error) {
 	raw = strings.TrimSpace(raw)
 	u, perr := url.Parse(raw)
 	if perr != nil || u.Scheme == "" {

@@ -60,7 +60,7 @@ type Route struct {
 	HostHeader         string
 }
 
-// Zone is a DNS zone the Edge serves Hostnames in.
+// Zone is a domain the Edge serves Hostnames under, with its certificate mode.
 type Zone struct {
 	Name     string
 	Mode     string // PerHostname or Wildcard
@@ -169,16 +169,23 @@ func (s *State) Validate() error {
 		if !names[r.Outpost] {
 			return invalid(e, "outpost %q does not exist", r.Outpost)
 		}
-		if !inAZone(r.Hostname, zones) {
+		if strings.Contains(r.Hostname, "*") {
+			return invalid(e, "a Route takes one exact Hostname; wildcard Routes are not supported")
+		}
+		if !s.InZone(r.Hostname) {
 			return invalid(e, "Hostname is inside no Zone")
+		}
+		if _, err := ParseService(r.Service); err != nil {
+			return invalid(e, "%v", err)
 		}
 	}
 	return nil
 }
 
-func inAZone(host string, zones map[string]bool) bool {
-	for z := range zones {
-		if host == z || strings.HasSuffix(host, "."+z) {
+// InZone reports whether host is a Zone's own name or lies below one.
+func (s *State) InZone(host string) bool {
+	for _, z := range s.Zones {
+		if host == z.Name || strings.HasSuffix(host, "."+z.Name) {
 			return true
 		}
 	}
