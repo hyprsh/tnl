@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/hyprsh/tnl/internal/api"
+	"github.com/hyprsh/tnl/internal/dnsname"
 	"github.com/hyprsh/tnl/internal/keys"
 	"github.com/hyprsh/tnl/internal/state"
 	"github.com/hyprsh/tnl/internal/token"
@@ -48,25 +49,13 @@ func (s *Server) outpostAdd(_ context.Context, actor api.Actor, req api.OutpostA
 	return api.OutpostAddResponse{Name: o.Name, Address: o.Address.String(), Token: tok.Encode()}, nil
 }
 
-// validOutpostName accepts one DNS label: 1 to 63 lower-case letters, digits
-// and '-', not starting or ending with '-'.
+// validOutpostName accepts one DNS label.
 func validOutpostName(name string) error {
-	bad := func(why string) error {
-		return api.Errorf(http.StatusBadRequest, "invalid Outpost name %q: %s", name, why)
-	}
 	if name == "" {
 		return api.Errorf(http.StatusBadRequest, "the Outpost needs a name")
 	}
-	if len(name) > 63 {
-		return bad("longer than 63 characters")
-	}
-	if name[0] == '-' || name[len(name)-1] == '-' {
-		return bad("must not start or end with '-'")
-	}
-	for _, c := range name {
-		if !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '-') {
-			return bad("use lower-case letters, digits and '-' only, as in a DNS label")
-		}
+	if err := dnsname.CheckLabel(name); err != nil {
+		return api.Errorf(http.StatusBadRequest, "invalid Outpost name %q: %v", name, err)
 	}
 	return nil
 }
