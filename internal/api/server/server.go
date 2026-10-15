@@ -29,6 +29,10 @@ type Config struct {
 	Version string
 	Build   string
 	Role    string // "edge"
+
+	// Address and WireGuardPort go into join tokens: what Outposts dial.
+	Address       string
+	WireGuardPort int
 }
 
 // Server is the handler set. It has no listener of its own.
@@ -49,6 +53,7 @@ func (s *Server) routes() {
 	endpoint(s, http.MethodGet, api.PathInfo, s.info)
 	endpoint(s, http.MethodGet, api.PathZones, s.zoneList)
 	endpoint(s, http.MethodPost, api.PathZones, s.zoneAdd)
+	endpoint(s, http.MethodPost, api.PathOutposts, s.outpostAdd)
 }
 
 type actorKey struct{}

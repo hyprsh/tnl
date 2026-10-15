@@ -20,6 +20,8 @@ const (
 const (
 	PathInfo  = "/v1/info"  // GET: role, version and build of the running process
 	PathZones = "/v1/zones" // GET: list; POST: add a Zone
+
+	PathOutposts = "/v1/outposts" // POST: add an Outpost and mint its join token
 )
 
 // Actor is who a listener says the caller is. The listener sets it; it sets
@@ -72,6 +74,18 @@ type ZoneInfo struct {
 	Name     string `json:"name"`
 	Mode     string `json:"mode"`
 	Provider string `json:"provider,omitempty"`
+}
+
+// OutpostAddRequest asks for a new Outpost.
+type OutpostAddRequest struct {
+	Name string `json:"name"`
+}
+
+// OutpostAddResponse carries the join token, which is shown once and never stored.
+type OutpostAddResponse struct {
+	Name    string `json:"name"`
+	Address string `json:"address"` // the Outpost's Tunnel address
+	Token   string `json:"token"`
 }
 
 // ZoneList answers GET PathZones, sorted by name.
