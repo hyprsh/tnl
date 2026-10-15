@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"log/slog"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hyprsh/tnl/internal/api"
 	"github.com/hyprsh/tnl/internal/logx"
 )
 
@@ -51,7 +53,7 @@ func run(t *testing.T, dir string) (*syncBuf, error) {
 }
 
 func TestStartLogsVersionAddressFingerprintAndCounts(t *testing.T) {
-	dir := filepath.Join(t.TempDir(), "state")
+	dir := filepath.Join(shortDir(t), "state")
 	buf, err := run(t, dir)
 	if err != nil {
 		t.Fatal(err)
@@ -77,4 +79,59 @@ func TestBadStateIsLoggedAtErrorAndRunFails(t *testing.T) {
 	if !strings.Contains(buf.String(), "level=error") || !strings.Contains(buf.String(), "version 42") {
 		t.Errorf("log: %s", buf.String())
 	}
+}
+
+// shortDir is a temporary directory with a path short enough for a Unix
+// socket in it (104 bytes on macOS).
+func shortDir(t *testing.T) string {
+	t.Helper()
+	dir, err := os.MkdirTemp("", "tnl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
+	return dir
+}
+
+func TestZonesSurviveARestart(t *testing.T) {
+	dir := shortDir(t)
+	c := &api.Client{StateDir: dir, Version: "v9.9.9"}
+
+	serve := func(body func()) {
+		t.Helper()
+		buf := &syncBuf{}
+		lg := logx.New(logx.Options{Level: slog.LevelInfo, Out: buf})
+		ctx, cancel := context.WithCancel(context.Background())
+		done := make(chan error, 1)
+		go func() {
+			done <- Run(ctx, Config{Address: "tnl.example.com", StateDir: dir, Version: "v9.9.9", Build: "abc123", Log: lg})
+		}()
+		deadline := time.Now().Add(2 * time.Second)
+		for !strings.Contains(buf.String(), "edge started") && time.Now().Before(deadline) {
+			time.Sleep(5 * time.Millisecond)
+		}
+		body()
+		cancel()
+		if err := <-done; err != nil {
+			t.Fatal(err)
+		}
+		if _, err := os.Stat(filepath.Join(dir, api.SocketName)); !os.IsNotExist(err) {
+			t.Errorf("socket left behind: %v", err)
+		}
+	}
+
+	serve(func() {
+		if _, err := api.Call[api.ZoneInfo](context.Background(), c, http.MethodPost, api.PathZones, api.ZoneAddRequest{Name: "example.com"}); err != nil {
+			t.Fatal(err)
+		}
+	})
+	serve(func() {
+		list, err := api.Call[api.ZoneList](context.Background(), c, http.MethodGet, api.PathZones, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(list.Zones) != 1 || list.Zones[0].Name != "example.com" {
+			t.Fatalf("%+v", list)
+		}
+	})
 }

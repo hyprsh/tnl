@@ -1,12 +1,16 @@
 // Package edge assembles the Edge's runtime. For now that is the state store
-// and the start-up log; the tunnel, API and Caddy join it in later tickets.
+// the API on tnl.sock and the start-up log; the tunnel and Caddy join it in later tickets.
 // Caddy itself stays in edge/caddyx.
 package edge
 
 import (
 	"context"
 	"log/slog"
+	"os"
+	"path/filepath"
 
+	"github.com/hyprsh/tnl/internal/api"
+	"github.com/hyprsh/tnl/internal/api/server"
 	"github.com/hyprsh/tnl/internal/state"
 )
 
@@ -34,6 +38,16 @@ func Run(ctx context.Context, cfg Config) error {
 		cfg.Log.Error("refusing to start", "state_dir", cfg.StateDir, "error", err)
 		return &LoggedError{err}
 	}
+	ln, err := server.ListenSocket(cfg.StateDir)
+	if err != nil {
+		cfg.Log.Error("refusing to start", "state_dir", cfg.StateDir, "error", err)
+		return &LoggedError{err}
+	}
+	defer os.Remove(filepath.Join(cfg.StateDir, api.SocketName))
+	srv := server.New(server.Config{Store: store, Log: cfg.Log, Version: cfg.Version, Build: cfg.Build, Role: "edge"})
+	served := make(chan error, 1)
+	go func() { served <- srv.Serve(ctx, ln, api.ActorLocal) }()
+
 	st := store.Snapshot()
 	cfg.Log.Info("edge started",
 		"version", cfg.Version,
@@ -45,6 +59,12 @@ func Run(ctx context.Context, cfg Config) error {
 		"routes", len(st.Routes),
 		"zones", len(st.Zones),
 	)
-	<-ctx.Done()
-	return nil
+	select {
+	case <-ctx.Done():
+		<-served
+		return nil
+	case err := <-served:
+		cfg.Log.Error("the API stopped", "error", err)
+		return &LoggedError{err}
+	}
 }
