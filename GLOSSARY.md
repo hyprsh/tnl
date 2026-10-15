@@ -32,6 +32,10 @@ _Avoid_: Using "tunnel" for a named group of Outposts
 A mapping from one Hostname to one Service reached through one Outpost.
 _Avoid_: Ingress rule, mapping, resource
 
+**Declaration**:
+The whole list of Routes an Outpost asks for in its own settings. While an Outpost has one, its Routes change only through it: a Route left out is removed, and one whose Hostname is taken or outside every Zone waits until it can become a Route.
+_Avoid_: Config, manifest, desired state, route file
+
 **Hostname**:
 The public name a Route answers on, such as `app.example.com`.
 _Avoid_: Domain, subdomain, public hostname
