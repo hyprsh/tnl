@@ -1,0 +1,8 @@
+tnl
+Copyright 2026 hyprsh
+
+This product includes software from wireguard-go
+(https://git.zx2c4.com/wireguard-go), Copyright (C) 2017-2025 WireGuard LLC,
+licensed under the MIT licence: internal/tunnel/netstack/tun.go is copied from
+its tun/netstack package and modified. The licence text is in
+internal/tunnel/netstack/LICENSE.wireguard-go.
