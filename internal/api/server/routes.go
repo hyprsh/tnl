@@ -40,7 +40,7 @@ func (s *Server) routeAdd(_ context.Context, actor api.Actor, req api.RouteAddRe
 		return api.RouteInfo{}, api.Errorf(http.StatusBadRequest, "%v", err)
 	}
 	r := state.Route{Hostname: host, Outpost: req.Outpost, Service: service.Canonical}
-	err = s.cfg.Store.Update(actor.String(), func(st *state.State) error {
+	err = s.cfg.Store.Update(actor, func(st *state.State) error {
 		for _, have := range st.Routes {
 			if have.Hostname == host {
 				return api.Errorf(http.StatusConflict, "%s is already held by a Route through Outpost %s", host, have.Outpost)

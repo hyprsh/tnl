@@ -28,7 +28,7 @@ type Config struct {
 	Log     *slog.Logger
 	Version string
 	Build   string
-	Role    string // "edge"
+	Role    api.Role
 
 	// Address and WireGuardPort go into join tokens: what Outposts dial.
 	Address       string

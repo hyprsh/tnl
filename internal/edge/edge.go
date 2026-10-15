@@ -43,20 +43,13 @@ type Running struct {
 	WireGuardPort int // the port WireGuard actually listens on
 }
 
-// LoggedError wraps an error Run has already logged at error, so the caller
-// only needs to exit.
-type LoggedError struct{ Err error }
-
-func (e *LoggedError) Error() string { return e.Err.Error() }
-func (e *LoggedError) Unwrap() error { return e.Err }
-
 // Run opens the state, brings WireGuard up with every Outpost in it as a peer,
 // logs the start-up line and serves until ctx ends. A state that fails its
 // checks is logged at error and returned; nothing starts.
 func Run(ctx context.Context, cfg Config) error {
 	refuse := func(err error) error {
 		cfg.Log.Error("refusing to start", "state_dir", cfg.StateDir, "error", err)
-		return &LoggedError{err}
+		return &logx.LoggedError{Err: err}
 	}
 	store, err := state.Open(cfg.StateDir, cfg.Log)
 	if err != nil {
@@ -85,7 +78,7 @@ func Run(ctx context.Context, cfg Config) error {
 	}
 	defer os.Remove(filepath.Join(cfg.StateDir, api.SocketName))
 	srv := server.New(server.Config{
-		Store: store, Log: cfg.Log, Version: cfg.Version, Build: cfg.Build, Role: "edge",
+		Store: store, Log: cfg.Log, Version: cfg.Version, Build: cfg.Build, Role: api.RoleEdge,
 		Address: cfg.Address, WireGuardPort: wgPort,
 	})
 	served := make(chan error, 1)
@@ -120,7 +113,7 @@ func Run(ctx context.Context, cfg Config) error {
 		return nil
 	case err := <-served:
 		cfg.Log.Error("the API stopped", "error", err)
-		return &LoggedError{err}
+		return &logx.LoggedError{Err: err}
 	}
 }
 

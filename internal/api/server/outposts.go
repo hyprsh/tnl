@@ -27,7 +27,7 @@ func (s *Server) outpostAdd(_ context.Context, actor api.Actor, req api.OutpostA
 	}
 	var o state.Outpost
 	var edgeKey keys.Key
-	err = s.cfg.Store.Update(actor.String(), func(st *state.State) error {
+	err = s.cfg.Store.Update(actor, func(st *state.State) error {
 		for _, have := range st.Outposts {
 			if have.Name == req.Name {
 				return api.Errorf(http.StatusConflict, "Outpost %s already exists", req.Name)

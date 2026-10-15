@@ -12,7 +12,7 @@ import (
 )
 
 func zoneInfo(z state.Zone) api.ZoneInfo {
-	return api.ZoneInfo{Name: z.Name, Mode: z.Mode, Provider: z.Provider} // never the token
+	return api.ZoneInfo{Name: z.Name, Mode: string(z.Mode), Provider: z.Provider} // never the token
 }
 
 func (s *Server) zoneList(_ context.Context, _ api.Actor, _ struct{}) (api.ZoneList, error) {
@@ -33,7 +33,7 @@ func (s *Server) zoneAdd(_ context.Context, actor api.Actor, req api.ZoneAddRequ
 		return api.ZoneInfo{}, err
 	}
 	z := state.Zone{Name: name, Mode: state.PerHostname}
-	err = s.cfg.Store.Update(actor.String(), func(st *state.State) error {
+	err = s.cfg.Store.Update(actor, func(st *state.State) error {
 		for _, have := range st.Zones {
 			if have.Name == name {
 				return api.Errorf(http.StatusConflict, "Zone %s already exists", name)

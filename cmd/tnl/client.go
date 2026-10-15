@@ -1,12 +1,16 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"sort"
 	"strconv"
+	"strings"
+	"text/tabwriter"
 
 	"github.com/hyprsh/tnl/internal/api"
 )
@@ -84,18 +88,51 @@ func envOr(name, def string) string {
 	return def
 }
 
-// envInt reads an integer variable. A value that isn't one becomes -1, which
-// the flag's range check then refuses.
-func envInt(name string, def int) int {
+// envInt reads an integer variable, def if it is unset. A value that isn't an
+// integer is an error, and the value returned is def.
+func envInt(name string, def int) (int, error) {
 	v := os.Getenv(name)
 	if v == "" {
-		return def
+		return def, nil
 	}
 	n, err := strconv.Atoi(v)
 	if err != nil {
-		return -1
+		return def, fmt.Errorf("%s must be an integer, got %q", name, v)
 	}
-	return n
+	return n, nil
+}
+
+// lsCommand makes a `tnl <group> ls` command that GETs path and prints a table:
+// header, then the rows that rows gives for each answer.
+func lsCommand[L any](name, path, header string, rows func(L) [][]string) func([]string) error {
+	return func(args []string) error {
+		c := newClientCommand(name)
+		pos, err := c.parse(args)
+		if err != nil {
+			return err
+		}
+		if len(pos) > 0 {
+			return fmt.Errorf("%s takes no arguments, got %q", name, pos[0])
+		}
+		list, err := api.Call[L](context.Background(), c.client(), http.MethodGet, path, nil)
+		if err != nil {
+			return err
+		}
+		tw := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
+		fmt.Fprintln(tw, header)
+		for _, row := range rows(list) {
+			fmt.Fprintln(tw, strings.Join(row, "\t"))
+		}
+		return tw.Flush()
+	}
+}
+
+// orDash is "-" for an empty table cell.
+func orDash(s string) string {
+	if s == "" {
+		return "-"
+	}
+	return s
 }
 
 func (c *clientCommand) client() *api.Client {
