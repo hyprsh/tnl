@@ -1,0 +1,74 @@
+package server
+
+import (
+	"context"
+	"net/http"
+	"sort"
+	"strings"
+
+	"github.com/hyprsh/tnl/internal/api"
+	"github.com/hyprsh/tnl/internal/state"
+)
+
+func zoneInfo(z state.Zone) api.ZoneInfo {
+	return api.ZoneInfo{Name: z.Name, Mode: z.Mode, Provider: z.Provider} // never the token
+}
+
+func (s *Server) zoneList(_ context.Context, _ api.Actor, _ struct{}) (api.ZoneList, error) {
+	out := api.ZoneList{Zones: []api.ZoneInfo{}}
+	for _, z := range s.cfg.Store.Snapshot().Zones {
+		out.Zones = append(out.Zones, zoneInfo(z))
+	}
+	sort.Slice(out.Zones, func(i, j int) bool { return out.Zones[i].Name < out.Zones[j].Name })
+	return out, nil
+}
+
+func (s *Server) zoneAdd(_ context.Context, actor api.Actor, req api.ZoneAddRequest) (api.ZoneInfo, error) {
+	if !actor.Local() {
+		return api.ZoneInfo{}, api.Errorf(http.StatusForbidden, "%s may not add Zones; run `tnl zone add` on the Edge host", actor)
+	}
+	name, err := zoneName(req.Name)
+	if err != nil {
+		return api.ZoneInfo{}, err
+	}
+	z := state.Zone{Name: name, Mode: state.PerHostname}
+	err = s.cfg.Store.Update(actor.String(), func(st *state.State) error {
+		for _, have := range st.Zones {
+			if have.Name == name {
+				return api.Errorf(http.StatusConflict, "Zone %s already exists", name)
+			}
+		}
+		st.Zones = append(st.Zones, z)
+		return nil
+	})
+	if err != nil {
+		return api.ZoneInfo{}, err
+	}
+	s.cfg.Log.Info("zone added", "actor", actor.String(), "zone", z.Name, "mode", z.Mode)
+	return zoneInfo(z), nil
+}
+
+// zoneName normalises a Zone name (lower case, no trailing dot) and refuses
+// anything that isn't a plain DNS name.
+func zoneName(in string) (string, error) {
+	name := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(in)), ".")
+	switch {
+	case name == "":
+		return "", api.Errorf(http.StatusBadRequest, "the Zone needs a name")
+	case strings.Contains(name, "*"):
+		return "", api.Errorf(http.StatusBadRequest, "invalid Zone name %q: write the Zone's name without a wildcard; a wildcard certificate is a Zone option", in)
+	case len(name) > 253:
+		return "", api.Errorf(http.StatusBadRequest, "invalid Zone name: longer than 253 characters")
+	}
+	for _, label := range strings.Split(name, ".") {
+		if label == "" || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' {
+			return "", api.Errorf(http.StatusBadRequest, "invalid Zone name %q: each label must be 1 to 63 characters and not start or end with '-'", in)
+		}
+		for _, c := range label {
+			if !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '-') {
+				return "", api.Errorf(http.StatusBadRequest, "invalid Zone name %q: only letters, digits, '-' and '.' are allowed", in)
+			}
+		}
+	}
+	return name, nil
+}
