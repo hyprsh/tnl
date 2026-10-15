@@ -5,8 +5,8 @@
 package routes
 
 import (
+	"github.com/hyprsh/tnl/internal/dnsname"
 	"net/netip"
-	"strings"
 	"sync"
 	"sync/atomic"
 )
@@ -29,9 +29,7 @@ type Outposts interface {
 }
 
 // Normalize makes a Hostname comparable: lower case, no trailing dot.
-func Normalize(h string) string {
-	return strings.TrimSuffix(strings.ToLower(h), ".")
-}
+func Normalize(h string) string { return dnsname.Normalize(h) }
 
 // Mem is an in-memory Table. The zero value is an empty table ready to use.
 type Mem struct {

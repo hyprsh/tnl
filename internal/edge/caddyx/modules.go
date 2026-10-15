@@ -6,14 +6,13 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"net"
 	"net/http"
-	"strings"
 
 	"github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
 	"github.com/caddyserver/caddy/v2/modules/caddytls"
 
+	"github.com/hyprsh/tnl/internal/dnsname"
 	"github.com/hyprsh/tnl/internal/edge/routes"
 )
 
@@ -52,7 +51,7 @@ func (r *Router) Provision(caddy.Context) (err error) {
 
 // ServeHTTP implements caddyhttp.MiddlewareHandler.
 func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request, next caddyhttp.Handler) error {
-	route, ok := r.rt.Table.Lookup(hostOnly(req.Host))
+	route, ok := r.rt.Table.Lookup(dnsname.HostOnly(req.Host))
 	if !ok {
 		w.WriteHeader(http.StatusNotFound)
 		return nil
@@ -61,13 +60,6 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request, next caddyh
 	caddyhttp.SetVar(ctx, varRoute, route)
 	caddyhttp.SetVar(ctx, varRequestID, newRequestID())
 	return next.ServeHTTP(w, req)
-}
-
-func hostOnly(h string) string {
-	if host, _, err := net.SplitHostPort(h); err == nil {
-		return host
-	}
-	return strings.Trim(h, "[]")
 }
 
 func newRequestID() string {
