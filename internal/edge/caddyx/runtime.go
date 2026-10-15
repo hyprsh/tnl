@@ -141,7 +141,10 @@ func (rt *Runtime) dialOutpost(ctx context.Context, addr netip.AddrPort, h wire.
 	if err != nil {
 		return nil, err
 	}
-	// The dial context is the Visitor's request: when it ends, so does the wait.
+	// Go's Transport lets a dial outlive the Visitor's request that started it,
+	// because the connection may serve another request. So the wait does not end
+	// with the Visitor; replyTimeout below is what bounds it. ctx ends it early
+	// only when the Transport itself gives up on the dial.
 	stop := context.AfterFunc(ctx, func() { c.Close() })
 	defer stop()
 	c.SetDeadline(time.Now().Add(replyTimeout))
