@@ -22,6 +22,7 @@ const (
 	PathZones = "/v1/zones" // GET: list; POST: add a Zone
 
 	PathOutposts = "/v1/outposts" // POST: add an Outpost and mint its join token
+	PathRoutes   = "/v1/routes"   // GET: list; POST: add a Route
 )
 
 // Actor is who a listener says the caller is. The listener sets it; it sets
@@ -86,6 +87,27 @@ type OutpostAddResponse struct {
 	Name    string `json:"name"`
 	Address string `json:"address"` // the Outpost's Tunnel address
 	Token   string `json:"token"`
+}
+
+// RouteAddRequest asks for a Route. Service is a URL such as http://localhost:3000.
+type RouteAddRequest struct {
+	Hostname string `json:"hostname"`
+	Service  string `json:"service"`
+	Outpost  string `json:"outpost"`
+}
+
+// RouteInfo is a Route as the API shows it. Options holds the Route's options
+// as name=value words; slice 1 has none.
+type RouteInfo struct {
+	Hostname string   `json:"hostname"`
+	Outpost  string   `json:"outpost"`
+	Service  string   `json:"service"`
+	Options  []string `json:"options,omitempty"`
+}
+
+// RouteList answers GET PathRoutes, sorted by Hostname.
+type RouteList struct {
+	Routes []RouteInfo `json:"routes"`
 }
 
 // ZoneList answers GET PathZones, sorted by name.

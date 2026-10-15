@@ -51,22 +51,28 @@ func (s *Server) zoneAdd(_ context.Context, actor api.Actor, req api.ZoneAddRequ
 // zoneName normalises a Zone name (lower case, no trailing dot) and refuses
 // anything that isn't a plain DNS name.
 func zoneName(in string) (string, error) {
+	return dnsName("Zone", in, "write the Zone's name without a wildcard; a wildcard certificate is a Zone option")
+}
+
+// dnsName is zoneName for any kind of name; noWildcard is the advice given when
+// the name contains a wildcard.
+func dnsName(kind, in, noWildcard string) (string, error) {
 	name := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(in)), ".")
 	switch {
 	case name == "":
-		return "", api.Errorf(http.StatusBadRequest, "the Zone needs a name")
+		return "", api.Errorf(http.StatusBadRequest, "the %s needs a name", kind)
 	case strings.Contains(name, "*"):
-		return "", api.Errorf(http.StatusBadRequest, "invalid Zone name %q: write the Zone's name without a wildcard; a wildcard certificate is a Zone option", in)
+		return "", api.Errorf(http.StatusBadRequest, "invalid %s name %q: %s", kind, in, noWildcard)
 	case len(name) > 253:
-		return "", api.Errorf(http.StatusBadRequest, "invalid Zone name: longer than 253 characters")
+		return "", api.Errorf(http.StatusBadRequest, "invalid %s name: longer than 253 characters", kind)
 	}
 	for _, label := range strings.Split(name, ".") {
 		if label == "" || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' {
-			return "", api.Errorf(http.StatusBadRequest, "invalid Zone name %q: each label must be 1 to 63 characters and not start or end with '-'", in)
+			return "", api.Errorf(http.StatusBadRequest, "invalid %s name %q: each label must be 1 to 63 characters and not start or end with '-'", kind, in)
 		}
 		for _, c := range label {
 			if !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '-') {
-				return "", api.Errorf(http.StatusBadRequest, "invalid Zone name %q: only letters, digits, '-' and '.' are allowed", in)
+				return "", api.Errorf(http.StatusBadRequest, "invalid %s name %q: only letters, digits, '-' and '.' are allowed", kind, in)
 			}
 		}
 	}
