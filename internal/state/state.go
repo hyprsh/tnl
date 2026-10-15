@@ -18,10 +18,13 @@ import (
 // Version is the schema version this tnl reads and writes.
 const Version = 1
 
+// Mode is a Zone's certificate mode.
+type Mode string
+
 // Zone modes.
 const (
-	PerHostname = "per-hostname"
-	Wildcard    = "wildcard"
+	PerHostname Mode = "per-hostname"
+	Wildcard    Mode = "wildcard"
 )
 
 // State is one immutable-by-convention snapshot of everything the Edge must
@@ -63,7 +66,7 @@ type Route struct {
 // Zone is a domain the Edge serves Hostnames under, with its certificate mode.
 type Zone struct {
 	Name     string
-	Mode     string // PerHostname or Wildcard
+	Mode     Mode   // PerHostname or Wildcard
 	Provider string // wildcard only
 	Token    string // wildcard only
 }
@@ -249,7 +252,7 @@ func encode(s *State) ([]byte, error) {
 		d.Routes = append(d.Routes, diskRoute(r))
 	}
 	for _, z := range s.Zones {
-		d.Zones = append(d.Zones, diskZone(z))
+		d.Zones = append(d.Zones, diskZone{Name: z.Name, Mode: string(z.Mode), Provider: z.Provider, Token: z.Token})
 	}
 	b, err := json.MarshalIndent(d, "", "  ")
 	return append(b, '\n'), err
@@ -306,7 +309,7 @@ func decode(raw []byte) (*State, error) {
 		s.Routes = append(s.Routes, Route(r))
 	}
 	for _, z := range d.Zones {
-		s.Zones = append(s.Zones, Zone(z))
+		s.Zones = append(s.Zones, Zone{Name: z.Name, Mode: Mode(z.Mode), Provider: z.Provider, Token: z.Token})
 	}
 	if err := s.Validate(); err != nil {
 		return nil, err

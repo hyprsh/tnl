@@ -10,6 +10,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/hyprsh/tnl/internal/api"
 	"github.com/hyprsh/tnl/internal/keys"
 	"github.com/hyprsh/tnl/internal/statefile"
 )
@@ -101,7 +102,7 @@ func (s *Store) OnChange(fn func(*State)) {
 // state, checks the result, saves it, and swaps it in. If fn, the check or the
 // save fails, nothing changes live. actor ("local" or "outpost:<name>") is for
 // the logs.
-func (s *Store) Update(actor string, fn func(*State) error) error {
+func (s *Store) Update(actor api.Actor, fn func(*State) error) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -113,7 +114,7 @@ func (s *Store) Update(actor string, fn func(*State) error) error {
 		return err
 	}
 	if err := s.save(next); err != nil {
-		s.log.Warn("state change refused", "actor", actor, "error", err)
+		s.log.Warn("state change refused", "actor", actor.String(), "error", err)
 		return err
 	}
 	s.cur.Store(next)
