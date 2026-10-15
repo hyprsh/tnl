@@ -5,12 +5,14 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"strings"
 
 	"github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
+	"github.com/caddyserver/caddy/v2/modules/caddytls"
 
 	"github.com/hyprsh/tnl/internal/edge/routes"
 )
@@ -18,6 +20,7 @@ import (
 func init() {
 	caddy.RegisterModule(Router{})
 	caddy.RegisterModule(Transport{})
+	caddy.RegisterModule(Permission{})
 }
 
 const (
@@ -144,7 +147,38 @@ func bad(req *http.Request) *http.Response {
 	}
 }
 
+// Permission is the tls.permission.tnl module. Caddy asks it before it issues a
+// certificate on demand, and it allows only Hostnames that have a Route, so a
+// scanner probing random SNI names gets nothing.
+type Permission struct {
+	// Edge names the Runtime whose Route table decides.
+	Edge string `json:"edge"`
+
+	rt *Runtime
+}
+
+// CaddyModule implements caddy.Module.
+func (Permission) CaddyModule() caddy.ModuleInfo {
+	return caddy.ModuleInfo{ID: "tls.permission.tnl", New: func() caddy.Module { return new(Permission) }}
+}
+
+// Provision implements caddy.Provisioner.
+func (p *Permission) Provision(caddy.Context) (err error) {
+	p.rt, err = lookupRuntime(p.Edge)
+	return err
+}
+
+// CertificateAllowed implements caddytls.OnDemandPermission.
+func (p *Permission) CertificateAllowed(_ context.Context, name string) error {
+	if _, ok := p.rt.Table.Lookup(name); !ok {
+		return fmt.Errorf("%s has no Route: %w", name, caddytls.ErrPermissionDenied)
+	}
+	return nil
+}
+
 var (
+	_ caddy.Provisioner           = (*Permission)(nil)
+	_ caddytls.OnDemandPermission = (*Permission)(nil)
 	_ caddy.Provisioner           = (*Router)(nil)
 	_ caddyhttp.MiddlewareHandler = (*Router)(nil)
 	_ caddy.Provisioner           = (*Transport)(nil)
