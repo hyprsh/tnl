@@ -68,7 +68,7 @@ func addZone(c *api.Client, name string) (api.ZoneInfo, error) {
 }
 
 func rawClient(dir string) *http.Client {
-	return &http.Client{Transport: &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+	return &http.Client{Transport: &http.Transport{DisableKeepAlives: true, DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
 		return (&net.Dialer{}).DialContext(ctx, "unix", filepath.Join(dir, api.SocketName))
 	}}}
 }

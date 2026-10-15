@@ -96,6 +96,9 @@ func ListenSocket(dir string) (net.Listener, error) {
 	}
 	ln, err := net.Listen("unix", path)
 	if err != nil {
+		if len(path) > 100 {
+			return nil, fmt.Errorf("%w (the socket path %s is too long for a Unix socket; use a shorter state directory)", err, path)
+		}
 		return nil, err
 	}
 	if err := os.Chmod(path, 0o600); err != nil {
