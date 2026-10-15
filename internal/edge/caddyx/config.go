@@ -1,0 +1,175 @@
+// Package caddyx embeds Caddy in the Edge: it builds the Caddy config, loads it,
+// and holds tnl's Caddy modules (the router and the transport). It is the only
+// place that imports Caddy besides the Edge-only files that start it, so the
+// Outpost-only build stays Caddy-free.
+package caddyx
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"time"
+
+	"github.com/caddyserver/caddy/v2"
+	_ "github.com/caddyserver/caddy/v2/modules/standard"
+	"github.com/caddyserver/certmagic"
+)
+
+// Timeouts are Caddy's server timeouts. Read and write timeouts are always 0.
+type Timeouts struct {
+	ReadHeader time.Duration
+	Idle       time.Duration
+	ReadIdle   time.Duration
+	WriteIdle  time.Duration
+}
+
+// DefaultTimeouts are the values of the spec's section 6.
+func DefaultTimeouts() Timeouts {
+	return Timeouts{
+		ReadHeader: time.Minute,
+		Idle:       5 * time.Minute,
+		ReadIdle:   5 * time.Minute,
+		WriteIdle:  time.Minute,
+	}
+}
+
+// Config is what the Caddy config is built from.
+type Config struct {
+	// EdgeID names the Runtime registered with Register.
+	EdgeID string
+	// StateDir is the Edge's state directory. Caddy's storage and data directory
+	// are StateDir/caddy.
+	StateDir string
+	// HTTPListen and HTTPSListen are listen addresses, such as ":80" and ":443".
+	// The HTTPS port is used for UDP too, for HTTP/3.
+	HTTPListen, HTTPSListen string
+	// HTTPPort and HTTPSPort are the ports Visitors reach. They default to 80 and
+	// 443; a harness sets them to the ports it listens on.
+	HTTPPort, HTTPSPort int
+	// Timeouts defaults to DefaultTimeouts.
+	Timeouts *Timeouts
+}
+
+func (c Config) withDefaults() Config {
+	if c.HTTPListen == "" {
+		c.HTTPListen = ":80"
+	}
+	if c.HTTPSListen == "" {
+		c.HTTPSListen = ":443"
+	}
+	if c.HTTPPort == 0 {
+		c.HTTPPort = 80
+	}
+	if c.HTTPSPort == 0 {
+		c.HTTPSPort = 443
+	}
+	if c.Timeouts == nil {
+		d := DefaultTimeouts()
+		c.Timeouts = &d
+	}
+	return c
+}
+
+// JSON builds the Caddy config. It holds no Routes: those are tnl's table and
+// are never Caddy config (ADR 0002).
+func (c Config) JSON() ([]byte, error) {
+	if c.EdgeID == "" || c.StateDir == "" {
+		return nil, errors.New("caddyx: Config needs EdgeID and StateDir")
+	}
+	c = c.withDefaults()
+	to := c.Timeouts
+
+	location := "https://{http.request.host}"
+	if c.HTTPSPort != 443 {
+		location += fmt.Sprintf(":%d", c.HTTPSPort)
+	}
+	location += "{http.request.uri}"
+
+	cfg := map[string]any{
+		"admin":   map[string]any{"disabled": true, "config": map[string]any{"persist": false}},
+		"storage": map[string]any{"module": "file_system", "root": filepath.Join(c.StateDir, "caddy")},
+		// Caddy's own logs stay quiet until the logging core module arrives.
+		"logging": map[string]any{"logs": map[string]any{"default": map[string]any{
+			"level": "INFO", "writer": map[string]any{"output": "discard"},
+		}}},
+		"apps": map[string]any{
+			"http": map[string]any{
+				// Zero, so a reload never cuts a stream still running.
+				"grace_period": "0s",
+				"http_port":    c.HTTPPort,
+				"https_port":   c.HTTPSPort,
+				"servers": map[string]any{
+					"https": map[string]any{
+						"listen": []string{c.HTTPSListen},
+						// read_timeout and write_timeout stay unset, which is 0.
+						"read_header_timeout": to.ReadHeader.String(),
+						"idle_timeout":        to.Idle.String(),
+						"read_idle_timeout":   to.ReadIdle.String(),
+						"write_idle_timeout":  to.WriteIdle.String(),
+						"routes": []any{map[string]any{"handle": []any{
+							map[string]any{"handler": "tnl_router", "edge": c.EdgeID},
+							map[string]any{
+								"handler":   "reverse_proxy",
+								"transport": map[string]any{"protocol": "tnl", "edge": c.EdgeID},
+								// A placeholder: the transport picks the real target per Route.
+								"upstreams": []any{map[string]any{"dial": "tnl.invalid:80"}},
+							},
+						}}},
+					},
+					// Caddy's automatic redirect only covers hostnames from host
+					// matchers, and the router has none, so this server is explicit.
+					// It still answers ACME HTTP-01 challenges before its routes run.
+					"redirect": map[string]any{
+						"listen":          []string{c.HTTPListen},
+						"automatic_https": map[string]any{"disable": true},
+						"routes": []any{map[string]any{"handle": []any{map[string]any{
+							"handler": "static_response", "status_code": 308,
+							"headers": map[string]any{"Location": []string{location}},
+						}}}},
+					},
+				},
+			},
+			"pki": map[string]any{"certificate_authorities": map[string]any{
+				"local": map[string]any{"install_trust": false},
+			}},
+			// Certificates come from Caddy's internal CA until ACME arrives.
+			"tls": map[string]any{"automation": map[string]any{
+				"policies": []any{map[string]any{
+					"on_demand": true,
+					"issuers":   []any{map[string]any{"module": "internal"}},
+				}},
+			}},
+		},
+	}
+	return json.Marshal(cfg)
+}
+
+// Start loads the config. A second Start is a reload: it restarts Caddy's apps
+// with fresh module instances, and Runtime state carries over. Caddy is a
+// process singleton, so only one Edge runs per process.
+func Start(c Config) error {
+	b, err := c.JSON()
+	if err != nil {
+		return err
+	}
+	// Caddy's data directory is $XDG_DATA_HOME/caddy.
+	dataHome := c.StateDir
+	if err := os.MkdirAll(dataHome, 0o700); err != nil {
+		return err
+	}
+	if err := os.Setenv("XDG_DATA_HOME", dataHome); err != nil {
+		return err
+	}
+	caddy.DefaultStorage = &certmagic.FileStorage{Path: caddy.AppDataDir()}
+	return caddy.Load(b, true)
+}
+
+// Stop stops Caddy.
+func Stop() error { return caddy.Stop() }
+
+// RootCertPath is where Caddy's internal CA keeps its root certificate.
+func RootCertPath(stateDir string) string {
+	return filepath.Join(stateDir, "caddy", "pki", "authorities", "local", "root.crt")
+}
