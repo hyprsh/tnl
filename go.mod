@@ -5,6 +5,7 @@ go 1.27.2
 require (
 	github.com/caddyserver/caddy/v2 v2.11.7
 	github.com/caddyserver/certmagic v0.25.6
+	github.com/letsencrypt/pebble/v2 v2.10.1
 	github.com/quic-go/quic-go v0.63.0
 	golang.zx2c4.com/wireguard v0.0.0-20261006164505-2631ce99a06f
 	gvisor.dev/gvisor v0.0.0-20250503011706-39ed1f5ac29c
@@ -75,6 +76,7 @@ require (
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	github.com/klauspost/compress v1.20.1 // indirect
 	github.com/klauspost/cpuid/v2 v2.4.0 // indirect
+	github.com/letsencrypt/challtestsrv v1.4.2 // indirect
 	github.com/libdns/libdns v1.1.1 // indirect
 	github.com/manifoldco/promptui v0.9.0 // indirect
 	github.com/mattn/go-colorable v0.1.15 // indirect
