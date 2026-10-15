@@ -29,6 +29,9 @@ type Config struct {
 	Address    netip.Addr // this end's Tunnel address
 	PrivateKey keys.Key
 	ListenPort int // 0 picks a free port
+	// Logger receives wireguard-go's messages; see logx.WireGuardLogger. Nil
+	// discards them.
+	Logger *device.Logger
 }
 
 // Peer is the other end.
@@ -52,9 +55,12 @@ func New(cfg Config) (*Tunnel, error) {
 	if err != nil {
 		return nil, err
 	}
-	// wireguard-go panics on a nil log function. DiscardLogf stands in until the
-	// logging base exists.
-	dev := device.NewDevice(tdev, conn.NewDefaultBind(), &device.Logger{Verbosef: device.DiscardLogf, Errorf: device.DiscardLogf})
+	// wireguard-go panics on a nil log function.
+	logger := cfg.Logger
+	if logger == nil {
+		logger = &device.Logger{Verbosef: device.DiscardLogf, Errorf: device.DiscardLogf}
+	}
+	dev := device.NewDevice(tdev, conn.NewDefaultBind(), logger)
 	conf := fmt.Sprintf("private_key=%s\nlisten_port=%d\n", cfg.PrivateKey.Hex(), cfg.ListenPort)
 	if err := dev.IpcSet(conf); err != nil {
 		dev.Close()
