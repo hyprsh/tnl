@@ -16,6 +16,14 @@ _Avoid_: Connector, node, agent, client, origin, site
 A one-time, expiring secret that lets one newly added Outpost join the Edge under the name it was issued for.
 _Avoid_: Enrollment key, auth key, provisioning key, invite
 
+**Offline**:
+An Outpost the Edge has stopped hearing from, so its Routes can't be served until it's heard from again.
+_Avoid_: Down, disconnected, dead
+
+**Incompatible**:
+An Outpost whose version the Edge doesn't accept. It stays connected, but its Routes aren't served until one side is upgraded.
+_Avoid_: Outdated, unsupported
+
 **Tunnel**:
 The encrypted link between one Outpost and the Edge.
 _Avoid_: Using "tunnel" for a named group of Outposts
