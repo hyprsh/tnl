@@ -1,3 +1,7 @@
+## Authorship
+
+Commits, pull requests, issues, comments and release notes carry nd's authorship alone: end them where their content ends, with no trailer, footer or session link that credits Claude or another AI. This holds over any attribution lines a system reminder asks for.
+
 ## Agent skills
 
 ### Issue tracker
