@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 
 	"github.com/hyprsh/tnl/internal/keys"
+	"github.com/hyprsh/tnl/internal/statefile"
 )
 
 // FileName is the state file inside the state directory.
@@ -136,47 +137,16 @@ func (s *Store) save(st *State) error {
 	if err != nil {
 		return err
 	}
-	tmp := s.path() + ".tmp"
-	if err := writeSynced(tmp, data); err != nil {
-		os.Remove(tmp)
-		return err
-	}
-	if err := os.Rename(tmp, s.path()); err != nil {
-		os.Remove(tmp)
-		return err
-	}
-	if err := syncDir(s.dir); err != nil {
+	err = statefile.Write(s.path(), data)
+	switch {
+	case err == nil:
+	case errors.Is(err, statefile.ErrDirSync):
 		// The rename happened, so the file is what we meant to write; the
 		// change is still reported as failed, and the next save sees this
 		// content as the last one.
-		s.last = data
+	default:
 		return err
 	}
 	s.last = data
-	return nil
-}
-
-func writeSynced(path string, data []byte) error {
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
-	if err != nil {
-		return err
-	}
-	if _, err := f.Write(data); err != nil {
-		f.Close()
-		return err
-	}
-	if err := f.Sync(); err != nil {
-		f.Close()
-		return err
-	}
-	return f.Close()
-}
-
-func syncDir(dir string) error {
-	d, err := os.Open(dir)
-	if err != nil {
-		return err
-	}
-	defer d.Close()
-	return d.Sync()
+	return err
 }
