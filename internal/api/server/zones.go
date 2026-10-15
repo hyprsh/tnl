@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/hyprsh/tnl/internal/api"
+	"github.com/hyprsh/tnl/internal/dnsname"
 	"github.com/hyprsh/tnl/internal/state"
 )
 
@@ -57,24 +58,15 @@ func zoneName(in string) (string, error) {
 // dnsName is zoneName for any kind of name; noWildcard is the advice given when
 // the name contains a wildcard.
 func dnsName(kind, in, noWildcard string) (string, error) {
-	name := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(in)), ".")
+	name := dnsname.Normalize(in)
 	switch {
 	case name == "":
 		return "", api.Errorf(http.StatusBadRequest, "the %s needs a name", kind)
 	case strings.Contains(name, "*"):
 		return "", api.Errorf(http.StatusBadRequest, "invalid %s name %q: %s", kind, in, noWildcard)
-	case len(name) > 253:
-		return "", api.Errorf(http.StatusBadRequest, "invalid %s name: longer than 253 characters", kind)
 	}
-	for _, label := range strings.Split(name, ".") {
-		if label == "" || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' {
-			return "", api.Errorf(http.StatusBadRequest, "invalid %s name %q: each label must be 1 to 63 characters and not start or end with '-'", kind, in)
-		}
-		for _, c := range label {
-			if !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '-') {
-				return "", api.Errorf(http.StatusBadRequest, "invalid %s name %q: only letters, digits, '-' and '.' are allowed", kind, in)
-			}
-		}
+	if err := dnsname.CheckName(name); err != nil {
+		return "", api.Errorf(http.StatusBadRequest, "invalid %s name %q: %v", kind, in, err)
 	}
 	return name, nil
 }
