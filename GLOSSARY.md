@@ -39,3 +39,7 @@ _Avoid_: DNS host, registrar
 **Service**:
 An HTTP or HTTPS endpoint the Outpost can reach, either on its own machine or elsewhere on its network.
 _Avoid_: Origin, backend, upstream, target
+
+**Visitor**:
+Anyone who reaches a Hostname through the Edge.
+_Avoid_: User, client, end user
