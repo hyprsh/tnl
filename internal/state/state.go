@@ -4,7 +4,6 @@
 package state
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/netip"
@@ -13,6 +12,7 @@ import (
 
 	"github.com/hyprsh/tnl/internal/addr"
 	"github.com/hyprsh/tnl/internal/keys"
+	"github.com/hyprsh/tnl/internal/statefile"
 )
 
 // Version is the schema version this tnl reads and writes.
@@ -267,20 +267,9 @@ func parseKey(entry, field, s string) (keys.Key, error) {
 
 // decode reads and checks a whole state.json. It never returns part of one.
 func decode(raw []byte) (*State, error) {
-	var head struct {
-		Version int `json:"version"`
-	}
-	if err := json.Unmarshal(raw, &head); err != nil {
-		return nil, fmt.Errorf("state.json is not valid JSON: %w", err)
-	}
-	if head.Version != Version {
-		return nil, fmt.Errorf("state.json has schema version %d; this tnl knows version %d", head.Version, Version)
-	}
 	var d diskState
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&d); err != nil {
-		return nil, fmt.Errorf("state.json: %w", err)
+	if err := statefile.Decode(raw, FileName, Version, &d); err != nil {
+		return nil, err
 	}
 	s := &State{Version: d.Version, NextAddr: d.NextAddr}
 	var err error

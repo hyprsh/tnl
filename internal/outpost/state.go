@@ -1,7 +1,6 @@
 package outpost
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,6 +9,7 @@ import (
 	"path/filepath"
 
 	"github.com/hyprsh/tnl/internal/keys"
+	"github.com/hyprsh/tnl/internal/statefile"
 )
 
 // StateVersion is the schema version of the Outpost's state.json.
@@ -48,20 +48,9 @@ func loadState(dir string) (*State, error) {
 	if err != nil {
 		return nil, err
 	}
-	var head struct {
-		Version int `json:"version"`
-	}
-	if err := json.Unmarshal(raw, &head); err != nil {
-		return nil, fmt.Errorf("%s is not valid JSON: %w", FileName, err)
-	}
-	if head.Version != StateVersion {
-		return nil, fmt.Errorf("%s has schema version %d; this tnl knows version %d", FileName, head.Version, StateVersion)
-	}
 	var d diskState
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&d); err != nil {
-		return nil, fmt.Errorf("%s: %w", FileName, err)
+	if err := statefile.Decode(raw, FileName, StateVersion, &d); err != nil {
+		return nil, err
 	}
 	s := &State{EdgeAddress: d.EdgeAddress, EdgePort: d.EdgePort, TokenSHA256: d.TokenSHA256}
 	if err := s.PrivateKey.UnmarshalText([]byte(d.PrivateKey)); err != nil {
@@ -97,30 +86,5 @@ func saveState(dir string, s *State) error {
 	if err != nil {
 		return err
 	}
-	path := filepath.Join(dir, FileName)
-	tmp := path + ".tmp"
-	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
-	if err != nil {
-		return err
-	}
-	if _, err := f.Write(append(b, '\n')); err == nil {
-		err = f.Sync()
-	}
-	if cerr := f.Close(); err == nil {
-		err = cerr
-	}
-	if err != nil {
-		os.Remove(tmp)
-		return err
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		os.Remove(tmp)
-		return err
-	}
-	d, err := os.Open(dir)
-	if err != nil {
-		return err
-	}
-	defer d.Close()
-	return d.Sync()
+	return statefile.Write(filepath.Join(dir, FileName), append(b, '\n'))
 }
