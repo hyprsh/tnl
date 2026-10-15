@@ -4,6 +4,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"sync/atomic"
 	"testing"
 )
 
@@ -14,16 +15,22 @@ func NewHTTPService(t testing.TB, handler http.Handler) *Service {
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv := &http.Server{Handler: handler}
+	svc := &Service{ln: ln}
+	srv := &http.Server{Handler: handler, ConnState: func(_ net.Conn, st http.ConnState) {
+		if st == http.StateNew {
+			svc.conns.Add(1)
+		}
+	}}
 	go srv.Serve(ln)
 	t.Cleanup(func() { srv.Close() })
-	return &Service{ln: ln}
+	return svc
 }
 
 // Service is a TCP service on the host's loopback, standing in for something
 // the Outpost's host can reach.
 type Service struct {
-	ln net.Listener
+	ln    net.Listener
+	conns atomic.Int64
 }
 
 // NewEchoService starts a Service that echoes every byte back.
@@ -51,3 +58,6 @@ func NewEchoService(t testing.TB) *Service {
 
 // Addr is the Service's host:port.
 func (s *Service) Addr() string { return s.ln.Addr().String() }
+
+// Conns counts the connections an HTTP Service has accepted so far.
+func (s *Service) Conns() int { return int(s.conns.Load()) }
