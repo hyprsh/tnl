@@ -54,13 +54,6 @@ func parseEdgeFlags(args []string, usageOut io.Writer) (edgeSettings, error) {
 	return s, nil
 }
 
-func envOr(name, def string) string {
-	if v := os.Getenv(name); v != "" {
-		return v
-	}
-	return def
-}
-
 func runEdge(args []string) error {
 	s, err := parseEdgeFlags(args, os.Stderr)
 	if err == flag.ErrHelp {
