@@ -1,0 +1,22 @@
+name: ci
+on:
+  push: {}
+  pull_request: {}
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CGO_ENABLED: "0"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      # -tags replaces GOFLAGS, so every command passes its tags itself.
+      - run: go vet -tags nomysql ./...
+      - run: go vet -tags nomysql,outpost ./...
+      - run: go test -timeout 15m -tags nomysql ./...
+      - run: scripts/check-outpost-deps.sh
