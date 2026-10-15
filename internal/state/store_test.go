@@ -226,6 +226,8 @@ func TestStartChecksTheWholeStateAndNamesTheBadEntry(t *testing.T) {
 		name, body, mention string
 	}{
 		{"duplicate hostname", doc(op("a", "100.64.0.2"), rt("x.example.com", "a")+","+rt("x.example.com", "a"), zone, 1), "x.example.com"},
+		{"route with a Service URL this tnl cannot serve", doc(op("a", "100.64.0.2"), `{"hostname":"x.example.com","outpost":"a","service":"ftp://x:1"}`, zone, 1), "x.example.com"},
+		{"route with a wildcard Hostname", doc(op("a", "100.64.0.2"), rt("*.example.com", "a"), zone, 1), "*.example.com"},
 		{"route to missing outpost", doc("", rt("x.example.com", "ghost"), zone, 0), "ghost"},
 		{"hostname outside every zone", doc(op("a", "100.64.0.2"), rt("x.other.org", "a"), zone, 1), "x.other.org"},
 		{"duplicate tunnel address", doc(op("a", "100.64.0.2")+","+op("b", "100.64.0.2"), "", zone, 2), "100.64.0.2"},

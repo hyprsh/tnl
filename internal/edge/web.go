@@ -46,12 +46,7 @@ func startWeb(w *Web, stateDir string, store *state.Store, tun *tunnel.Tunnel, l
 		}
 		rs := make([]routes.Route, 0, len(st.Routes))
 		for _, r := range st.Routes {
-			_, hostPort, err := state.ParseService(r.Service)
-			if err != nil {
-				log.Error("skipping a Route whose Service URL this tnl cannot serve", "hostname", r.Hostname, "service", r.Service, "error", err)
-				continue
-			}
-			rs = append(rs, routes.Route{Hostname: r.Hostname, Outpost: r.Outpost, Service: hostPort})
+			rs = append(rs, routes.Route{Hostname: r.Hostname, Outpost: r.Outpost, Service: r.HostPort()})
 		}
 		table.Swap(rs)
 	}
