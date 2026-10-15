@@ -29,8 +29,12 @@ The public name a Route answers on, such as `app.example.com`.
 _Avoid_: Domain, subdomain, public hostname
 
 **Zone**:
-A domain the Edge serves Hostnames under, with its own certificate mode: one certificate per Hostname, or one wildcard certificate obtained through the Zone's DNS provider.
-_Avoid_: Domain, base domain, apex
+A domain the Edge serves Hostnames under, with its own certificate mode: one certificate per Hostname, or one wildcard certificate obtained through the Zone's DNS provider, covering the Zone's own name and every name one label below it. Zones may nest, and a Hostname belongs to the longest Zone that contains it.
+_Avoid_: Domain, base domain, apex, DNS zone
+
+**DNS provider**:
+The service that hosts a Zone's DNS records, which the Edge writes to in order to get the Zone's wildcard certificate. The provider's own zone may be a parent of the Zone: the Zone `tnl.example.com` can live in the provider's `example.com`.
+_Avoid_: DNS host, registrar
 
 **Service**:
 An HTTP or HTTPS endpoint the Outpost can reach, either on its own machine or elsewhere on its network.
