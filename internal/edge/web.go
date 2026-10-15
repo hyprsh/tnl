@@ -1,6 +1,7 @@
 package edge
 
 import (
+	"cmp"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -37,7 +38,7 @@ type Web struct {
 //
 // The Routes are never Caddy config (ADR 0002): a change in the state swaps
 // the table the router reads, and Caddy is loaded once, here.
-func startWeb(w *Web, stateDir string, store *state.Store, tun *tunnel.Tunnel, log *slog.Logger) (stop func(), err error) {
+func startWeb(w *Web, stateDir string, wgPort int, store *state.Store, tun *tunnel.Tunnel, log *slog.Logger) (stop func(), err error) {
 	table := new(routes.Mem)
 	outposts := new(routes.MemOutposts)
 	publish := func(st *state.State) {
@@ -64,8 +65,16 @@ func startWeb(w *Web, stateDir string, store *state.Store, tun *tunnel.Tunnel, l
 			return tun.Net.DialContextTCPAddrPort(ctx, a)
 		},
 	})
+	// WireGuard's UDP port and HTTP/3's are the same port when WireGuard is on
+	// the HTTPS port, so HTTP/3 gives way (spec section 5, --wireguard-port).
+	httpsPort := cmp.Or(w.HTTPSPort, 443)
+	noHTTP3 := wgPort == httpsPort
+	if noHTTP3 {
+		log.Info("HTTP/3 is off: WireGuard is on the HTTPS port over UDP", "port", httpsPort)
+	}
 	err = caddyx.Start(caddyx.Config{
-		EdgeID: edgeID, StateDir: stateDir,
+		NoHTTP3: noHTTP3,
+		EdgeID:  edgeID, StateDir: stateDir,
 		HTTPListen: w.HTTPListen, HTTPSListen: w.HTTPSListen,
 		HTTPPort: w.HTTPPort, HTTPSPort: w.HTTPSPort,
 		ACME: &caddyx.ACME{CA: w.ACMECA, Email: w.ACMEEmail, TrustedRoots: w.ACMETrustedRoots},
