@@ -3,10 +3,36 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"sort"
 )
+
+// exitConfig is EX_CONFIG: a flag, variable or value the operator must fix.
+const exitConfig = 78
+
+// configError marks an error as a configuration problem, which exits 78.
+type configError struct{ error }
+
+func (e configError) Unwrap() error { return e.error }
+
+// loggedError is an error the command already logged at error; main only exits.
+type loggedError struct{ error }
+
+func (e loggedError) Unwrap() error { return e.error }
+
+func exitCode(err error) int {
+	var ce configError
+	switch {
+	case err == nil:
+		return 0
+	case errors.As(err, &ce):
+		return exitConfig
+	default:
+		return 1
+	}
+}
 
 // commands maps a subcommand to its entry point. Each command file registers
 // its own in init, so tickets that add commands touch disjoint files. Files
@@ -25,8 +51,11 @@ func main() {
 		os.Exit(2)
 	}
 	if err := run(os.Args[2:]); err != nil {
-		fmt.Fprintf(os.Stderr, "tnl: %v\n", err)
-		os.Exit(1)
+		var logged loggedError
+		if !errors.As(err, &logged) { // already logged at error
+			fmt.Fprintf(os.Stderr, "tnl: %v\n", err)
+		}
+		os.Exit(exitCode(err))
 	}
 }
 

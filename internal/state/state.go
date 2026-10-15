@@ -209,8 +209,8 @@ type diskState struct {
 	PrivateKey string        `json:"private_key"`
 	NextAddr   int           `json:"next_address"`
 	Outposts   []diskOutpost `json:"outposts"`
-	Routes     []diskRoute      `json:"routes"`
-	Zones      []diskZone       `json:"zones"`
+	Routes     []diskRoute   `json:"routes"`
+	Zones      []diskZone    `json:"zones"`
 }
 
 type diskOutpost struct {
