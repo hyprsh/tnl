@@ -29,5 +29,5 @@ A domain the Edge serves Hostnames under, with its own certificate mode: one cer
 _Avoid_: Domain, base domain, apex
 
 **Service**:
-An HTTP endpoint the Connector can reach, either on its own machine or elsewhere on its network.
+An HTTP or HTTPS endpoint the Connector can reach, either on its own machine or elsewhere on its network.
 _Avoid_: Origin, backend, upstream, target
