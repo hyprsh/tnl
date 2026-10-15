@@ -65,6 +65,9 @@ type Config struct {
 	ACME *ACME
 	// Timeouts defaults to DefaultTimeouts.
 	Timeouts *Timeouts
+	// NoHTTP3 serves HTTP/1.1 and HTTP/2 only, leaving the HTTPS port's UDP side
+	// free for something else (WireGuard).
+	NoHTTP3 bool
 }
 
 func (c Config) withDefaults() Config {
@@ -129,6 +132,11 @@ func (c Config) JSON() ([]byte, error) {
 		}
 	}
 
+	protocols := []string{"h1", "h2", "h3"}
+	if c.NoHTTP3 {
+		protocols = []string{"h1", "h2"}
+	}
+
 	cfg := map[string]any{
 		"admin":   map[string]any{"disabled": true, "config": map[string]any{"persist": false}},
 		"storage": map[string]any{"module": "file_system", "root": filepath.Join(c.StateDir, "caddy")},
@@ -144,7 +152,8 @@ func (c Config) JSON() ([]byte, error) {
 				"https_port":   c.HTTPSPort,
 				"servers": map[string]any{
 					"https": map[string]any{
-						"listen": []string{c.HTTPSListen},
+						"listen":    []string{c.HTTPSListen},
+						"protocols": protocols,
 						// read_timeout and write_timeout stay unset, which is 0.
 						"read_header_timeout": to.ReadHeader.String(),
 						"idle_timeout":        to.Idle.String(),

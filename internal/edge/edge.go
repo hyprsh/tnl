@@ -85,7 +85,7 @@ func Run(ctx context.Context, cfg Config) error {
 	go func() { served <- srv.Serve(ctx, ln, api.ActorLocal) }()
 
 	if cfg.Web != nil {
-		stopWeb, err := startWeb(cfg.Web, cfg.StateDir, store, tun, cfg.Log)
+		stopWeb, err := startWeb(cfg.Web, cfg.StateDir, wgPort, store, tun, cfg.Log)
 		if err != nil {
 			return refuse(err)
 		}
