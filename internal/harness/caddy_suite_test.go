@@ -129,7 +129,13 @@ type uploadReport struct {
 // app.test to the suite's Service.
 func suiteEdge(t *testing.T) *CaddyEdge {
 	t.Helper()
-	svc := NewHTTPService(t, suiteService())
+	return suiteEdgeFor(t, suiteService())
+}
+
+// suiteEdgeFor is suiteEdge with a Service of the test's own.
+func suiteEdgeFor(t *testing.T, service http.Handler) *CaddyEdge {
+	t.Helper()
+	svc := NewHTTPService(t, service)
 	h := New(t)
 	o := h.AddOutpost(t, OutpostOptions{Name: "home"})
 	to := shrunk
@@ -142,6 +148,7 @@ func suiteEdge(t *testing.T) *CaddyEdge {
 type sseRun struct {
 	events     int
 	maxLatency time.Duration
+	encoding   string // the response's Content-Encoding
 	err        error
 }
 
@@ -152,12 +159,16 @@ func readSSE(t *testing.T, ce *CaddyEdge, proto Proto, gaps string) sseRun {
 		res.err = err
 		return res
 	}
+	// Setting Accept-Encoding ourselves turns off Go's transparent
+	// decompression, so an encoding the Edge applies shows up in the response.
+	req.Header.Set("Accept-Encoding", "gzip")
 	resp, err := ce.Client(t, proto).Do(req)
 	if err != nil {
 		res.err = err
 		return res
 	}
 	defer resp.Body.Close()
+	res.encoding = resp.Header.Get("Content-Encoding")
 	if resp.Proto != string(proto) {
 		res.err = fmt.Errorf("spoke %s, want %s", resp.Proto, proto)
 		return res
@@ -219,6 +230,10 @@ func TestEventsReachTheVisitorAsTheServiceWritesThem(t *testing.T) {
 		r := res[p]
 		if r.err != nil || r.events != 5 {
 			t.Errorf("%s: %d events, %v; want 5", p, r.events, r.err)
+		}
+		// Compression buffers a stream and, over a long one, defeats it.
+		if r.encoding != "" {
+			t.Errorf("%s: the event stream came back with Content-Encoding %q", p, r.encoding)
 		}
 		// Buffering would hold an event back for a gap or until the stream ends.
 		if r.maxLatency > 200*time.Millisecond {
@@ -294,13 +309,15 @@ type uploadResult struct {
 	status int
 	report uploadReport
 	err    error
-	took   time.Duration
+	// encoding is the response's Content-Encoding.
+	encoding string
+	took     time.Duration
 	// sha256 is what the Visitor sent.
 	sha256 string
 }
 
 func (r uploadResult) intact(size int64) bool {
-	return r.err == nil && r.status == 200 && r.report.Err == "" && r.report.Bytes == size && r.report.SHA256 == r.sha256
+	return r.err == nil && r.status == 200 && r.encoding == "" && r.report.Err == "" && r.report.Bytes == size && r.report.SHA256 == r.sha256
 }
 
 func (r uploadResult) String() string {
@@ -317,6 +334,7 @@ func upload(t *testing.T, ce *CaddyEdge, proto Proto, body *patternReader, size 
 		return res
 	}
 	req.ContentLength = size
+	req.Header.Set("Accept-Encoding", "gzip")
 	resp, err := ce.Client(t, proto).Do(req)
 	if err != nil {
 		res.err, res.took = err, time.Since(start)
@@ -324,6 +342,7 @@ func upload(t *testing.T, ce *CaddyEdge, proto Proto, body *patternReader, size 
 	}
 	defer resp.Body.Close()
 	res.status = resp.StatusCode
+	res.encoding = resp.Header.Get("Content-Encoding")
 	b, err := io.ReadAll(resp.Body)
 	res.took = time.Since(start)
 	res.sha256 = body.Hex()
@@ -400,5 +419,55 @@ func TestUploadWhoseVisitorStallsLongerThanReadIdleFailsOnEveryProtocol(t *testi
 		if res[p].intact(size) {
 			t.Errorf("%s: an upload stalled for 4 s completed: %s", p, res[p])
 		}
+	}
+}
+
+func TestRequestBodiesStreamToTheServiceUnbuffered(t *testing.T) {
+	// The Visitor sends a first chunk and then waits, without finishing the
+	// body, until the Service has seen that chunk. An Edge that buffers
+	// request bodies would hold the chunk back and the wait would time out.
+	seen := make(chan struct{}, 1)
+	ce := suiteEdgeFor(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		buf := make([]byte, 16)
+		if _, err := io.ReadFull(r.Body, buf); err == nil {
+			select {
+			case seen <- struct{}{}:
+			default:
+			}
+		}
+		io.Copy(io.Discard, r.Body)
+		w.WriteHeader(200)
+	}))
+	for _, p := range Protos {
+		t.Run(string(p), func(t *testing.T) {
+			select {
+			case <-seen:
+			default:
+			}
+			pr, pw := io.Pipe()
+			req, err := http.NewRequestWithContext(ctxFor(t, 30*time.Second), "POST", "https://app.test/", pr)
+			if err != nil {
+				t.Fatal(err)
+			}
+			done := make(chan error, 1)
+			go func() {
+				resp, err := ce.Client(t, p).Do(req)
+				if err == nil {
+					resp.Body.Close()
+				}
+				done <- err
+			}()
+			go pw.Write([]byte("0123456789abcdef"))
+			select {
+			case <-seen:
+			case <-time.After(1500 * time.Millisecond):
+				pw.Close()
+				t.Fatalf("the Service saw no byte of a request body the Visitor was still sending")
+			}
+			pw.Close()
+			if err := <-done; err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
 }
