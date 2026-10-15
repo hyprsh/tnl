@@ -34,6 +34,9 @@ var Protos = []Proto{H1, H2, H3}
 // CaddyOptions tunes the Caddy side; the zero value is the spec's settings.
 type CaddyOptions struct {
 	Timeouts *caddyx.Timeouts
+	// Pebble makes Caddy get its certificates from this ACME CA, on demand,
+	// instead of from its internal CA. CaddyEdge.Roots is then Pebble's root.
+	Pebble *Pebble
 }
 
 // CaddyEdge is the running Caddy side of the Edge. Caddy is a process singleton,
@@ -63,6 +66,10 @@ func (e *Edge) StartCaddy(t testing.TB, opts CaddyOptions) *CaddyEdge {
 
 	httpsPort := freePort(t, true)
 	httpPort := freePort(t, false)
+	if opts.Pebble != nil && opts.Pebble.opts.Validate {
+		// Pebble's HTTP-01 validation connects to this port.
+		httpPort = opts.Pebble.ValidationPort
+	}
 	ce := &CaddyEdge{HTTPPort: httpPort, HTTPSPort: httpsPort, StateDir: t.TempDir()}
 	// Caddy's data directory comes from the environment; put it back afterwards.
 	if old, ok := os.LookupEnv("XDG_DATA_HOME"); ok {
@@ -79,12 +86,21 @@ func (e *Edge) StartCaddy(t testing.TB, opts CaddyOptions) *CaddyEdge {
 		HTTPSPort:   httpsPort,
 		Timeouts:    opts.Timeouts,
 	}
+	if p := opts.Pebble; p != nil {
+		ce.cfg.ACME = &caddyx.ACME{CA: p.DirectoryURL, Email: "ops@example.com", TrustedRoots: []string{p.certFile}}
+	}
 	t.Cleanup(func() {
 		caddyx.Stop()
 		unregister()
 	})
 	if err := caddyx.Start(ce.cfg); err != nil {
 		t.Fatal(err)
+	}
+	if opts.Pebble != nil {
+		ce.Roots = x509.NewCertPool()
+		ce.Roots.AddCert(opts.Pebble.Root)
+		e.Caddy = ce
+		return ce
 	}
 	pem, err := os.ReadFile(caddyx.RootCertPath(ce.StateDir))
 	if err != nil {
@@ -181,4 +197,14 @@ func (ce *CaddyEdge) PlainClient() *http.Client {
 		}},
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}
+}
+
+func verifyOpts(p *Pebble, chain []*x509.Certificate) x509.VerifyOptions {
+	roots := x509.NewCertPool()
+	roots.AddCert(p.Root)
+	inter := x509.NewCertPool()
+	for _, c := range chain {
+		inter.AddCert(c)
+	}
+	return x509.VerifyOptions{Roots: roots, Intermediates: inter}
 }
