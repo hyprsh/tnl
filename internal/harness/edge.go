@@ -1,0 +1,184 @@
+package harness
+
+import (
+	"context"
+	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
+	"encoding/hex"
+	"fmt"
+	"net"
+	"net/http"
+	"net/netip"
+	"os"
+	"testing"
+
+	"github.com/quic-go/quic-go"
+	"github.com/quic-go/quic-go/http3"
+
+	"github.com/hyprsh/tnl/internal/edge/caddyx"
+)
+
+// Proto is the HTTP version a Visitor speaks.
+type Proto string
+
+const (
+	H1 Proto = "HTTP/1.1"
+	H2 Proto = "HTTP/2.0"
+	H3 Proto = "HTTP/3.0"
+)
+
+// Protos lists every Visitor protocol.
+var Protos = []Proto{H1, H2, H3}
+
+// CaddyOptions tunes the Caddy side; the zero value is the spec's settings.
+type CaddyOptions struct {
+	Timeouts *caddyx.Timeouts
+}
+
+// CaddyEdge is the running Caddy side of the Edge. Caddy is a process singleton,
+// so a test binary runs one at a time and its tests must not be parallel.
+type CaddyEdge struct {
+	// HTTPPort and HTTPSPort are the loopback ports Visitors use. HTTP/3 uses
+	// HTTPSPort over UDP.
+	HTTPPort, HTTPSPort int
+	// StateDir is a temp directory; Caddy keeps its files in StateDir/caddy.
+	StateDir string
+	// Roots holds Caddy's internal CA root, which signed every certificate.
+	Roots *x509.CertPool
+
+	cfg caddyx.Config
+}
+
+// StartCaddy starts Caddy in front of the Edge's Route table and Tunnel, with
+// Certificates from Caddy's internal CA. It stops when the test ends.
+func (e *Edge) StartCaddy(t testing.TB, opts CaddyOptions) *CaddyEdge {
+	t.Helper()
+	var id [8]byte
+	rand.Read(id[:])
+	edgeID := hex.EncodeToString(id[:])
+	unregister := caddyx.Register(edgeID, &caddyx.Runtime{Table: e.Routes, Outposts: e.Outposts, Dialer: func(ctx context.Context, a netip.AddrPort) (net.Conn, error) {
+		return e.Net.DialContextTCPAddrPort(ctx, a)
+	}})
+
+	httpsPort := freePort(t, true)
+	httpPort := freePort(t, false)
+	ce := &CaddyEdge{HTTPPort: httpPort, HTTPSPort: httpsPort, StateDir: t.TempDir()}
+	// Caddy's data directory comes from the environment; put it back afterwards.
+	if old, ok := os.LookupEnv("XDG_DATA_HOME"); ok {
+		t.Cleanup(func() { os.Setenv("XDG_DATA_HOME", old) })
+	} else {
+		t.Cleanup(func() { os.Unsetenv("XDG_DATA_HOME") })
+	}
+	ce.cfg = caddyx.Config{
+		EdgeID:      edgeID,
+		StateDir:    ce.StateDir,
+		HTTPListen:  fmt.Sprintf("127.0.0.1:%d", httpPort),
+		HTTPSListen: fmt.Sprintf("127.0.0.1:%d", httpsPort),
+		HTTPPort:    httpPort,
+		HTTPSPort:   httpsPort,
+		Timeouts:    opts.Timeouts,
+	}
+	t.Cleanup(func() {
+		caddyx.Stop()
+		unregister()
+	})
+	if err := caddyx.Start(ce.cfg); err != nil {
+		t.Fatal(err)
+	}
+	pem, err := os.ReadFile(caddyx.RootCertPath(ce.StateDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ce.Roots = x509.NewCertPool()
+	if !ce.Roots.AppendCertsFromPEM(pem) {
+		t.Fatal("no certificate in Caddy's root.crt")
+	}
+	e.Caddy = ce
+	return ce
+}
+
+// Reload loads the same Caddy config again, which restarts every module
+// instance. Running streams must survive it.
+func (ce *CaddyEdge) Reload(t testing.TB) {
+	t.Helper()
+	if err := caddyx.Start(ce.cfg); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// freePort finds a port free on TCP, and on UDP too if udp is set.
+func freePort(t testing.TB, udp bool) int {
+	t.Helper()
+	for range 50 {
+		l, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		port := l.Addr().(*net.TCPAddr).Port
+		l.Close()
+		if !udp {
+			return port
+		}
+		pc, err := net.ListenPacket("udp", fmt.Sprintf("127.0.0.1:%d", port))
+		if err == nil {
+			pc.Close()
+			return port
+		}
+	}
+	t.Fatal("no free port")
+	return 0
+}
+
+// Client returns an HTTP client that speaks proto to the Edge's HTTPS port for
+// whatever host the URL names, with the right SNI and trusting Caddy's root. It
+// follows no redirects and has no timeout, so pass a context to each request.
+func (ce *CaddyEdge) Client(t testing.TB, proto Proto) *http.Client {
+	t.Helper()
+	tc := &tls.Config{RootCAs: ce.Roots}
+	addr := fmt.Sprintf("127.0.0.1:%d", ce.HTTPSPort)
+	var rt http.RoundTripper
+	switch proto {
+	case H3:
+		tr := &http3.Transport{
+			TLSClientConfig: tc,
+			Dial: func(ctx context.Context, _ string, c *tls.Config, q *quic.Config) (*quic.Conn, error) {
+				return quic.DialAddrEarly(ctx, addr, c, q)
+			},
+		}
+		t.Cleanup(func() { tr.Close() })
+		rt = tr
+	case H1, H2:
+		var p http.Protocols
+		if proto == H2 {
+			p.SetHTTP2(true)
+		} else {
+			p.SetHTTP1(true)
+		}
+		tr := &http.Transport{
+			TLSClientConfig: tc, Protocols: &p,
+			DialContext: func(ctx context.Context, n, _ string) (net.Conn, error) {
+				return (&net.Dialer{}).DialContext(ctx, n, addr)
+			},
+		}
+		t.Cleanup(tr.CloseIdleConnections)
+		rt = tr
+	default:
+		t.Fatalf("unknown protocol %q", proto)
+	}
+	return &http.Client{
+		Transport:     rt,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
+}
+
+// PlainClient returns a client for the Edge's port 80, for any host.
+func (ce *CaddyEdge) PlainClient() *http.Client {
+	addr := fmt.Sprintf("127.0.0.1:%d", ce.HTTPPort)
+	return &http.Client{
+		Transport: &http.Transport{DialContext: func(ctx context.Context, n, _ string) (net.Conn, error) {
+			return (&net.Dialer{}).DialContext(ctx, n, addr)
+		}},
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
+}

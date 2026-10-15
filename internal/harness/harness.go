@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/hyprsh/tnl/internal/addr"
+	"github.com/hyprsh/tnl/internal/edge/routes"
 	"github.com/hyprsh/tnl/internal/forwarder"
 	"github.com/hyprsh/tnl/internal/keys"
 	"github.com/hyprsh/tnl/internal/tunnel"
@@ -33,6 +34,13 @@ type Harness struct {
 
 // Edge is the Edge end of the Tunnel.
 type Edge struct {
+	// Routes and Outposts are the tables the Caddy side reads once StartCaddy has run.
+	Routes   *routes.Mem
+	Outposts *routes.MemOutposts
+
+	// Caddy is set by StartCaddy.
+	Caddy *CaddyEdge
+
 	Tunnel *tunnel.Tunnel
 	Net    *netstack.Net
 	Port   int // the UDP port WireGuard listens on, on 127.0.0.1
@@ -40,6 +48,7 @@ type Edge struct {
 
 // Outpost is one Outpost: its Tunnel end and its forwarder.
 type Outpost struct {
+	Name      string
 	Addr      netip.Addr
 	Tunnel    *tunnel.Tunnel
 	Net       *netstack.Net
@@ -48,6 +57,7 @@ type Outpost struct {
 
 // OutpostOptions tunes an Outpost; the zero value is a normal one.
 type OutpostOptions struct {
+	Name          string // the name Routes use; defaults to "outpost-N"
 	Version       string
 	Dialer        forwarder.Dialer
 	DialTimeout   time.Duration
@@ -70,7 +80,7 @@ func New(t testing.TB) *Harness {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &Harness{Edge: &Edge{Tunnel: tun, Net: tun.Net, Port: port}, edgePub: pub}
+	return &Harness{Edge: &Edge{Routes: new(routes.Mem), Outposts: new(routes.MemOutposts), Tunnel: tun, Net: tun.Net, Port: port}, edgePub: pub}
 }
 
 // AddOutpost starts an Outpost with the next Tunnel address, peers it with the
@@ -123,7 +133,13 @@ func (h *Harness) AddOutpost(t testing.TB, opts OutpostOptions) *Outpost {
 	go func() { defer close(done); fw.Serve(ln) }()
 	t.Cleanup(func() { ln.Close(); <-done })
 
-	return &Outpost{Addr: a, Tunnel: tun, Net: tun.Net, Forwarder: fw}
+	name := opts.Name
+	if name == "" {
+		name = fmt.Sprintf("outpost-%d", h.outposts-1)
+	}
+	o := &Outpost{Name: name, Addr: a, Tunnel: tun, Net: tun.Net, Forwarder: fw}
+	h.Edge.Outposts.Set(name, o.DataAddr())
+	return o
 }
 
 // DataAddr is where the Edge reaches the Outpost's forwarder.
