@@ -72,6 +72,27 @@ func TestEdgeBadFlagsAreConfigErrors(t *testing.T) {
 	}
 }
 
+func TestEdgeWireGuardPort(t *testing.T) {
+	t.Setenv("TNL_WIREGUARD_PORT", "")
+	s, err := parse(t, "--address", "a")
+	if err != nil || s.cfg.WireGuardPort != 51820 {
+		t.Fatalf("default: %+v %v", s.cfg, err)
+	}
+	t.Setenv("TNL_WIREGUARD_PORT", "443")
+	if s, err = parse(t, "--address", "a"); err != nil || s.cfg.WireGuardPort != 443 {
+		t.Fatalf("env: %+v %v", s.cfg, err)
+	}
+	if s, err = parse(t, "--address", "a", "--wireguard-port", "4000"); err != nil || s.cfg.WireGuardPort != 4000 {
+		t.Fatalf("flag: %+v %v", s.cfg, err)
+	}
+	for _, bad := range []string{"0", "70000", "x"} {
+		var ce configError
+		if _, err := parse(t, "--address", "a", "--wireguard-port", bad); !errors.As(err, &ce) {
+			t.Errorf("%s: err=%v", bad, err)
+		}
+	}
+}
+
 func TestConfigErrorsExit78(t *testing.T) {
 	if exitCode(configError{errors.New("x")}) != 78 || exitCode(errors.New("x")) != 1 || exitCode(nil) != 0 {
 		t.Fatal("wrong exit codes")
