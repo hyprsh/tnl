@@ -9,8 +9,12 @@ The public server that holds the public address, terminates HTTPS for every Host
 _Avoid_: Server, relay, gateway
 
 **Connector**:
-The tnl process on a machine behind NAT that dials out to the Edge and forwards traffic to Services on its side.
+The tnl process on a machine behind NAT that dials out to the Edge and forwards traffic to Services on its side. It is known by a name the operator gives it when adding it, which never changes.
 _Avoid_: Agent, client, origin, site
+
+**Join token**:
+A one-time, expiring secret that lets one newly added Connector join the Edge under the name it was issued for.
+_Avoid_: Enrollment key, auth key, provisioning key, invite
 
 **Tunnel**:
 The encrypted link between one Connector and the Edge.
