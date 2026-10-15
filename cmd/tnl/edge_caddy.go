@@ -2,6 +2,6 @@
 
 package main
 
-// The Edge links Caddy; the Outpost-only build must not. scripts/check-outpost-deps.sh
-// checks both. Wiring caddyx into `tnl edge` itself comes with ticket 26.
-import _ "github.com/hyprsh/tnl/internal/edge/caddyx"
+// The Edge links Caddy through internal/edge (edge.Run starts it, built from
+// the state and the flags). The Outpost-only build must not link it;
+// scripts/check-outpost-deps.sh checks both.

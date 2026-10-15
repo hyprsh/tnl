@@ -93,6 +93,25 @@ func TestEdgeWireGuardPort(t *testing.T) {
 	}
 }
 
+func TestEdgeACMEFlagsAndEnvironment(t *testing.T) {
+	t.Setenv("TNL_ACME_EMAIL", "")
+	t.Setenv("TNL_ACME_CA", "")
+	s, err := parse(t, "--address", "a")
+	if err != nil || s.cfg.Web == nil || s.cfg.Web.ACMEEmail != "" || s.cfg.Web.ACMECA != "" {
+		t.Fatalf("default (Let's Encrypt production is the empty CA): %+v %v", s.cfg.Web, err)
+	}
+	t.Setenv("TNL_ACME_EMAIL", "env@example.com")
+	t.Setenv("TNL_ACME_CA", "https://env.example/dir")
+	s, err = parse(t, "--address", "a")
+	if err != nil || s.cfg.Web.ACMEEmail != "env@example.com" || s.cfg.Web.ACMECA != "https://env.example/dir" {
+		t.Fatalf("environment: %+v %v", s.cfg.Web, err)
+	}
+	s, err = parse(t, "--address", "a", "--acme-email", "f@example.com", "--acme-ca", "https://flag.example/dir")
+	if err != nil || s.cfg.Web.ACMEEmail != "f@example.com" || s.cfg.Web.ACMECA != "https://flag.example/dir" {
+		t.Fatalf("flags: %+v %v", s.cfg.Web, err)
+	}
+}
+
 func TestConfigErrorsExit78(t *testing.T) {
 	if exitCode(configError{errors.New("x")}) != 78 || exitCode(errors.New("x")) != 1 || exitCode(nil) != 0 {
 		t.Fatal("wrong exit codes")
