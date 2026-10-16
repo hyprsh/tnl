@@ -49,6 +49,13 @@ func TestDecodeTrimsSurroundingWhitespace(t *testing.T) {
 	}
 }
 
+func TestACredentialAsAJoinTokenIsAFriendlyError(t *testing.T) {
+	_, err := Decode("tnlc1.abc")
+	if err == nil || !strings.Contains(err.Error(), "Outpost credential") || !strings.Contains(err.Error(), "TNL_CREDENTIAL") {
+		t.Fatalf("got %v", err)
+	}
+}
+
 func TestUnknownMarkerSaysANewerTnlIsNeeded(t *testing.T) {
 	for _, in := range []string{"tnl2.abcd", "tnl9.", "wg1.abcd", "nonsense"} {
 		_, err := Decode(in)
