@@ -75,11 +75,7 @@ func parseConnectFlags(args []string, usageOut io.Writer) (connectSettings, erro
 		if err := settings.CheckEnv(os.Environ(), connectEnvVars, settings.RoutePrefix); err != nil {
 			return err
 		}
-		fileName := "TNL_CREDENTIAL_FILE"
-		if flagGiven(fs, "credential-file") {
-			fileName = "--credential-file"
-		}
-		cred, _, err := settings.ReadSecret(fileName, credentialFile, "TNL_CREDENTIAL", os.Getenv("TNL_CREDENTIAL"))
+		cred, _, err := settings.ReadSecret(settingName(fs, "credential-file", "TNL_CREDENTIAL_FILE"), credentialFile, "TNL_CREDENTIAL", os.Getenv("TNL_CREDENTIAL"))
 		if err != nil {
 			return err
 		}

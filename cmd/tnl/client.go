@@ -127,6 +127,15 @@ func (c *clientCommand) client() *api.Client {
 	return &api.Client{StateDir: c.stateDir, Version: v}
 }
 
+// settingName is how a message names a setting that is a flag with a variable:
+// the flag when the command line gave it, else the variable.
+func settingName(fs *flag.FlagSet, flagName, varName string) string {
+	if flagGiven(fs, flagName) {
+		return "--" + flagName
+	}
+	return varName
+}
+
 // flagGiven reports whether the flag was set on the command line.
 func flagGiven(fs *flag.FlagSet, name string) bool {
 	given := false
