@@ -123,7 +123,7 @@ func UnknownField(edge, what, since string) string {
 	return fmt.Sprintf("the Edge (%s) doesn't support `%s`; it needs %s; upgrade the Edge", edge, what, need)
 }
 
-// EdgeTooOld is why an Outpost refuses an Edge of an older major, and what to
+// EdgeTooOld is why an Outpost can't work with an Edge of an older major, and what to
 // do about it.
 func EdgeTooOld(outpost, edge string) string {
 	o, ook := Parse(outpost)
@@ -131,7 +131,7 @@ func EdgeTooOld(outpost, edge string) string {
 	if !ook || !eok {
 		return fmt.Sprintf("this Outpost (%s) is newer than the Edge (%s) allows; upgrade the Edge", outpost, edge)
 	}
-	return fmt.Sprintf("this Outpost (%s) is a newer major than the Edge (%s) and won't connect to it; upgrade the Edge to %d.x or newer, or install Outpost %d.x",
+	return fmt.Sprintf("this Outpost (%s) is a newer major than the Edge (%s) and can't work with it; it keeps trying; upgrade the Edge to %d.x or newer, or install Outpost %d.x",
 		outpost, edge, o.Major, e.Major)
 }
 

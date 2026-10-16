@@ -294,7 +294,7 @@ func (j *edgeJudge) judge(p wire.Pong) {
 	j.mu.Unlock()
 	if old {
 		if tellOld {
-			j.cfg.Log.Error("refusing the Edge", "edge_version", p.Version, "version", j.cfg.Version,
+			j.cfg.Log.Error("this Edge is too old for this Outpost; it keeps trying until the Edge is upgraded", "edge_version", p.Version, "version", j.cfg.Version,
 				"error", version.EdgeTooOld(j.cfg.Version, p.Version))
 		}
 		return
