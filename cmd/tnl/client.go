@@ -8,10 +8,9 @@ import (
 	"net/http"
 	"os"
 	"sort"
-	"strings"
-	"text/tabwriter"
 
 	"github.com/hyprsh/tnl/internal/api"
+	"github.com/hyprsh/tnl/internal/render"
 )
 
 // stdout is where commands print their result; tests swap it.
@@ -89,11 +88,13 @@ func envOr(name, def string) string {
 	return def
 }
 
-// lsCommand makes a `tnl <group> ls` command that GETs path and prints a table:
-// header, then the rows that rows gives for each answer.
-func lsCommand[L any](name, path, header string, rows func(L) [][]string) func([]string) error {
+// lsCommand makes a `tnl <group> ls` command that GETs path and prints the
+// answer with print, or as JSON with --json: the answer as it came, which is
+// the stable surface.
+func lsCommand[L any](name, path string, print func(io.Writer, L) error) func([]string) error {
 	return func(args []string) error {
 		c := newClientCommand(name)
+		asJSON := c.fs.Bool("json", false, "print JSON, the stable form, instead of a table")
 		pos, err := c.parse(args)
 		if err != nil {
 			return err
@@ -105,21 +106,11 @@ func lsCommand[L any](name, path, header string, rows func(L) [][]string) func([
 		if err != nil {
 			return err
 		}
-		tw := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
-		fmt.Fprintln(tw, header)
-		for _, row := range rows(list) {
-			fmt.Fprintln(tw, strings.Join(row, "\t"))
+		if *asJSON {
+			return render.JSON(stdout, list)
 		}
-		return tw.Flush()
+		return print(stdout, list)
 	}
-}
-
-// orDash is "-" for an empty table cell.
-func orDash(s string) string {
-	if s == "" {
-		return "-"
-	}
-	return s
 }
 
 func (c *clientCommand) client() *api.Client {

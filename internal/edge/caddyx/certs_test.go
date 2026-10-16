@@ -87,6 +87,23 @@ func want(t *testing.T, lines []string, frags ...string) {
 	}
 }
 
+func TestReportGivesTheTablesTheStatusUnderAnyCase(t *testing.T) {
+	c, clock, _ := certsFixture()
+	na := clock.Now().Add(30 * 24 * time.Hour)
+	c.process(certEvent{obtained: true, name: "app.test", notAfter: na})
+	c.process(failed("app.test", "boom"))
+	st := c.Report("APP.test.")
+	if !st.NotAfter.Equal(na) || st.Failures != 1 || st.LastError != "boom" || !st.FirstFailure.Equal(clock.Now()) {
+		t.Fatalf("%+v", st)
+	}
+	if st := c.Report("other.test"); !st.NotAfter.IsZero() || st.Failures != 0 {
+		t.Fatalf("a name never heard of: %+v", st)
+	}
+	if c.Covered("app.test") || !c.Now().Equal(clock.Now()) {
+		t.Fatal("covered with no wildcard held, or a clock that isn't the manager's")
+	}
+}
+
 func TestFirstFailureWarnsLaterAttemptsDebug(t *testing.T) {
 	c, _, buf := certsFixture()
 	c.process(failed("app.test", "boom"))

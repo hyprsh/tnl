@@ -1,0 +1,39 @@
+{
+  "routes": [
+    {
+      "hostname": "app.example.com",
+      "outpost": "nas",
+      "service": "http://localhost:3000",
+      "options": [
+        "host-header=app.lan"
+      ],
+      "status": "ok"
+    },
+    {
+      "hostname": "old.example.com",
+      "outpost": "pi",
+      "service": "http://localhost:80",
+      "status": "outpost offline"
+    },
+    {
+      "hostname": "photos.example.com",
+      "outpost": "nas",
+      "service": "http://localhost:2283",
+      "status": "renewal failing"
+    },
+    {
+      "hostname": "photos.example.com",
+      "outpost": "newbox",
+      "service": "http://localhost:9000",
+      "status": "waiting: taken by nas",
+      "waiting": "taken by nas"
+    },
+    {
+      "hostname": "x.other.org",
+      "outpost": "newbox",
+      "service": "http://localhost:9001",
+      "status": "waiting: outside every Zone",
+      "waiting": "outside every Zone"
+    }
+  ]
+}

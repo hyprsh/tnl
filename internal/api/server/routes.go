@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"sort"
 
 	"github.com/hyprsh/tnl/internal/api"
 	"github.com/hyprsh/tnl/internal/edge/liveness"
@@ -119,15 +118,6 @@ func hasOutpost(st *state.State, name string) bool {
 		}
 	}
 	return false
-}
-
-func (s *Server) routeList(_ context.Context, _ api.Actor, _ struct{}) (api.RouteList, error) {
-	out := api.RouteList{Routes: []api.RouteInfo{}}
-	for _, r := range s.cfg.Store.Snapshot().Routes {
-		out.Routes = append(out.Routes, routeInfo(r))
-	}
-	sort.Slice(out.Routes, func(i, j int) bool { return out.Routes[i].Hostname < out.Routes[j].Hostname })
-	return out, nil
 }
 
 // routeAdd saves the Route. The store's change publishers swap it into the

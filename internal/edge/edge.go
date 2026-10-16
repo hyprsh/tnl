@@ -162,7 +162,7 @@ func Run(ctx context.Context, cfg Config) error {
 	live := newLiveness(hooks, store.Snapshot())
 	testDial := new(lateTestDialer)
 	srv := server.New(server.Config{
-		Conns: conns, Liveness: live, Certs: certs, TestDialer: testDial, Wildcards: wild,
+		Conns: conns, Liveness: live, Certs: certs, CertReader: certs, TestDialer: testDial, Wildcards: wild,
 		Store: store, Log: cfg.Log, Version: cfg.Version, Build: cfg.Build, Revision: cfg.Revision, Role: api.RoleEdge,
 		Address: cfg.Address, WireGuardPort: wgPort, Resolver: cfg.Resolver, StateDir: cfg.StateDir, CertWait: cfg.CertWait,
 		ZonesDeclared: len(cfg.Zones) > 0, OutpostsDeclared: len(cfg.Outposts) > 0,
