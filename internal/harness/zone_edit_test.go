@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -24,10 +25,19 @@ func zoneEdit(t *testing.T, re *RealEdge, req api.ZoneEditRequest) (api.ZoneEdit
 
 // poller is a Visitor that opens a new TLS connection to each Hostname over and
 // over, and counts every handshake that fails.
+//
+// A TCP reset is not a handshake failure. Caddy binds a listening socket of its
+// own for each config (SO_REUSEPORT, on Unix), and a reload closes the old
+// config's socket after the new one is up; the kernel resets the connections
+// that were still waiting in the old socket's accept queue, before any TLS
+// bytes. That is a connection that was never established, not a TLS error, and
+// the Visitor's next attempt works. Resets are counted apart, so a test can
+// bound them to one per reload.
 type poller struct {
 	mu     sync.Mutex
 	hosts  []string
 	fails  []string
+	resets int
 	served map[string]map[string]bool // Hostname -> the certificate names it was shown
 	n      int
 	stop   chan struct{}
@@ -45,7 +55,9 @@ func startPoller(t *testing.T, re *RealEdge, hosts ...string) *poller {
 				conn, err := tls.DialWithDialer(d, "tcp", addr, &tls.Config{ServerName: h, RootCAs: re.Caddy.Roots})
 				p.mu.Lock()
 				p.n++
-				if err != nil {
+				if errors.Is(err, syscall.ECONNRESET) {
+					p.resets++
+				} else if err != nil {
 					p.fails = append(p.fails, h+": "+err.Error())
 				} else {
 					if p.served[h] == nil {
@@ -79,6 +91,16 @@ func (p *poller) finish() (handshakes int, fails []string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.n, slices.Clone(p.fails)
+}
+
+// checkResets fails the test if more than max connections were reset.
+func (p *poller) checkResets(t *testing.T, max int) {
+	t.Helper()
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.resets > max {
+		t.Errorf("%d connections were reset, at most %d expected (one per reload)", p.resets, max)
+	}
 }
 
 func (p *poller) sawCert(host, name string) bool {
@@ -175,6 +197,8 @@ func TestZoneEditSwitchesModesWithoutATLSError(t *testing.T) {
 			t.Errorf("only %d handshakes", n)
 		}
 	}
+	v.checkResets(t, 2) // two reloads while v polled
+	w.checkResets(t, 1)
 	if !w.sawCert("new.example.test", "*.example.test") {
 		t.Error("the wildcard never served new")
 	}
@@ -205,6 +229,7 @@ func TestAddingANestedWildcardZoneMovesTheRoutesWithoutATLSError(t *testing.T) {
 	if len(fails) != 0 {
 		t.Fatalf("%d of %d handshakes failed, first: %s", len(fails), n, fails[0])
 	}
+	v.checkResets(t, 1)
 	// The Route's own certificate serves until it expires; a Route made now is
 	// served by the nested wildcard.
 	re.AddRoute(t, "new.lab.example.test", "http://"+svc.Addr(), "nas")
