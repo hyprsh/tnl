@@ -59,7 +59,7 @@ func startWith(t *testing.T, version string, actor api.Actor, res server.Resolve
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv := server.New(server.Config{Store: store, Log: lg, Version: version, Build: "abc", Role: "edge", Address: "tnl.example.com", WireGuardPort: 51820, Resolver: res})
+	srv := server.New(server.Config{Store: store, Log: lg, Version: version, Build: "full", Revision: "abc123", Role: "edge", Address: "tnl.example.com", WireGuardPort: 51820, Resolver: res})
 	ln, err := server.ListenSocket(dir)
 	if err != nil {
 		t.Fatal(err)
@@ -193,13 +193,13 @@ func TestClientRefusesADifferentVersion(t *testing.T) {
 	}
 }
 
-func TestInfoReportsRoleVersionAndBuild(t *testing.T) {
+func TestInfoReportsRoleVersionBuildAndRevision(t *testing.T) {
 	f := start(t, "1.2.3", api.ActorLocal)
 	info, err := api.Call[api.Info](context.Background(), f.client, http.MethodGet, api.PathInfo, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info != (api.Info{Role: "edge", Version: "1.2.3", Build: "abc"}) {
+	if info != (api.Info{Role: "edge", Version: "1.2.3", Build: "full", Revision: "abc123"}) {
 		t.Fatalf("%+v", info)
 	}
 }

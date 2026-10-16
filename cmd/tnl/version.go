@@ -5,10 +5,10 @@ import "runtime/debug"
 // version is set by the release build with -ldflags "-X main.version=...".
 var version = "dev"
 
-// versionInfo returns the version and the build (the VCS revision, marked
-// "-dirty" for a modified tree) that the Edge and Outposts log.
-func versionInfo() (v, build string) {
-	v, build = version, "unknown"
+// versionInfo returns the version and the VCS revision (marked "-dirty" for a
+// modified tree) that the Edge and Outposts log. The build is buildName.
+func versionInfo() (v, revision string) {
+	v, revision = version, "unknown"
 	bi, ok := debug.ReadBuildInfo()
 	if !ok {
 		return
@@ -17,16 +17,16 @@ func versionInfo() (v, build string) {
 	for _, s := range bi.Settings {
 		switch s.Key {
 		case "vcs.revision":
-			build = s.Value
-			if len(build) > 12 {
-				build = build[:12]
+			revision = s.Value
+			if len(revision) > 12 {
+				revision = revision[:12]
 			}
 		case "vcs.modified":
 			dirty = s.Value == "true"
 		}
 	}
-	if dirty && build != "unknown" {
-		build += "-dirty"
+	if dirty && revision != "unknown" {
+		revision += "-dirty"
 	}
 	return
 }

@@ -69,9 +69,10 @@ type errorBody struct {
 
 // Info answers PathInfo.
 type Info struct {
-	Role    Role   `json:"role"`
-	Version string `json:"version"`
-	Build   string `json:"build"`
+	Role     Role   `json:"role"`
+	Version  string `json:"version"`
+	Build    string `json:"build"`    // "full" or "outpost"
+	Revision string `json:"revision"` // the VCS revision
 }
 
 // ZoneAddRequest asks for a per-Hostname Zone. Wildcard options come in slice 5.

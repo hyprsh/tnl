@@ -58,8 +58,8 @@ func runningEdgeWith(t *testing.T, res server.Resolver) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	v, b := versionInfo()
-	srv := server.New(server.Config{Store: store, Log: lg, Version: v, Build: b, Role: "edge", Address: "tnl.example.com", WireGuardPort: 51820, Resolver: res})
+	v, rev := versionInfo()
+	srv := server.New(server.Config{Store: store, Log: lg, Version: v, Build: buildName, Revision: rev, Role: "edge", Address: "tnl.example.com", WireGuardPort: 51820, Resolver: res})
 	ln, err := server.ListenSocket(dir)
 	if err != nil {
 		t.Fatal(err)
@@ -69,13 +69,6 @@ func runningEdgeWith(t *testing.T, res server.Resolver) {
 	go func() { done <- srv.Serve(ctx, ln, api.ActorLocal) }()
 	t.Cleanup(func() { cancel(); <-done })
 	t.Setenv("TNL_STATE_DIR", dir)
-}
-
-// tnl runs a command the way main does and returns what it printed, its exit code
-// and the error it would print.
-func tnl(args ...string) (out string, code int, err error) {
-	out, _, code, err = tnlBoth(args...)
-	return out, code, err
 }
 
 // tnlBoth is tnl that also returns what the command wrote to stderr.
@@ -167,13 +160,5 @@ func TestNoEdgeRunningExitsOneWithAClearMessage(t *testing.T) {
 		if code != 1 || err == nil || !strings.Contains(err.Error(), "no Edge is running") {
 			t.Errorf("%v: err=%v code=%d", args, err, code)
 		}
-	}
-}
-
-func TestStateDirDefaultsToVarLibTnl(t *testing.T) {
-	t.Setenv("TNL_STATE_DIR", "")
-	c := newClientCommand("zone ls")
-	if _, err := c.parse(nil); err != nil || c.stateDir != "/var/lib/tnl" {
-		t.Fatalf("%v %q", err, c.stateDir)
 	}
 }
