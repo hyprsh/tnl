@@ -17,12 +17,14 @@ import (
 	"net/http"
 	"net/netip"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
 	"github.com/hyprsh/tnl/internal/addr"
 	"github.com/hyprsh/tnl/internal/allow"
 	"github.com/hyprsh/tnl/internal/api"
+	"github.com/hyprsh/tnl/internal/credential"
 	"github.com/hyprsh/tnl/internal/forwarder"
 	"github.com/hyprsh/tnl/internal/keys"
 	"github.com/hyprsh/tnl/internal/logx"
@@ -36,6 +38,9 @@ import (
 // Config is what `tnl connect` passes in.
 type Config struct {
 	Token    string // empty to reconnect from the state
+	// Credential is an Outpost credential (tnlc1.…), for a declared Outpost: it
+	// connects from the first packet with no join exchange and writes no state.
+	Credential string
 	StateDir string
 	Version  string
 	Build    string // "full" or "outpost"
@@ -93,6 +98,13 @@ func configErr(format string, a ...any) error { return &ConfigError{fmt.Errorf(f
 // Run joins or reconnects, then serves until ctx ends. A token this tnl can't
 // read is refused before the state directory is touched.
 func Run(ctx context.Context, cfg Config) error {
+	if cfg.Credential != "" {
+		return connect(ctx, cfg, nil, false)
+	}
+	return runToken(ctx, cfg)
+}
+
+func runToken(ctx context.Context, cfg Config) error {
 	var tok *token.Token
 	if cfg.Token != "" {
 		t, err := token.Decode(cfg.Token)
@@ -135,6 +147,29 @@ func Run(ctx context.Context, cfg Config) error {
 		}
 	}
 
+	return connect(ctx, cfg, st, joining)
+}
+
+// connect brings the Tunnel up from st, or from the credential when st is nil, joins
+// when joining, and serves until ctx ends.
+func connect(ctx context.Context, cfg Config, st *State, joining bool) error {
+	var err error
+	if st == nil {
+		if cfg.Token != "" {
+			return configErr("--token (TNL_TOKEN) and an Outpost credential are both set: a declared Outpost connects with its credential alone")
+		}
+		cred, err := credential.Decode(cfg.Credential)
+		if err != nil {
+			return &ConfigError{err}
+		}
+		st = &State{
+			Name: cred.Name, PrivateKey: cred.PrivateKey, Address: cred.TunnelAddr,
+			EdgeAddress: cred.Address, EdgePort: cred.Port, EdgeKey: cred.EdgeKey,
+		}
+		if _, err := os.Stat(filepath.Join(cfg.StateDir, FileName)); err == nil {
+			cfg.Log.Info("ignoring the state in "+cfg.StateDir+": this Outpost connects with its credential", "state_dir", cfg.StateDir)
+		}
+	}
 	edgeIP, err := resolve(ctx, cfg, st.EdgeAddress)
 	if err != nil {
 		return fmt.Errorf("resolve the Edge's address %s: %w", st.EdgeAddress, err)

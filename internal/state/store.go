@@ -22,6 +22,14 @@ const FileName = "state.json"
 // last wrote.
 var ErrChangedOutside = errors.New("state.json was changed outside tnl; restart the Edge to load it")
 
+// DifferentKeyError is a state.json that holds another Edge key than the one
+// the operator supplied. It names where the key came from and never shows it.
+type DifferentKeyError struct{ Source string }
+
+func (e *DifferentKeyError) Error() string {
+	return "state.json holds a different Edge key than " + e.Source
+}
+
 // Store holds the state in memory and is its only writer.
 type Store struct {
 	dir string
@@ -74,7 +82,7 @@ func OpenWithKey(dir string, log *slog.Logger, key *keys.Key, source string) (*S
 			return nil, err
 		}
 		if key != nil && st.PrivateKey != *key {
-			return nil, fmt.Errorf("state.json holds a different Edge key than %s", source)
+			return nil, &DifferentKeyError{Source: source}
 		}
 		s.last = raw
 		s.cur.Store(st)

@@ -22,6 +22,7 @@ import (
 	"github.com/hyprsh/tnl/internal/edge/caddyx"
 	"github.com/hyprsh/tnl/internal/edge/liveness"
 	"github.com/hyprsh/tnl/internal/edge/routes"
+	"github.com/hyprsh/tnl/internal/keys"
 	"github.com/hyprsh/tnl/internal/logx"
 	"github.com/hyprsh/tnl/internal/outpost"
 	"github.com/hyprsh/tnl/internal/remind"
@@ -92,6 +93,13 @@ type EdgeOptions struct {
 	// harness's own. Each process takes its version here, so a test can run
 	// an Edge and an Outpost of different versions in one binary.
 	Version string
+	// Key is the Edge's private key (TNL_KEY), KeySource what it is called in
+	// the refusal; Zones and Outposts are the declared lines, as `tnl edge` parses
+	// them from TNL_ZONE_* and TNL_OUTPOST_*.
+	Key       *keys.Key
+	KeySource string
+	Zones     []state.DeclaredZone
+	Outposts  []state.DeclaredOutpost
 }
 
 // atEdge answers every name with the Edge's address.
@@ -108,6 +116,17 @@ func StartEdge(t testing.TB) *RealEdge { return StartEdgeWith(t, EdgeOptions{}) 
 
 // StartEdgeWith is StartEdge with options.
 func StartEdgeWith(t testing.TB, opts EdgeOptions) *RealEdge {
+	t.Helper()
+	re, err := TryStartEdgeWith(t, opts)
+	if err != nil {
+		t.Fatalf("edge.Run: %v", err)
+	}
+	return re
+}
+
+// TryStartEdgeWith is StartEdgeWith that returns the error edge.Run refuses to
+// start with, which `tnl edge` would exit on.
+func TryStartEdgeWith(t testing.TB, opts EdgeOptions) (*RealEdge, error) {
 	t.Helper()
 	dir := opts.StateDir
 	if dir == "" {
@@ -132,6 +151,7 @@ func StartEdgeWith(t testing.TB, opts EdgeOptions) *RealEdge {
 	cfg.LivenessPoll = cmp.Or(opts.LivenessPoll, 20*time.Millisecond)
 	cfg.OfflineAfter = opts.OfflineAfter // zero is the spec's 60 s
 	cfg.Reminders = opts.Reminders
+	cfg.Key, cfg.KeySource, cfg.Zones, cfg.Outposts = opts.Key, cmp.Or(opts.KeySource, "TNL_KEY"), opts.Zones, opts.Outposts
 	if opts.LogOut != nil {
 		cfg.Log = logx.New(logx.Options{Level: opts.LogLevel, Out: io.MultiWriter(testWriter{t}, opts.LogOut)})
 	}
@@ -176,7 +196,7 @@ func StartEdgeWith(t testing.TB, opts EdgeOptions) *RealEdge {
 	case r = <-up:
 	case err := <-done:
 		stopped = true
-		t.Fatalf("edge.Run: %v", err)
+		return nil, err
 	case <-time.After(30 * time.Second):
 		t.Fatal("the Edge did not start")
 	}
@@ -191,7 +211,7 @@ func StartEdgeWith(t testing.TB, opts EdgeOptions) *RealEdge {
 		stop:     stop,
 
 		pingInterval: cmp.Or(opts.PingInterval, 100*time.Millisecond),
-	}
+	}, nil
 }
 
 // Stop stops the Edge, as a restart would. The test's end stops it too.
@@ -291,6 +311,12 @@ type ConnectOptions struct {
 	// Declaration is the Routes the Outpost declares, as the TNL_ROUTE_* lines
 	// would give them.
 	Declaration []outpost.DeclaredRoute
+	// Credential is the Outpost credential (tnlc1.…) a declared Outpost connects
+	// with, in place of a join token.
+	Credential string
+	// NoHandshake returns as soon as the Outpost runs, without waiting for the
+	// Edge to hear from it: for an Outpost that is meant to be turned away.
+	NoHandshake bool
 }
 
 // DeclaredLine makes a line of an Outpost's Declaration, labelled as the
@@ -300,6 +326,18 @@ func DeclaredLine(label, hostname, service string) outpost.DeclaredRoute {
 		Line:  declare.Line{Hostname: hostname, Service: service},
 		Label: "TNL_ROUTE_" + label,
 	}
+}
+
+// ConnectCredential runs a declared Outpost with its Outpost credential, as
+// `tnl connect` would with only TNL_CREDENTIAL set.
+func (e *RealEdge) ConnectCredential(t testing.TB, name, cred string, opts ConnectOptions) *JoinedOutpost {
+	t.Helper()
+	opts.Credential = cred
+	j, err := e.TryConnectWith(t, name, "", mustTempDir(t), opts)
+	if err != nil {
+		t.Fatalf("outpost.Run: %v", err)
+	}
+	return j
 }
 
 // ConnectWith is Connect with options, for an Outpost that joins by token.
@@ -339,7 +377,7 @@ func (e *RealEdge) TryConnectWith(t testing.TB, name, tok, stateDir string, opts
 			Started:      func(r *outpost.Running) { up <- r },
 			PingInterval: e.pingInterval,
 			Resolve:      opts.Resolve, NoAnswerAfter: opts.NoAnswerAfter, Reminders: opts.Reminders,
-			Declaration: opts.Declaration,
+			Declaration: opts.Declaration, Credential: opts.Credential,
 		})
 	}()
 	stop := func() error { cancel(); return <-done }
@@ -359,6 +397,9 @@ func (e *RealEdge) TryConnectWith(t testing.TB, name, tok, stateDir string, opts
 		t.Fatal("the Outpost did not start")
 	}
 
+	if opts.NoHandshake {
+		return &JoinedOutpost{Outpost: &Outpost{Name: name, Addr: r.Address, Tunnel: r.Tunnel, Net: r.Tunnel.Net}, API: r.API, StateDir: stateDir, Stop: func() error { stopped = true; return stop() }}, nil
+	}
 	// The Edge learns the Outpost's endpoint from its first packet.
 	hctx, hcancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer hcancel()

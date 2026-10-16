@@ -33,6 +33,9 @@ func (s *Server) join(ctx context.Context, actor api.Actor, req api.JoinRequest)
 	if !ok {
 		return api.JoinReply{}, api.Errorf(http.StatusForbidden, "%s may not join; only an Outpost that hasn't joined does", actor)
 	}
+	if s.cfg.OutpostsDeclared {
+		return api.JoinReply{}, api.Errorf(http.StatusForbidden, "this Edge declares its Outposts, so no Outpost joins; connect %s with its Outpost credential", name)
+	}
 	if req.PublicKey == (keys.Key{}) {
 		return api.JoinReply{}, api.Errorf(http.StatusBadRequest, "the join request has no public key")
 	}

@@ -35,9 +35,9 @@ type Event struct {
 // DeclaredResult is what ApplyDeclared did.
 type DeclaredResult struct {
 	Events []Event
-	// Wildcards are the declared wildcard Zones that are new or whose provider or
-	// token changed: they get the `zone add` token check after the lock.
-	Wildcards []Zone
+	// Checks are the declared Zones that are new or whose mode, provider or token
+	// changed: they get the checks of `zone add` after the lock.
+	Checks []Zone
 	// Removed holds the Hostnames of the Routes that were deleted with a removed
 	// Zone or Outpost, and Waiting those of declared Routes sent back to waiting.
 	Removed, Waiting []string
@@ -140,9 +140,7 @@ func (s *State) applyZones(want []DeclaredZone, res *DeclaredResult) error {
 		if i < 0 {
 			s.Zones = append(s.Zones, nz)
 			res.log(slog.LevelInfo, "zone added: declared", "zone", nz.Name, "mode", nz.Mode, "provider", nz.Provider)
-			if nz.Mode == Wildcard {
-				res.Wildcards = append(res.Wildcards, nz)
-			}
+			res.Checks = append(res.Checks, nz)
 			continue
 		}
 		cur := s.Zones[i]
@@ -151,9 +149,7 @@ func (s *State) applyZones(want []DeclaredZone, res *DeclaredResult) error {
 		switch {
 		case changed:
 			res.log(slog.LevelInfo, "zone edited: declared", "zone", nz.Name, "mode", nz.Mode, "provider", nz.Provider)
-			if nz.Mode == Wildcard {
-				res.Wildcards = append(res.Wildcards, nz)
-			}
+			res.Checks = append(res.Checks, nz)
 		case !cur.Declared:
 			res.log(slog.LevelInfo, "zone adopted: declared", "zone", nz.Name)
 		}

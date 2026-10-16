@@ -14,6 +14,7 @@ import (
 	"net/netip"
 	"strings"
 
+	"github.com/hyprsh/tnl/internal/addr"
 	"github.com/hyprsh/tnl/internal/keys"
 )
 
@@ -98,4 +99,19 @@ func Decode(s string) (Credential, error) {
 		return Credential{}, errors.New("the Outpost credential is damaged: Tunnel address does not parse")
 	}
 	return c, nil
+}
+
+// Mint makes the credential for the named Outpost from the Edge's private key
+// and where the Edge is reached, with a new key pair for the Outpost. It
+// returns the Outpost's public key too, for the Edge's line. It never contacts
+// an Edge.
+func Mint(edgePrivate keys.Key, name, address string, port int) (Credential, keys.Key, error) {
+	priv, pub, err := keys.Generate()
+	if err != nil {
+		return Credential{}, keys.Key{}, err
+	}
+	return Credential{
+		Name: name, Address: address, Port: port,
+		EdgeKey: edgePrivate.Public(), PrivateKey: priv, TunnelAddr: addr.Derive(name),
+	}, pub, nil
 }

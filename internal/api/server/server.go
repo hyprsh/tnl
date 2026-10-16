@@ -73,6 +73,10 @@ type Config struct {
 	// Wildcards does the DNS and Caddy side of wildcard Zones; nil refuses them.
 	Wildcards Wildcards
 
+	// ZonesDeclared and OutpostsDeclared say that the Edge's settings declare
+	// that kind, so the CLI may not change it and no Outpost joins.
+	ZonesDeclared, OutpostsDeclared bool
+
 	// TestDialer test-dials a Route's Service after `route add` and `route
 	// edit`. Nil (no web side) skips the test dial.
 	TestDialer routes.TestDialer
@@ -277,6 +281,22 @@ func localOnly(actor api.Actor, action, command string) error {
 		return nil
 	}
 	return api.Errorf(http.StatusForbidden, "%s may not %s; run `tnl %s` on the Edge host", actor, action, command)
+}
+
+// declaredRefusal is the 409 for a change to a kind the Edge's settings declare.
+func declaredRefusal(declared bool, kind, variables string) error {
+	if !declared {
+		return nil
+	}
+	return api.Errorf(http.StatusConflict, "%s are declared; change %s and restart the Edge", kind, variables)
+}
+
+func (s *Server) zonesDeclared() error {
+	return declaredRefusal(s.cfg.ZonesDeclared, "Zones", "TNL_ZONE_*")
+}
+
+func (s *Server) outpostsDeclared() error {
+	return declaredRefusal(s.cfg.OutpostsDeclared, "Outposts", "TNL_OUTPOST_*")
 }
 
 func (s *Server) decode(r *http.Request, v any) error {
