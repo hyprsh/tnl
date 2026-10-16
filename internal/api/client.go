@@ -78,11 +78,8 @@ func Call[Resp any](ctx context.Context, c *Client, method, path string, req any
 	if err != nil {
 		return out, err
 	}
-	if v := resp.Header.Get(VersionHeader); v != c.Version {
-		if v == "" {
-			return out, fmt.Errorf("%s answered without a %s header; it is not a tnl", c.socket(), VersionHeader)
-		}
-		return out, fmt.Errorf("this tnl is %s but the running process is %s; restart it so both run the same version", c.Version, v)
+	if err := c.checkVersion(resp); err != nil {
+		return out, err
 	}
 	if resp.StatusCode >= 400 {
 		var eb errorBody
@@ -96,6 +93,16 @@ func Call[Resp any](ctx context.Context, c *Client, method, path string, req any
 		return out, fmt.Errorf("the running process (%s) sent a reply this tnl doesn't understand: %w", c.Version, err)
 	}
 	return out, nil
+}
+
+func (c *Client) checkVersion(resp *http.Response) error {
+	if v := resp.Header.Get(VersionHeader); v != c.Version {
+		if v == "" {
+			return fmt.Errorf("%s answered without a %s header; it is not a tnl", c.socket(), VersionHeader)
+		}
+		return fmt.Errorf("this tnl is %s but the running process is %s; restart it so both run the same version", c.Version, v)
+	}
+	return nil
 }
 
 func strictDecoder(raw []byte) *json.Decoder {
