@@ -92,7 +92,8 @@ func (d *declarer) send(ctx context.Context, edgeVersion string) {
 	reply, err := api.Call[api.DeclarationReply](cctx, d.api, http.MethodPost, api.PathDeclaration, req)
 	if err != nil {
 		var ae *api.Error
-		if errors.As(err, &ae) {
+		if errors.As(err, &ae) && ae.Status < http.StatusInternalServerError {
+			// The Edge refused the Declaration itself; a server error is tried again.
 			d.mu.Lock()
 			d.refused, d.didRefuse = edgeVersion, true
 			d.mu.Unlock()
