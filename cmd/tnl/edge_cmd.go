@@ -68,12 +68,8 @@ func parseEdgeFlags(args []string, usageOut io.Writer) (edgeSettings, error) {
 		if err := settings.CheckEnv(os.Environ(), edgeEnvVars, settings.ZonePrefix, settings.OutpostPrefix); err != nil {
 			return err
 		}
-		keyName := "TNL_KEY_FILE"
-		if flagGiven(fs, "key-file") {
-			keyName = "--key-file"
-		}
 		var err error
-		if s.cfg.Key, s.cfg.KeySource, err = settings.EdgeKey(keyName, keyFile, os.Getenv("TNL_KEY")); err != nil {
+		if s.cfg.Key, s.cfg.KeySource, err = settings.EdgeKey(settingName(fs, "key-file", "TNL_KEY_FILE"), keyFile, os.Getenv("TNL_KEY")); err != nil {
 			return err
 		}
 		if s.cfg.Zones, err = settings.ParseZones(os.Environ(), zoneLines, dns.Names()); err != nil {
