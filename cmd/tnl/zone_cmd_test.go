@@ -30,8 +30,8 @@ var edgeTestDialer routes.TestDialer
 // refuses wildcard Zones.
 var edgeWildcards server.Wildcards
 
-func runningEdge(t *testing.T) {
-	runningEdgeWith(t, fakeDNS{"zone.test": true, "example.com": true, "b.example.com": true})
+func runningEdge(t *testing.T) *state.Store {
+	return runningEdgeWith(t, fakeDNS{"zone.test": true, "example.com": true, "b.example.com": true})
 }
 
 // fakeDNS answers tnl.example.com with the Edge's IP; a name under a key set
@@ -54,8 +54,9 @@ func (f fakeDNS) LookupNetIP(_ context.Context, _, host string) ([]netip.Addr, e
 	return nil, errors.New("no such host")
 }
 
-// runningEdgeWith is runningEdge with the DNS the Edge's checks see.
-func runningEdgeWith(t *testing.T, res server.Resolver) {
+// runningEdgeWith is runningEdge with the DNS the Edge's checks see. It
+// returns the Edge's store, for a test to set up what the CLI cannot.
+func runningEdgeWith(t *testing.T, res server.Resolver) *state.Store {
 	t.Helper()
 	dir, err := os.MkdirTemp("", "tnl")
 	if err != nil {
@@ -78,6 +79,7 @@ func runningEdgeWith(t *testing.T, res server.Resolver) {
 	go func() { done <- srv.Serve(ctx, ln, api.ActorLocal) }()
 	t.Cleanup(func() { cancel(); <-done })
 	t.Setenv("TNL_STATE_DIR", dir)
+	return store
 }
 
 // tnlBoth is tnl that also returns what the command wrote to stderr.

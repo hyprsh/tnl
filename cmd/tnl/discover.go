@@ -48,6 +48,12 @@ func discoverStateDir(pinned string) (string, error) {
 	return "", fmt.Errorf("no Edge or Outpost is running: nothing answers on %s (start one, or pass --state-dir or set TNL_STATE_DIR to the state directory of the one to talk to)", strings.Join(checked, ", "))
 }
 
+// discoverError marks the failure to find a process to talk to, which
+// `tnl status` reports with its own exit code.
+type discoverError struct{ error }
+
+func (e discoverError) Unwrap() error { return e.error }
+
 type socketState int
 
 const (
