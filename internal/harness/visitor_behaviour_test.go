@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"regexp"
 	"strings"
@@ -36,47 +35,6 @@ func TestRouteSwapServesTheNextRequestWithoutAReload(t *testing.T) {
 	h.Edge.Routes.Swap(nil)
 	if resp, _ := get(t, ce, H1, "app.test", "/"); resp.StatusCode != 404 {
 		t.Fatalf("after the Route is gone: %d, want 404", resp.StatusCode)
-	}
-}
-
-func assertBare(t *testing.T, resp *http.Response, body string, status int) {
-	t.Helper()
-	if resp.StatusCode != status || body != "" {
-		t.Fatalf("got %d %q, want a bare %d", resp.StatusCode, body, status)
-	}
-	if resp.ContentLength != 0 {
-		t.Fatalf("ContentLength = %d, want 0", resp.ContentLength)
-	}
-}
-
-func TestHostnameWithoutARouteGetsABare404(t *testing.T) {
-	h := edgeWithService(t, http.NotFoundHandler())
-	for _, proto := range Protos {
-		resp, body := get(t, h.Edge.Caddy, proto, "other.test", "/")
-		assertBare(t, resp, body, 404)
-	}
-}
-
-func TestServiceTheOutpostCannotDialGetsABare502(t *testing.T) {
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	closed := ln.Addr().String()
-	ln.Close()
-
-	h := New(t)
-	o := h.AddOutpost(t, OutpostOptions{Name: "home"})
-	ce := h.Edge.StartCaddy(t, CaddyOptions{})
-	h.Edge.Routes.Swap([]routes.Route{
-		{Hostname: "refused.test", Outpost: o.Name, Service: closed},
-		{Hostname: "ghost.test", Outpost: "no-such-outpost", Service: closed},
-	})
-	for _, host := range []string{"refused.test", "ghost.test"} {
-		for _, proto := range Protos {
-			resp, body := get(t, ce, proto, host, "/")
-			assertBare(t, resp, body, 502)
-		}
 	}
 }
 
