@@ -82,7 +82,10 @@ type declaredLine struct{ name, text string }
 
 // collect gathers the lines of one kind: the variables with the prefix, sorted
 // by name, then the repeated flag's lines. Setting both forms is refused.
-func collect(environ, flagLines []string, prefix, flagName string) ([]declaredLine, error) {
+//
+// A flag line is named by its first word, unless that is an option, since it
+// may hold a secret; a Route line holds none, so it is named by its text.
+func collect(environ, flagLines []string, prefix, flagName string, byText bool) ([]declaredLine, error) {
 	var lines []declaredLine
 	for _, kv := range environ {
 		name, value, _ := strings.Cut(kv, "=")
@@ -99,10 +102,10 @@ func collect(environ, flagLines []string, prefix, flagName string) ([]declaredLi
 	}
 	sort.Slice(lines, func(i, j int) bool { return lines[i].name < lines[j].name })
 	for i, f := range flagLines {
-		// A flag line is named by its first word, unless that is an option; the
-		// text itself is never echoed, since it may hold a value.
 		name := fmt.Sprintf("%s #%d", flagName, i+1)
-		if first := strings.Fields(f); len(first) > 0 && len(first[0]) <= 63 && dnsname.CheckName(dnsname.Normalize(first[0])) == nil {
+		if byText {
+			name = flagName + " " + f
+		} else if first := strings.Fields(f); len(first) > 0 && len(first[0]) <= 63 && dnsname.CheckName(dnsname.Normalize(first[0])) == nil {
 			name = flagName + " " + first[0]
 		}
 		lines = append(lines, declaredLine{name, f})
@@ -117,7 +120,7 @@ func collect(environ, flagLines []string, prefix, flagName string) ([]declaredLi
 // line: the variable that declared it, or the --route line. The Outpost's log
 // names a line by it; the Edge never sees it.
 func ParseRoutes(environ, flagLines []string) (lines []declare.Line, labels map[string]string, err error) {
-	collected, err := collect(environ, flagLines, RoutePrefix, "--route")
+	collected, err := collect(environ, flagLines, RoutePrefix, "--route", true)
 	if err != nil {
 		return nil, nil, err
 	}

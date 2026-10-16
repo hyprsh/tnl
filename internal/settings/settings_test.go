@@ -74,7 +74,7 @@ func TestParseRoutesErrorsNameTheVariable(t *testing.T) {
 		{"label", []string{"TNL_ROUTE_A-B=m.example.com http://x"}, nil, "TNL_ROUTE_A-B: "},
 		{"no label", []string{"TNL_ROUTE_=m.example.com http://x"}, nil, "TNL_ROUTE_: "},
 		{"duplicate", []string{"TNL_ROUTE_A=m.example.com http://x", "TNL_ROUTE_B=M.example.com http://y"}, nil, "TNL_ROUTE_B: m.example.com is also on TNL_ROUTE_A"},
-		{"flag error", nil, []string{"m.example.com http://x --nope"}, "--route m.example.com: unknown option --nope"},
+		{"flag error", nil, []string{"m.example.com http://x --nope"}, "--route m.example.com http://x --nope: unknown option --nope"},
 		{"flag duplicate", nil, []string{"m.example.com http://x", "m.example.com http://y"}, "is also on"},
 		{"mixed", []string{"TNL_ROUTE_A=m.example.com http://x"}, []string{"n.example.com http://y"}, "--route and TNL_ROUTE_A are both set"},
 	}
