@@ -74,7 +74,10 @@ func StartPebble(t testing.TB, opts PebbleOptions) *Pebble {
 		"PEBBLE_WFE_NONCEREJECT": "0",
 	})
 	vai := va.New(lg, p.ValidationPort, 0, false, "", mem)
-	w := wfe.New(lg, mem, vai, cai, []string{"pebble.letsencrypt.org"}, false, false, 3, 5)
+	// No Retry-After on pending authorizations and orders: with one, the ACME
+	// client waits that many seconds (3 and 5 in Pebble's own config) before each
+	// poll; without, it polls every 250 ms.
+	w := wfe.New(lg, mem, vai, cai, []string{"pebble.letsencrypt.org"}, false, false, 0, 0)
 	restore()
 	pebbleEnv.Unlock()
 
