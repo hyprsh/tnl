@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	"github.com/hyprsh/tnl/internal/edge/caddyx"
 )
 
 // Caddy suite: a Route Hostname handed to the certificate manager is renewed in
@@ -67,4 +69,42 @@ func TestCaddySuiteBothCertificateEventsReachTheManager(t *testing.T) {
 		st, _ := ce.Certs().Status("app.test")
 		return st.Obtained >= 1 && st.Failures == 0
 	})
+}
+
+// Caddy suite: Stop ends a Hostname's background renewal at runtime, with no
+// reload, while another Hostname keeps renewing and the stopped one keeps
+// serving the certificate it holds.
+func TestCaddySuiteStopEndsRenewalWithoutAReload(t *testing.T) {
+	h := New(t)
+	pb := StartPebble(t, PebbleOptions{Validity: 30 * time.Second})
+	ce := h.Edge.StartCaddy(t, CaddyOptions{Pebble: pb, RenewCheckInterval: time.Second})
+
+	if err := ce.Certs().Manage("gone.test", "kept.test"); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "both certificates", 30*time.Second, func() bool {
+		a, _ := ce.Certs().Status("gone.test")
+		b, _ := ce.Certs().Status("kept.test")
+		return a.Obtained >= 1 && b.Obtained >= 1
+	})
+	loads := caddyx.Loads()
+	if err := ce.Certs().Stop("gone.test"); err != nil {
+		t.Fatal(err)
+	}
+	// Stop forgets the name: its status goes with it.
+	if _, ok := ce.Certs().Status("gone.test"); ok {
+		t.Error("the stopped Hostname still has a status")
+	}
+	waitFor(t, "the kept Hostname's renewal", 50*time.Second, func() bool {
+		st, _ := ce.Certs().Status("kept.test")
+		return st.Obtained >= 2
+	})
+	// The whole life of the stopped certificate has passed by now.
+	time.Sleep(12 * time.Second)
+	if st, ok := ce.Certs().Status("gone.test"); ok {
+		t.Errorf("the stopped Hostname was renewed: %+v", st)
+	}
+	if n := caddyx.Loads(); n != loads {
+		t.Errorf("Stop reloaded Caddy (%d loads, was %d)", n, loads)
+	}
 }

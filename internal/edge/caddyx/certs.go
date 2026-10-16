@@ -155,6 +155,76 @@ func (c *Certs) apply() error {
 	return nil
 }
 
+// Retain makes the given Hostnames exactly the ones the manager keeps: it
+// manages those not yet handed over, and stops renewing the certificates of
+// every other Hostname it had. The Edge calls it with every Route's Hostname
+// after each change to the state, so a removed Route, however it went, stops
+// renewing.
+func (c *Certs) Retain(names ...string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	want := make(map[string]struct{}, len(names))
+	for _, n := range names {
+		want[normalize(n)] = struct{}{}
+	}
+	var drop []string
+	for n := range c.names {
+		if _, ok := want[n]; !ok {
+			drop = append(drop, n)
+		}
+	}
+	for n := range want {
+		c.names[n] = struct{}{}
+	}
+	err := c.stopLocked(drop)
+	if aerr := c.apply(); err == nil && !errors.Is(aerr, errNotLoaded) {
+		err = aerr
+	}
+	return err
+}
+
+// Stop stops renewing the Hostnames' certificates and forgets them. A
+// certificate already held keeps serving until it expires; nothing asks the CA
+// for another, and a handshake for the name no longer reaches it on demand.
+func (c *Certs) Stop(names ...string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.stopLocked(names)
+}
+
+// stopLocked is Stop with c.mu held.
+//
+// Caddy has no call to stop managing a name: its certificate cache is private,
+// and a reload would close every WebSocket. certmagic's maintenance loop skips
+// every certificate whose config is on-demand, though, and Caddy picks a
+// certificate's config by name from the first matching automation policy. So
+// the names get a policy of their own, ahead of the one that manages them,
+// that is on-demand.
+func (c *Certs) stopLocked(names []string) error {
+	var applied []string
+	for _, n := range names {
+		n = normalize(n)
+		delete(c.names, n)
+		delete(c.status, n)
+		c.failing.End(n)
+		if _, ok := c.applied[n]; ok {
+			applied = append(applied, n)
+			delete(c.applied, n)
+		}
+	}
+	if len(applied) == 0 || c.app == nil || activeTLS() != c.app {
+		return nil
+	}
+	ap := &caddytls.AutomationPolicy{SubjectsRaw: applied, OnDemand: true}
+	if len(c.issuer) > 0 {
+		ap.IssuersRaw = []json.RawMessage{c.issuer}
+	}
+	if err := c.app.AddAutomationPolicy(ap); err != nil {
+		return fmt.Errorf("stop renewing %v: %w", applied, err)
+	}
+	return nil
+}
+
 func activeTLS() *caddytls.TLS {
 	app, err := caddy.ActiveContext().AppIfConfigured("tls")
 	if err != nil {

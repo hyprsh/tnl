@@ -60,3 +60,23 @@ func TestCheckName(t *testing.T) {
 		t.Error("a name over 253 characters passed")
 	}
 }
+
+func TestLongestZone(t *testing.T) {
+	zones := []string{"example.com", "lab.example.com", "other.org"}
+	for host, want := range map[string]string{
+		"app.lab.example.com":  "lab.example.com",
+		"lab.example.com":      "lab.example.com",
+		"a.b.lab.example.com":  "lab.example.com",
+		"app.example.com":      "example.com",
+		"example.com":          "example.com",
+		"evilexample.com":      "",
+		"xlab.example.com":     "example.com",
+		"app.other.org":        "other.org",
+		"example.com.evil.org": "",
+	} {
+		got, ok := LongestZone(host, zones)
+		if got != want || ok != (want != "") {
+			t.Errorf("LongestZone(%q) = %q, %v; want %q", host, got, ok, want)
+		}
+	}
+}

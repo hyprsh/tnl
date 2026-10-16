@@ -7,10 +7,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/netip"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/hyprsh/tnl/internal/addr"
+	"github.com/hyprsh/tnl/internal/dnsname"
 	"github.com/hyprsh/tnl/internal/keys"
 	"github.com/hyprsh/tnl/internal/statefile"
 )
@@ -90,12 +92,19 @@ func (s *State) RoutesVia(outpost string) []string {
 }
 
 // RemoveRoutesVia removes the Routes through the named Outpost and returns
-// their Hostnames. Zone and Outpost removal share it.
+// their Hostnames.
 func (s *State) RemoveRoutesVia(outpost string) []string {
+	return s.RemoveRoutes(func(r Route) bool { return r.Outpost == outpost })
+}
+
+// RemoveRoutes removes the Routes for which gone is true and returns their
+// Hostnames. Zone and Outpost removal share it, and slice 8 sends a declared
+// Route back to waiting from here.
+func (s *State) RemoveRoutes(gone func(Route) bool) []string {
 	var hosts []string
 	kept := make([]Route, 0, len(s.Routes))
 	for _, r := range s.Routes {
-		if r.Outpost == outpost {
+		if gone(r) {
 			hosts = append(hosts, r.Hostname)
 			continue
 		}
@@ -220,12 +229,39 @@ func (s *State) Validate() error {
 
 // InZone reports whether host is a Zone's own name or lies below one.
 func (s *State) InZone(host string) bool {
+	_, ok := s.ZoneOf(host)
+	return ok
+}
+
+// ZoneOf returns the Zone that holds host: the longest one that contains it.
+func (s *State) ZoneOf(host string) (Zone, bool) {
+	names := make([]string, len(s.Zones))
+	for i, z := range s.Zones {
+		names[i] = z.Name
+	}
+	name, ok := dnsname.LongestZone(host, names)
+	if !ok {
+		return Zone{}, false
+	}
 	for _, z := range s.Zones {
-		if host == z.Name || strings.HasSuffix(host, "."+z.Name) {
-			return true
+		if z.Name == name {
+			return z, true
 		}
 	}
-	return false
+	return Zone{}, false
+}
+
+// RoutesStrandedBy returns the Hostnames of the Routes that only the named Zone
+// contains: removing it would leave them outside every Zone.
+func (s *State) RoutesStrandedBy(zone string) []string {
+	rest := &State{Zones: slices.DeleteFunc(slices.Clone(s.Zones), func(z Zone) bool { return z.Name == zone })}
+	var hosts []string
+	for _, r := range s.Routes {
+		if z, in := s.ZoneOf(r.Hostname); in && z.Name == zone && !rest.InZone(r.Hostname) {
+			hosts = append(hosts, r.Hostname)
+		}
+	}
+	return hosts
 }
 
 // On-disk form. Keys are text there, and parsed here so a bad one is reported
