@@ -52,11 +52,7 @@ func runCredential(args []string) error {
 	if err := dnsname.CheckLabel(name); err != nil {
 		return fmt.Errorf("invalid Outpost name: %v", err)
 	}
-	fileName := "TNL_KEY_FILE"
-	if flagGiven(fs, "key-file") {
-		fileName = "--key-file"
-	}
-	edgeKey, _, err := settings.EdgeKey(fileName, keyFile, os.Getenv("TNL_KEY"))
+	edgeKey, _, err := settings.EdgeKey(settingName(fs, "key-file", "TNL_KEY_FILE"), keyFile, os.Getenv("TNL_KEY"))
 	if err != nil {
 		return err
 	}

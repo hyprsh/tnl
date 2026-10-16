@@ -11,7 +11,6 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
-	"slices"
 	"sync"
 	"time"
 
@@ -194,17 +193,7 @@ func Run(ctx context.Context, cfg Config) error {
 	defer checked.Wait()
 
 	st := store.Snapshot()
-	declaredZones, declaredOutposts := 0, 0
-	for _, z := range st.Zones {
-		if z.Declared {
-			declaredZones++
-		}
-	}
-	for _, o := range st.Outposts {
-		if o.Declared {
-			declaredOutposts++
-		}
-	}
+	declaredZones, declaredOutposts := declaredCounts(st)
 	cfg.Log.Info("edge started",
 		"version", cfg.Version,
 		"build", cfg.Build,
@@ -257,9 +246,24 @@ func applyDeclared(ctx context.Context, store *state.Store, cfg Config) ([]state
 	return res.Checks, nil
 }
 
+// declaredCounts is how many of the state's Zones and Outposts are declared.
+func declaredCounts(st *state.State) (zones, outposts int) {
+	for _, z := range st.Zones {
+		if z.Declared {
+			zones++
+		}
+	}
+	for _, o := range st.Outposts {
+		if o.Declared {
+			outposts++
+		}
+	}
+	return zones, outposts
+}
+
 func anyDeclared(st *state.State) bool {
-	return slices.ContainsFunc(st.Zones, func(z state.Zone) bool { return z.Declared }) ||
-		slices.ContainsFunc(st.Outposts, func(o state.Outpost) bool { return o.Declared })
+	zones, outposts := declaredCounts(st)
+	return zones+outposts > 0
 }
 
 // peerSet is the Edge's WireGuard peers, one per Outpost Tunnel address.
