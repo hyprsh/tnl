@@ -112,13 +112,13 @@ func TestAnOutpostRefusesAnEdgeOfAnOlderMajor(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	waitFor(t, "the error", 10*time.Second, func() bool { return strings.Contains(log.String(), "refusing the Edge") })
-	if line := lineWith(log.String(), "refusing the Edge"); !strings.Contains(line, "level=error") || !strings.Contains(line, "1.4.2") || !strings.Contains(line, "2.0.0") {
+	waitFor(t, "the error", 10*time.Second, func() bool { return strings.Contains(log.String(), "this Edge is too old for this Outpost") })
+	if line := lineWith(log.String(), "this Edge is too old for this Outpost"); !strings.Contains(line, "level=error") || !strings.Contains(line, "1.4.2") || !strings.Contains(line, "2.0.0") {
 		t.Fatalf("error line: %q", line)
 	}
 	// It does not exit, and says it once.
 	time.Sleep(time.Second)
-	if n := strings.Count(log.String(), "refusing the Edge"); n != 1 {
+	if n := strings.Count(log.String(), "this Edge is too old for this Outpost"); n != 1 {
 		t.Fatalf("%d errors, want 1:\n%s", n, log)
 	}
 
