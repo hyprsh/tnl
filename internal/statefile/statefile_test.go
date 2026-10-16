@@ -1,6 +1,7 @@
 package statefile
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -23,6 +24,52 @@ func TestWriteReplacesTheFileWhole(t *testing.T) {
 	}
 	if _, err := os.Stat(path + ".tmp"); !os.IsNotExist(err) {
 		t.Errorf("temp file left behind: %v", err)
+	}
+}
+
+// failingFile is a temp file whose Write or Sync fails.
+type failingFile struct {
+	writeErr, syncErr error
+}
+
+func (f failingFile) Write(p []byte) (int, error) {
+	if f.writeErr != nil {
+		return 0, f.writeErr
+	}
+	return len(p), nil
+}
+func (f failingFile) Sync() error  { return f.syncErr }
+func (f failingFile) Close() error { return nil }
+
+func TestWriteFailsAndKeepsTheOldFileWhenWriteOrSyncFails(t *testing.T) {
+	for name, f := range map[string]failingFile{
+		"write": {writeErr: errors.New("disk full")},
+		"sync":  {syncErr: errors.New("I/O error")},
+	} {
+		t.Run(name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "state.json")
+			if err := Write(path, []byte("old")); err != nil {
+				t.Fatal(err)
+			}
+			create := createTemp
+			t.Cleanup(func() { createTemp = create })
+			createTemp = func(name string) (tempFile, error) {
+				if err := os.WriteFile(name, nil, 0o600); err != nil {
+					return nil, err
+				}
+				return f, nil
+			}
+
+			if err := Write(path, []byte("new")); err == nil {
+				t.Fatal("Write succeeded though the temp file's " + name + " failed")
+			}
+			if got, _ := os.ReadFile(path); string(got) != "old" {
+				t.Errorf("state.json holds %q, want the old content kept", got)
+			}
+			if _, err := os.Stat(path + ".tmp"); !os.IsNotExist(err) {
+				t.Errorf("temp file left behind: %v", err)
+			}
+		})
 	}
 }
 
