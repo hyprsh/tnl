@@ -95,3 +95,18 @@ func TestDialRetryStopsWhenTheContextEnds(t *testing.T) {
 		t.Fatalf("got %v, want the context's error", err)
 	}
 }
+
+// A context that ends while the header exchange is waiting closes the
+// connection under it; the error is still the context's, not the pipe's.
+func TestDialExchangeInterruptedByTheContextReturnsItsError(t *testing.T) {
+	rt := &Runtime{Dialer: func(context.Context, netip.AddrPort) (net.Conn, error) {
+		c, outpost := net.Pipe()
+		t.Cleanup(func() { outpost.Close() })
+		return c, nil // the Outpost never answers
+	}}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	if _, err := rt.dialOutpostOnce(ctx, netip.AddrPort{}, "o", wire.Header{Service: "x:1", Hostname: "x"}); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("got %v, want the context's error", err)
+	}
+}
