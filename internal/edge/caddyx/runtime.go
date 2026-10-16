@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/hyprsh/tnl/internal/edge/conntrack"
 	"github.com/hyprsh/tnl/internal/edge/routes"
 	"github.com/hyprsh/tnl/internal/wire"
 )
@@ -29,6 +30,8 @@ type Runtime struct {
 	Dialer   Dialer
 	// Log receives Caddy's entries through the log core. Nil means slog.Default().
 	Log *slog.Logger
+	// Conns tracks every connection the transport opens. Nil tracks none.
+	Conns *conntrack.Tracker
 
 	pool pool
 }
@@ -103,7 +106,7 @@ func (p *pool) transport(rt *Runtime, route routes.Route, addr netip.AddrPort) *
 	tr := &http.Transport{
 		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
 			id, _ := ctx.Value(requestIDKey).(string)
-			return rt.dialOutpost(ctx, addr, wire.Header{Service: route.Service, Hostname: route.Hostname, RequestID: id})
+			return rt.dialOutpost(ctx, addr, route.Outpost, wire.Header{Service: route.Service, Hostname: route.Hostname, RequestID: id})
 		},
 		Protocols:           &protos,
 		DisableCompression:  true,
@@ -139,11 +142,14 @@ func (e *ReplyError) Error() string {
 
 // dialOutpost opens a Tunnel connection to the Outpost's data port, sends the tnl
 // header and reads the reply. On ok the connection is ready for request bytes.
-func (rt *Runtime) dialOutpost(ctx context.Context, addr netip.AddrPort, h wire.Header) (net.Conn, error) {
+func (rt *Runtime) dialOutpost(ctx context.Context, addr netip.AddrPort, outpost string, h wire.Header) (net.Conn, error) {
 	c, err := rt.Dialer(ctx, addr)
 	if err != nil {
 		return nil, err
 	}
+	// Tracked from the dial on, so a close reaches connections still in the
+	// header exchange too.
+	c = rt.Conns.Track(h.Hostname, outpost, c)
 	// Go's Transport lets a dial outlive the Visitor's request that started it,
 	// because the connection may serve another request. So the wait does not end
 	// with the Visitor; replyTimeout below is what bounds it. ctx ends it early

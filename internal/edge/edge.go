@@ -13,6 +13,7 @@ import (
 	"github.com/hyprsh/tnl/internal/addr"
 	"github.com/hyprsh/tnl/internal/api"
 	"github.com/hyprsh/tnl/internal/api/server"
+	"github.com/hyprsh/tnl/internal/edge/conntrack"
 	"github.com/hyprsh/tnl/internal/keys"
 	"github.com/hyprsh/tnl/internal/logx"
 	"github.com/hyprsh/tnl/internal/state"
@@ -77,7 +78,9 @@ func Run(ctx context.Context, cfg Config) error {
 		return refuse(err)
 	}
 	defer os.Remove(filepath.Join(cfg.StateDir, api.SocketName))
+	conns := conntrack.New()
 	srv := server.New(server.Config{
+		Conns: conns,
 		Store: store, Log: cfg.Log, Version: cfg.Version, Build: cfg.Build, Role: api.RoleEdge,
 		Address: cfg.Address, WireGuardPort: wgPort,
 	})
@@ -89,7 +92,7 @@ func Run(ctx context.Context, cfg Config) error {
 	}
 
 	if cfg.Web != nil {
-		stopWeb, err := startWeb(cfg.Web, cfg.StateDir, wgPort, store, tun, cfg.Log)
+		stopWeb, err := startWeb(cfg.Web, cfg.StateDir, wgPort, store, tun, conns, cfg.Log)
 		if err != nil {
 			return refuse(err)
 		}

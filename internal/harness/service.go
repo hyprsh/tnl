@@ -17,8 +17,12 @@ func NewHTTPService(t testing.TB, handler http.Handler) *Service {
 	}
 	svc := &Service{ln: ln}
 	srv := &http.Server{Handler: handler, ConnState: func(_ net.Conn, st http.ConnState) {
-		if st == http.StateNew {
+		switch st {
+		case http.StateNew:
 			svc.conns.Add(1)
+			svc.live.Add(1)
+		case http.StateClosed, http.StateHijacked:
+			svc.live.Add(-1)
 		}
 	}}
 	go srv.Serve(ln)
@@ -31,6 +35,7 @@ func NewHTTPService(t testing.TB, handler http.Handler) *Service {
 type Service struct {
 	ln    net.Listener
 	conns atomic.Int64
+	live  atomic.Int64
 }
 
 // NewEchoService starts a Service that echoes every byte back.
@@ -61,3 +66,6 @@ func (s *Service) Addr() string { return s.ln.Addr().String() }
 
 // Conns counts the connections an HTTP Service has accepted so far.
 func (s *Service) Conns() int { return int(s.conns.Load()) }
+
+// Live counts the connections an HTTP Service has accepted and not seen closed.
+func (s *Service) Live() int { return int(s.live.Load()) }
