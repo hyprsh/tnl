@@ -1,0 +1,43 @@
+{
+  "outposts": [
+    {
+      "name": "nas",
+      "state": "online",
+      "last_seen": "2026-10-16T12:00:00Z",
+      "last_seen_ago_seconds": 4,
+      "endpoint": "203.0.113.9:51820",
+      "version": "1.2.0",
+      "tunnel_address": "100.64.0.2",
+      "routes": 2
+    },
+    {
+      "name": "newbox",
+      "state": "not joined",
+      "token_expires": "2026-10-16T12:42:00Z",
+      "token_expires_in_seconds": 2520,
+      "tunnel_address": "100.64.0.3",
+      "routes": 0
+    },
+    {
+      "name": "old",
+      "state": "incompatible",
+      "last_seen": "2026-10-16T12:00:00Z",
+      "last_seen_ago_seconds": 1,
+      "endpoint": "198.51.100.7:4000",
+      "version": "0.9.0",
+      "tunnel_address": "100.64.0.4",
+      "routes": 0
+    },
+    {
+      "name": "pi",
+      "state": "offline",
+      "last_seen": "2026-10-16T11:00:00Z",
+      "last_seen_ago_seconds": 3600,
+      "version": "1.2.0",
+      "tunnel_address": "100.64.0.5",
+      "routes": 1,
+      "declared_lines": 3,
+      "declared": true
+    }
+  ]
+}

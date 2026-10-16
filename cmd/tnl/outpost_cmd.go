@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/hyprsh/tnl/internal/api"
+	"github.com/hyprsh/tnl/internal/render"
 )
 
 var outpostGroup = newGroup("outpost")
@@ -17,6 +18,7 @@ func init() {
 	outpostGroup.subs["add"] = outpostAdd
 	outpostGroup.subs["rm"] = outpostRm
 	outpostGroup.subs["rekey"] = outpostRekey
+	outpostGroup.subs["ls"] = lsCommand("outpost ls", api.PathOutposts, render.Outposts)
 }
 
 // outpostAdd prints the join token on the first line of stdout, so it can be

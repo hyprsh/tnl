@@ -460,6 +460,33 @@ func (c *Certs) Status(name string) (CertStatus, bool) {
 	return *st, true
 }
 
+// Report is Status for the tables: when the manager has not seen the
+// certificate obtained (after a restart, until Caddy loads it), the expiry
+// comes from Caddy's cache or from storage, so a certificate held reads as held.
+func (c *Certs) Report(name string) CertStatus {
+	name = normalize(name)
+	st, _ := c.Status(name)
+	st.Name = name
+	if st.NotAfter.IsZero() {
+		if na, issuer, ok := cachedCert(name); ok {
+			st.NotAfter, st.Issuer = na, issuer
+		} else {
+			st.NotAfter = storedNotAfter(c.store(), name)
+		}
+	}
+	return st
+}
+
+// Covered says whether a held wildcard certificate covers the Hostname, so it
+// is given none of its own.
+func (c *Certs) Covered(name string) bool {
+	covering := c.heldWildcards()
+	return dnsname.WildcardCovers(normalize(name), covering)
+}
+
+// Now is the manager's clock.
+func (c *Certs) Now() time.Time { return c.clock.Now() }
+
 // Statuses lists every Hostname the manager has heard of, in no order.
 func (c *Certs) Statuses() []CertStatus {
 	c.mu.Lock()

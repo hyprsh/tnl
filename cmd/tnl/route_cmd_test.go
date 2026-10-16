@@ -24,9 +24,9 @@ func TestRouteAddThenLs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "HOSTNAME         OUTPOST  SERVICE                OPTIONS\n" +
-		"a.example.com    nas      http://nas             -\n" +
-		"app.example.com  nas      http://localhost:3000  -\n"
+	want := "HOSTNAME         OUTPOST  SERVICE                OPTIONS  STATUS\n" +
+		"a.example.com    nas      http://nas             -        outpost not joined\n" +
+		"app.example.com  nas      http://localhost:3000  -        outpost not joined\n"
 	if out != want {
 		t.Fatalf("got\n%s\nwant\n%s", out, want)
 	}
