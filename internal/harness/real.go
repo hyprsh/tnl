@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/x509"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/netip"
@@ -46,6 +47,8 @@ type EdgeOptions struct {
 	// certificates from this ACME CA. RealEdge.Caddy is then set. Caddy is a
 	// process singleton, so only one such Edge runs at a time.
 	Pebble *Pebble
+	// LogOut, if set, also receives the Edge's log lines, at warn and above.
+	LogOut io.Writer
 }
 
 // StartEdge runs edge.Run on a temporary state directory, WireGuard on a free
@@ -70,6 +73,9 @@ func StartEdgeWith(t testing.TB, opts EdgeOptions) *RealEdge {
 	cfg := edge.Config{
 		Address: "127.0.0.1", StateDir: dir, Version: harnessVersion, Build: "test",
 		Log: logx.New(logx.Options{Level: slog.LevelWarn, Out: testWriter{t}}),
+	}
+	if opts.LogOut != nil {
+		cfg.Log = logx.New(logx.Options{Level: slog.LevelWarn, Out: io.MultiWriter(testWriter{t}, opts.LogOut)})
 	}
 	var ce *CaddyEdge
 	if p := opts.Pebble; p != nil {
@@ -157,6 +163,7 @@ func (e *RealEdge) AddOutpost(t testing.TB, name string) string {
 // JoinedOutpost is an Outpost started with outpost.Run.
 type JoinedOutpost struct {
 	*Outpost
+	API      *api.Client // calls the Edge's API through the Tunnel
 	Token    string
 	StateDir string
 	Stop     func() error // stops the Outpost; the test's end does too
@@ -209,7 +216,7 @@ func (e *RealEdge) Connect(t testing.TB, name, tok, stateDir string) *JoinedOutp
 	}
 	o := &Outpost{Name: name, Addr: r.Address, Tunnel: r.Tunnel, Net: r.Tunnel.Net}
 	e.Outposts.Set(name, o.DataAddr())
-	return &JoinedOutpost{Outpost: o, Token: tok, StateDir: stateDir, Stop: func() error { stopped = true; return stop() }}
+	return &JoinedOutpost{Outpost: o, API: r.API, Token: tok, StateDir: stateDir, Stop: func() error { stopped = true; return stop() }}
 }
 
 // waitHandshake waits until the Edge has completed a handshake with the peer

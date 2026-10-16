@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/hyprsh/tnl/internal/addr"
+	"github.com/hyprsh/tnl/internal/api"
 	"github.com/hyprsh/tnl/internal/forwarder"
 	"github.com/hyprsh/tnl/internal/logx"
 	"github.com/hyprsh/tnl/internal/token"
@@ -43,6 +44,8 @@ type Config struct {
 type Running struct {
 	Tunnel  *tunnel.Tunnel
 	Address netip.Addr // the Outpost's Tunnel address
+	// API calls the Edge's API through the Tunnel, as this Outpost.
+	API *api.Client
 }
 
 // ConfigError is a problem the operator must fix; `tnl connect` exits 78.
@@ -129,7 +132,16 @@ func Run(ctx context.Context, cfg Config) error {
 		"joined", joining,
 	)
 	if cfg.Started != nil {
-		cfg.Started(&Running{Tunnel: tun, Address: st.Address})
+		cfg.Started(&Running{Tunnel: tun, Address: st.Address, API: &api.Client{
+			Version: cfg.Version,
+			Dial: func(ctx context.Context, _, address string) (net.Conn, error) {
+				ap, err := netip.ParseAddrPort(address)
+				if err != nil {
+					return nil, err
+				}
+				return tun.Net.DialContextTCPAddrPort(ctx, ap)
+			},
+		}})
 	}
 	<-ctx.Done()
 	return nil
