@@ -59,7 +59,7 @@ func startWith(t *testing.T, version string, actor api.Actor, res server.Resolve
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv := server.New(server.Config{Store: store, Log: lg, Version: version, Build: "full", Revision: "abc123", Role: "edge", Address: "tnl.example.com", WireGuardPort: 51820, Resolver: res})
+	srv := server.New(server.Config{Store: store, Log: lg, Version: version, Build: "full", Revision: "abc123", Role: "edge", Address: "tnl.example.com", WireGuardPort: 51820, Resolver: res, StateDir: dir})
 	ln, err := server.ListenSocket(dir)
 	if err != nil {
 		t.Fatal(err)

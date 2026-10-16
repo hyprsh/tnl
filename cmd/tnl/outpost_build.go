@@ -13,6 +13,7 @@ const buildName = "outpost"
 // Zones or Routes: every Edge command says so and points at the full build.
 // A ticket that adds an Edge-only command adds one line here.
 var edgeOnlyCommands = []string{
+	"backup",
 	"edge",
 	"outpost",
 	"route add",
