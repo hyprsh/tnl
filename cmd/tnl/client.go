@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"os"
 	"sort"
-	"strconv"
 	"strings"
 	"text/tabwriter"
 
@@ -86,20 +85,6 @@ func envOr(name, def string) string {
 		return v
 	}
 	return def
-}
-
-// envInt reads an integer variable, def if it is unset. A value that isn't an
-// integer is an error, and the value returned is def.
-func envInt(name string, def int) (int, error) {
-	v := os.Getenv(name)
-	if v == "" {
-		return def, nil
-	}
-	n, err := strconv.Atoi(v)
-	if err != nil {
-		return def, fmt.Errorf("%s must be an integer, got %q", name, v)
-	}
-	return n, nil
 }
 
 // lsCommand makes a `tnl <group> ls` command that GETs path and prints a table:

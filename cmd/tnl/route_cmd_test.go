@@ -10,17 +10,17 @@ import (
 func TestRouteAddThenLs(t *testing.T) {
 	runningEdge(t)
 	tnl("zone", "add", "example.com")
-	if _, err, _ := tnl("outpost", "add", "nas"); err != nil {
+	if _, _, err := tnl("outpost", "add", "nas"); err != nil {
 		t.Fatal(err)
 	}
-	out, err, code := tnl("route", "add", "app.example.com", "http://localhost:3000", "--outpost", "nas")
+	out, code, err := tnl("route", "add", "app.example.com", "http://localhost:3000", "--outpost", "nas")
 	if err != nil || code != 0 || !strings.Contains(out, "app.example.com") {
 		t.Fatalf("%q %v %d", out, err, code)
 	}
-	if _, err, _ := tnl("route", "add", "--outpost", "nas", "a.example.com", "http://nas"); err != nil {
+	if _, _, err := tnl("route", "add", "--outpost", "nas", "a.example.com", "http://nas"); err != nil {
 		t.Fatal(err)
 	}
-	out, err, _ = tnl("route", "ls")
+	out, _, err = tnl("route", "ls")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,7 +43,7 @@ func TestRouteAddNeedsOutpostAndRefusalsExitOne(t *testing.T) {
 		{"route", "add", "app.example.com", "--outpost", "nas"},
 		{"route", "ls", "extra"},
 	} {
-		_, err, code := tnl(args...)
+		_, code, err := tnl(args...)
 		if err == nil || code != 1 {
 			t.Errorf("%v: err=%v code=%d", args, err, code)
 		}

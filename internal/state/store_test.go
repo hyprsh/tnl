@@ -181,18 +181,18 @@ func writeState(t *testing.T, dir, body string) {
 	}
 }
 
-func openErr(t *testing.T, dir string) (error, string) {
+func openErr(t *testing.T, dir string) (string, error) {
 	t.Helper()
 	lg, buf := newLog()
 	_, err := Open(dir, lg)
-	return err, buf.String()
+	return buf.String(), err
 }
 
 func TestUnknownSchemaVersionIsRefused(t *testing.T) {
 	for _, v := range []string{"2", "0", "99"} {
 		dir := t.TempDir()
 		writeState(t, dir, `{"version": `+v+`}`)
-		err, _ := openErr(t, dir)
+		_, err := openErr(t, dir)
 		if err == nil || !strings.Contains(err.Error(), "version") {
 			t.Errorf("version %s: err=%v", v, err)
 		}
@@ -200,7 +200,7 @@ func TestUnknownSchemaVersionIsRefused(t *testing.T) {
 	// A newer file with fields this tnl has never heard of still gets the version message.
 	dir := t.TempDir()
 	writeState(t, dir, `{"version": 7, "shiny": true}`)
-	err, _ := openErr(t, dir)
+	_, err := openErr(t, dir)
 	if err == nil || !strings.Contains(err.Error(), "version 7") {
 		t.Errorf("err=%v", err)
 	}
@@ -246,7 +246,7 @@ func TestStartChecksTheWholeStateAndNamesTheBadEntry(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
 			writeState(t, dir, tc.body)
-			err, _ := openErr(t, dir)
+			_, err := openErr(t, dir)
 			if err == nil {
 				t.Fatal("loaded a bad state")
 			}
@@ -259,7 +259,7 @@ func TestStartChecksTheWholeStateAndNamesTheBadEntry(t *testing.T) {
 	// The matching good document loads, so the cases above fail for their stated reason.
 	dir := t.TempDir()
 	writeState(t, dir, doc(op("a", "100.64.0.2"), rt("x.example.com", "a")+","+rt("example.com", "a"), zone, 1))
-	if err, _ := openErr(t, dir); err != nil {
+	if _, err := openErr(t, dir); err != nil {
 		t.Fatalf("good state refused: %v", err)
 	}
 }
