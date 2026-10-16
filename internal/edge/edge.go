@@ -11,11 +11,13 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/hyprsh/tnl/internal/addr"
 	"github.com/hyprsh/tnl/internal/api"
 	"github.com/hyprsh/tnl/internal/api/server"
 	"github.com/hyprsh/tnl/internal/edge/conntrack"
+	"github.com/hyprsh/tnl/internal/edge/liveness"
 	"github.com/hyprsh/tnl/internal/keys"
 	"github.com/hyprsh/tnl/internal/logx"
 	"github.com/hyprsh/tnl/internal/state"
@@ -41,6 +43,9 @@ type Config struct {
 	Resolver server.Resolver
 	// Revision is the VCS revision, logged and reported beside the build.
 	Revision string
+	// OfflineAfter is the silence after which an Outpost is Offline (60 s), and
+	// LivenessPoll how often the Edge checks (1 s). The harness shrinks them.
+	OfflineAfter, LivenessPoll time.Duration
 }
 
 // Running is what a started Edge exposes.
@@ -48,6 +53,7 @@ type Running struct {
 	Store         *state.Store
 	Tunnel        *tunnel.Tunnel
 	WireGuardPort int // the port WireGuard actually listens on
+	Liveness      *liveness.Liveness
 }
 
 // Run opens the state, brings WireGuard up with every Outpost in it as a peer,
@@ -86,8 +92,13 @@ func Run(ctx context.Context, cfg Config) error {
 	}
 	defer os.Remove(filepath.Join(cfg.StateDir, api.SocketName))
 	conns := conntrack.New()
+	hooks := livenessHooks{
+		Version: cfg.Version, OfflineAfter: cfg.OfflineAfter, Poll: cfg.LivenessPoll, Log: cfg.Log,
+		CloseOutpost: conns.CloseOutpost,
+	}
+	live := newLiveness(hooks, store.Snapshot())
 	srv := server.New(server.Config{
-		Conns: conns,
+		Conns: conns, Liveness: live,
 		Store: store, Log: cfg.Log, Version: cfg.Version, Build: cfg.Build, Revision: cfg.Revision, Role: api.RoleEdge,
 		Address: cfg.Address, WireGuardPort: wgPort, Resolver: cfg.Resolver, StateDir: cfg.StateDir,
 		PreparePeer: peers.prepare,
@@ -100,8 +111,12 @@ func Run(ctx context.Context, cfg Config) error {
 		return refuse(err)
 	}
 
+	if err := serveLiveness(ctx, live, hooks, tun, store); err != nil {
+		return refuse(err)
+	}
+
 	if cfg.Web != nil {
-		stopWeb, err := startWeb(cfg.Web, cfg.StateDir, wgPort, store, tun, conns, cfg.Log)
+		stopWeb, err := startWeb(cfg.Web, cfg.StateDir, wgPort, store, tun, conns, live, cfg.Log)
 		if err != nil {
 			return refuse(err)
 		}
@@ -122,7 +137,7 @@ func Run(ctx context.Context, cfg Config) error {
 		"zones", len(st.Zones),
 	)
 	if cfg.Started != nil {
-		cfg.Started(&Running{Store: store, Tunnel: tun, WireGuardPort: wgPort})
+		cfg.Started(&Running{Store: store, Tunnel: tun, WireGuardPort: wgPort, Liveness: live})
 	}
 	select {
 	case <-ctx.Done():

@@ -13,6 +13,7 @@ import (
 
 	"github.com/hyprsh/tnl/internal/edge/caddyx"
 	"github.com/hyprsh/tnl/internal/edge/conntrack"
+	"github.com/hyprsh/tnl/internal/edge/liveness"
 	"github.com/hyprsh/tnl/internal/edge/routes"
 	"github.com/hyprsh/tnl/internal/state"
 	"github.com/hyprsh/tnl/internal/tunnel"
@@ -43,7 +44,7 @@ type Web struct {
 //
 // The Routes are never Caddy config (ADR 0002): a change in the state swaps
 // the table the router reads, and Caddy is loaded once, here.
-func startWeb(w *Web, stateDir string, wgPort int, store *state.Store, tun *tunnel.Tunnel, conns *conntrack.Tracker, log *slog.Logger) (stop func(), err error) {
+func startWeb(w *Web, stateDir string, wgPort int, store *state.Store, tun *tunnel.Tunnel, conns *conntrack.Tracker, live *liveness.Liveness, log *slog.Logger) (stop func(), err error) {
 	table := new(routes.Mem)
 	outposts := new(routes.MemOutposts)
 	publish := func(st *state.State) {
@@ -69,7 +70,7 @@ func startWeb(w *Web, stateDir string, wgPort int, store *state.Store, tun *tunn
 	}
 	edgeID := hex.EncodeToString(id[:])
 	unregister := caddyx.Register(edgeID, &caddyx.Runtime{
-		Table: table, Outposts: outposts, Log: log, Conns: conns, ServiceRoots: w.ServiceRoots,
+		Table: table, Outposts: outposts, Log: log, Conns: conns, ServiceRoots: w.ServiceRoots, Liveness: live,
 		Dialer: func(ctx context.Context, a netip.AddrPort) (net.Conn, error) {
 			return tun.Net.DialContextTCPAddrPort(ctx, a)
 		},

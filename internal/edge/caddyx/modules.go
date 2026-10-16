@@ -13,6 +13,7 @@ import (
 	"github.com/caddyserver/caddy/v2/modules/caddytls"
 
 	"github.com/hyprsh/tnl/internal/dnsname"
+	"github.com/hyprsh/tnl/internal/edge/liveness"
 	"github.com/hyprsh/tnl/internal/edge/routes"
 )
 
@@ -116,6 +117,11 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 		return nil, errors.New("tnl: request reached the transport without a Route")
 	}
 	id, _ := caddyhttp.GetVar(ctx, varRequestID).(string)
+	// Step 3 of a request: an Offline Outpost gets 503 at once. One the Edge has
+	// not heard from yet (it joined a moment ago) is waited for like an online one.
+	if t.rt.Liveness != nil && t.rt.Liveness.State(route.Outpost) == liveness.Offline {
+		return t.rt.fail(req, id, http.StatusServiceUnavailable, "outpost offline")
+	}
 	addr, ok := t.rt.Outposts.Addr(route.Outpost)
 	if !ok {
 		return t.rt.fail(req, id, http.StatusBadGateway, "outpost offline")
@@ -132,6 +138,9 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 
 	resp, err := t.rt.pool.transport(t.rt, route, addr).RoundTrip(out)
 	if err != nil {
+		if errors.Is(err, errTunnelWait) {
+			return t.rt.fail(req, id, http.StatusServiceUnavailable, "no tunnel")
+		}
 		var re *ReplyError
 		if errors.As(err, &re) {
 			return t.rt.fail(req, id, http.StatusBadGateway, replyReason(re))

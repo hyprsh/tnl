@@ -13,3 +13,9 @@ type ZoneAddReply struct {
 	ZoneInfo
 	Warnings
 }
+
+// RouteAddReply answers POST PathRoutes: the Route and any warnings.
+type RouteAddReply struct {
+	RouteInfo
+	Warnings
+}

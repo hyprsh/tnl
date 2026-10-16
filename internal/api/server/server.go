@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/hyprsh/tnl/internal/api"
+	"github.com/hyprsh/tnl/internal/edge/liveness"
 	"github.com/hyprsh/tnl/internal/keys"
 	"github.com/hyprsh/tnl/internal/state"
 )
@@ -55,6 +56,14 @@ type Config struct {
 
 	// StateDir is where backup finds Caddy's storage.
 	StateDir string
+
+	// Liveness says which Outposts are Offline, for the warnings. Nil knows none.
+	Liveness Liveness
+}
+
+// Liveness is the Edge's view of the Outposts, as the handlers read it.
+type Liveness interface {
+	State(outpost string) liveness.State
 }
 
 // ConnCloser is the connection tracker as the handlers see it, in the
