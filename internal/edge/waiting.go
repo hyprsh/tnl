@@ -13,17 +13,20 @@ import (
 // waitingWatch logs the declared lines that wait: a warn when one starts to
 // wait and a reminder on the shared schedule until it applies or is dropped.
 // The applying is logged where it happens, in the store's change path.
+// waitingLine is a declared line that waits.
+type waitingLine struct{ outpost, hostname string }
+
 type waitingWatch struct {
 	log   *slog.Logger
 	clock remind.Clock
 
 	mu      sync.Mutex
 	tracker *remind.Tracker
-	waiting map[string][2]string // key -> outpost, hostname
+	waiting map[string]waitingLine // by waitKey
 }
 
 func newWaitingWatch(log *slog.Logger, sched remind.Schedule, clock remind.Clock) *waitingWatch {
-	return &waitingWatch{log: log, clock: clock, tracker: remind.NewTracker(sched, clock), waiting: map[string][2]string{}}
+	return &waitingWatch{log: log, clock: clock, tracker: remind.NewTracker(sched, clock), waiting: map[string]waitingLine{}}
 }
 
 func waitKey(outpost, host string) string { return outpost + "/" + host }
@@ -34,7 +37,7 @@ func waitKey(outpost, host string) string { return outpost + "/" + host }
 func (w *waitingWatch) sync(st *state.State) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	now := map[string][2]string{}
+	now := map[string]waitingLine{}
 	for _, d := range st.Declarations {
 		for _, l := range d.Lines {
 			reason := st.WaitingReason(d.Outpost, l.Hostname)
@@ -42,7 +45,7 @@ func (w *waitingWatch) sync(st *state.State) {
 				continue
 			}
 			k := waitKey(d.Outpost, l.Hostname)
-			now[k] = [2]string{d.Outpost, l.Hostname}
+			now[k] = waitingLine{d.Outpost, l.Hostname}
 			if w.tracker.Begin(k) {
 				w.log.Warn("declared line waits", "outpost", d.Outpost, "hostname", l.Hostname, "reason", reason)
 			}
@@ -62,7 +65,7 @@ func (w *waitingWatch) remind(st *state.State) {
 	defer w.mu.Unlock()
 	for _, r := range w.tracker.Due() {
 		o := w.waiting[r.Key]
-		w.log.Warn("declared line still waits", "outpost", o[0], "hostname", o[1], "reason", st.WaitingReason(o[0], o[1]), "waiting_for", r.Since.Round(time.Second))
+		w.log.Warn("declared line still waits", "outpost", o.outpost, "hostname", o.hostname, "reason", st.WaitingReason(o.outpost, o.hostname), "waiting_for", r.Since.Round(time.Second))
 	}
 }
 
