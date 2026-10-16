@@ -24,13 +24,13 @@ func (s *Server) zoneList(_ context.Context, _ api.Actor, _ struct{}) (api.ZoneL
 	return out, nil
 }
 
-func (s *Server) zoneAdd(_ context.Context, actor api.Actor, req api.ZoneAddRequest) (api.ZoneInfo, error) {
+func (s *Server) zoneAdd(ctx context.Context, actor api.Actor, req api.ZoneAddRequest) (api.ZoneAddReply, error) {
 	if !actor.Local() {
-		return api.ZoneInfo{}, api.Errorf(http.StatusForbidden, "%s may not add Zones; run `tnl zone add` on the Edge host", actor)
+		return api.ZoneAddReply{}, api.Errorf(http.StatusForbidden, "%s may not add Zones; run `tnl zone add` on the Edge host", actor)
 	}
 	name, err := zoneName(req.Name)
 	if err != nil {
-		return api.ZoneInfo{}, err
+		return api.ZoneAddReply{}, err
 	}
 	z := state.Zone{Name: name, Mode: state.PerHostname}
 	err = s.cfg.Store.Update(actor, func(st *state.State) error {
@@ -43,10 +43,13 @@ func (s *Server) zoneAdd(_ context.Context, actor api.Actor, req api.ZoneAddRequ
 		return nil
 	})
 	if err != nil {
-		return api.ZoneInfo{}, err
+		return api.ZoneAddReply{}, err
 	}
 	s.cfg.Log.Info("zone added", "actor", actor.String(), "zone", z.Name, "mode", z.Mode)
-	return zoneInfo(z), nil
+	// After the lock: a slow resolver must not delay another change.
+	warnings := s.zoneDNSWarnings(ctx, z.Name)
+	s.warn(actor, warnings, "zone", z.Name)
+	return api.ZoneAddReply{ZoneInfo: zoneInfo(z), Warnings: api.Warnings{Warnings: warnings}}, nil
 }
 
 // zoneName normalises a Zone name (lower case, no trailing dot) and refuses

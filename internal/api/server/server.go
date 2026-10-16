@@ -37,6 +37,9 @@ type Config struct {
 	// Conns closes Tunnel connections after a change that ends them. Nil
 	// closes nothing.
 	Conns ConnCloser
+
+	// Resolver does the DNS checks; nil uses net.DefaultResolver.
+	Resolver Resolver
 }
 
 // ConnCloser is the connection tracker as the handlers see it, in the
