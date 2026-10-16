@@ -84,7 +84,7 @@ func (s *State) applyZones(want []DeclaredZone, res *DeclaredResult) error {
 
 	// Check first, so a refusal leaves the state as it was: no removed Zone may
 	// strand a Route made with the CLI.
-	final := &State{Zones: slices.Clone(want2zones(want))}
+	final := &State{Zones: zonesOf(want)}
 	var problems []string
 	for _, z := range old.Zones {
 		if _, keep := wanted[z.Name]; keep {
@@ -145,7 +145,9 @@ func (s *State) applyZones(want []DeclaredZone, res *DeclaredResult) error {
 	return nil
 }
 
-func want2zones(want []DeclaredZone) []Zone {
+// zonesOf is the Zones the lines name, by name only: enough to ask which
+// Hostnames they contain.
+func zonesOf(want []DeclaredZone) []Zone {
 	out := make([]Zone, len(want))
 	for i, d := range want {
 		out[i] = Zone{Name: d.Name}
