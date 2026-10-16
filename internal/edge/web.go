@@ -48,9 +48,11 @@ func startWeb(w *Web, stateDir string, wgPort int, store *state.Store, tun *tunn
 	table := new(routes.Mem)
 	outposts := new(routes.MemOutposts)
 	publish := func(st *state.State) {
+		known := make(map[string]netip.AddrPort, len(st.Outposts))
 		for _, o := range st.Outposts {
-			outposts.Set(o.Name, netip.AddrPortFrom(o.Address, wire.DataPort))
+			known[o.Name] = netip.AddrPortFrom(o.Address, wire.DataPort)
 		}
+		outposts.Swap(known)
 		rs := make([]routes.Route, 0, len(st.Routes))
 		for _, r := range st.Routes {
 			svc := r.Parsed()
