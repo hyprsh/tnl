@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hyprsh/tnl/internal/settings"
+	"github.com/hyprsh/tnl/internal/declare"
 )
 
 func TestConnectRefusesAnUnknownVariable(t *testing.T) {
@@ -32,9 +32,14 @@ func TestConnectRouteLinesFromEitherFormParseToTheSameDeclaration(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := settings.Declaration{{Hostname: "media.example.com", Service: "http://localhost:8096", HostHeader: "jelly"}}
-	if !reflect.DeepEqual(fromEnv.declaration, want) || !reflect.DeepEqual(fromFlag.declaration, want) {
-		t.Fatalf("%+v %+v", fromEnv.declaration, fromFlag.declaration)
+	want := declare.Line{Hostname: "media.example.com", Service: "http://localhost:8096", HostHeader: "jelly"}
+	for _, got := range []connectSettings{fromEnv, fromFlag} {
+		if len(got.cfg.Declaration) != 1 || !reflect.DeepEqual(got.cfg.Declaration[0].Line, want) {
+			t.Fatalf("%+v", got.cfg.Declaration)
+		}
+	}
+	if fromEnv.cfg.Declaration[0].Label != "TNL_ROUTE_MEDIA" {
+		t.Errorf("label %q", fromEnv.cfg.Declaration[0].Label)
 	}
 }
 

@@ -1,7 +1,8 @@
-// Package settings reads the TNL_* surface of the startup commands: the
-// unknown-variable check and the route lines of an Outpost's Declaration. It
-// imports nothing outside the standard library and the shared checks, so the
-// Outpost-only build can use it.
+// Package settings reads the TNL_* surface of the startup commands, for both
+// `tnl connect` and `tnl edge`: the unknown-variable check, secrets given as a
+// file or a variable, and the declared lines: an Outpost's Route lines, and
+// the Edge's Zone and Outpost lines. It imports nothing outside the standard
+// library and the shared checks, so the Outpost-only build can use it.
 package settings
 
 import (
@@ -9,25 +10,13 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/hyprsh/tnl/internal/declare"
 	"github.com/hyprsh/tnl/internal/dnsname"
 	"github.com/hyprsh/tnl/internal/state"
 )
 
 // RoutePrefix starts every route-line variable.
 const RoutePrefix = "TNL_ROUTE_"
-
-// Route is one declared Route. The label of its line is not part of it: it
-// names the line in messages and never reaches the Edge.
-type Route struct {
-	Hostname           string
-	Service            string // canonical
-	HostHeader         string
-	InsecureSkipVerify bool
-}
-
-// Declaration is an Outpost's declared Routes, sorted by Hostname. Both forms
-// of a line parse to the same Declaration.
-type Declaration []Route
 
 // CheckEnv refuses a TNL_* variable that is neither in known nor starts with
 // one of prefixes. It echoes names only, never values. environ is in
@@ -89,54 +78,63 @@ func distance(a, b string) int {
 	return prev[len(b)]
 }
 
-// ParseRoutes parses the TNL_ROUTE_* variables in environ and the arguments of
-// the repeated --route flag. Setting both forms is refused. Every error names
-// the variable, or the --route line.
-func ParseRoutes(environ, flagLines []string) (Declaration, error) {
-	d, _, err := ParseRoutesLabelled(environ, flagLines)
-	return d, err
-}
+type declaredLine struct{ name, text string }
 
-// ParseRoutesLabelled is ParseRoutes that also returns each Hostname's label:
-// the variable that declared it, or the --route text. The Outpost's log names
-// a line by it; the Edge never sees it.
-func ParseRoutesLabelled(environ, flagLines []string) (Declaration, map[string]string, error) {
-	type line struct{ name, text string }
-	var lines []line
+// collect gathers the lines of one kind: the variables with the prefix, sorted
+// by name, then the repeated flag's lines. Setting both forms is refused.
+func collect(environ, flagLines []string, prefix, flagName string) ([]declaredLine, error) {
+	var lines []declaredLine
 	for _, kv := range environ {
 		name, value, _ := strings.Cut(kv, "=")
-		if !strings.HasPrefix(name, RoutePrefix) {
+		if !strings.HasPrefix(name, prefix) {
 			continue
 		}
 		if len(flagLines) > 0 {
-			return nil, nil, fmt.Errorf("--route and %s are both set: declare Routes one way", name)
+			return nil, fmt.Errorf("%s and %s are both set: declare them one way", flagName, name)
 		}
-		lines = append(lines, line{name, value})
+		if err := checkLabel(prefix, strings.TrimPrefix(name, prefix)); err != nil {
+			return nil, fmt.Errorf("%s: %w", name, err)
+		}
+		lines = append(lines, declaredLine{name, value})
 	}
 	sort.Slice(lines, func(i, j int) bool { return lines[i].name < lines[j].name })
-	for _, f := range flagLines {
-		lines = append(lines, line{"--route " + f, f})
-	}
-	var d Declaration
-	seen := map[string]string{}
-	for _, l := range lines {
-		if strings.HasPrefix(l.name, RoutePrefix) {
-			if err := checkLabel(RoutePrefix, strings.TrimPrefix(l.name, RoutePrefix)); err != nil {
-				return nil, nil, fmt.Errorf("%s: %w", l.name, err)
-			}
+	for i, f := range flagLines {
+		// A flag line is named by its first word, unless that is an option; the
+		// text itself is never echoed, since it may hold a value.
+		name := fmt.Sprintf("%s #%d", flagName, i+1)
+		if first := strings.Fields(f); len(first) > 0 && len(first[0]) <= 63 && dnsname.CheckName(dnsname.Normalize(first[0])) == nil {
+			name = flagName + " " + first[0]
 		}
+		lines = append(lines, declaredLine{name, f})
+	}
+	return lines, nil
+}
+
+// ParseRoutes parses the TNL_ROUTE_* variables in environ and the arguments of
+// the repeated --route flag into the Declaration, sorted by Hostname; both
+// forms of a line parse to the same line. Setting both forms is refused. Every
+// error names the variable, or the --route line. labels names each Hostname's
+// line: the variable that declared it, or the --route line. The Outpost's log
+// names a line by it; the Edge never sees it.
+func ParseRoutes(environ, flagLines []string) (lines []declare.Line, labels map[string]string, err error) {
+	collected, err := collect(environ, flagLines, RoutePrefix, "--route")
+	if err != nil {
+		return nil, nil, err
+	}
+	labels = map[string]string{}
+	for _, l := range collected {
 		r, err := parseRoute(l.text)
 		if err != nil {
 			return nil, nil, fmt.Errorf("%s: %w", l.name, err)
 		}
-		if other, dup := seen[r.Hostname]; dup {
+		if other, dup := labels[r.Hostname]; dup {
 			return nil, nil, fmt.Errorf("%s: %s is also on %s", l.name, r.Hostname, other)
 		}
-		seen[r.Hostname] = l.name
-		d = append(d, r)
+		labels[r.Hostname] = l.name
+		lines = append(lines, r)
 	}
-	sort.Slice(d, func(i, j int) bool { return d[i].Hostname < d[j].Hostname })
-	return d, seen, nil
+	sort.Slice(lines, func(i, j int) bool { return lines[i].Hostname < lines[j].Hostname })
+	return lines, labels, nil
 }
 
 func checkLabel(prefix, label string) error {
@@ -151,20 +149,20 @@ func checkLabel(prefix, label string) error {
 	return nil
 }
 
-func parseRoute(text string) (Route, error) {
+func parseRoute(text string) (declare.Line, error) {
 	words := strings.Fields(text)
 	if len(words) < 2 {
-		return Route{}, fmt.Errorf("want <hostname> <service-url> [--host-header V] [--insecure-skip-verify]")
+		return declare.Line{}, fmt.Errorf("want <hostname> <service-url> [--host-header V] [--insecure-skip-verify]")
 	}
-	var r Route
+	var r declare.Line
 	host := dnsname.Normalize(words[0])
 	if err := dnsname.CheckName(host); err != nil {
-		return Route{}, fmt.Errorf("invalid Hostname %q: %v", words[0], err)
+		return declare.Line{}, fmt.Errorf("invalid Hostname %q: %v", words[0], err)
 	}
 	r.Hostname = host
 	svc, err := state.ParseService(words[1])
 	if err != nil {
-		return Route{}, err
+		return declare.Line{}, err
 	}
 	r.Service = svc.Canonical
 	var gotHeader, gotInsecure bool
@@ -172,26 +170,26 @@ func parseRoute(text string) (Route, error) {
 		switch w := rest[0]; w {
 		case "--host-header":
 			if len(rest) < 2 {
-				return Route{}, fmt.Errorf("--host-header needs a value")
+				return declare.Line{}, fmt.Errorf("--host-header needs a value")
 			}
 			if gotHeader {
-				return Route{}, fmt.Errorf("--host-header is given twice")
+				return declare.Line{}, fmt.Errorf("--host-header is given twice")
 			}
 			if err := state.CheckHostHeader(rest[1]); err != nil {
-				return Route{}, err
+				return declare.Line{}, err
 			}
 			gotHeader, r.HostHeader = true, rest[1]
 			rest = rest[1:]
 		case "--insecure-skip-verify":
 			if gotInsecure {
-				return Route{}, fmt.Errorf("--insecure-skip-verify is given twice")
+				return declare.Line{}, fmt.Errorf("--insecure-skip-verify is given twice")
 			}
 			gotInsecure, r.InsecureSkipVerify = true, true
 		default:
 			if strings.HasPrefix(w, "-") {
-				return Route{}, fmt.Errorf("unknown option %s", w)
+				return declare.Line{}, fmt.Errorf("unknown option %s", w)
 			}
-			return Route{}, fmt.Errorf("unexpected word %q after the Service URL", w)
+			return declare.Line{}, fmt.Errorf("unexpected word %q after the Service URL", w)
 		}
 	}
 	return r, nil
