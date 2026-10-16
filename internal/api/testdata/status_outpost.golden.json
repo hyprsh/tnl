@@ -1,0 +1,43 @@
+{
+  "role": "outpost",
+  "name": "nas",
+  "version": "1.2.0",
+  "build": "outpost",
+  "revision": "abc1234",
+  "tunnel_address": "10.99.0.2",
+  "state_dir": "/var/lib/tnl",
+  "allow": "192.168.1.0/24",
+  "edge": {
+    "address": "edge.example.com",
+    "ip": "203.0.113.7",
+    "state": "down",
+    "last_answer": "2026-10-16T11:56:00Z",
+    "silent_seconds": 240,
+    "version": "1.3.0",
+    "incompatible": true,
+    "message": "the Edge (1.3.0) doesn't accept this Outpost (1.2.0); upgrade the Outpost"
+  },
+  "routes": null,
+  "routes_unavailable": "unavailable while the Tunnel is down",
+  "declared": [
+    {
+      "hostname": "media.example.com",
+      "service": "http://nas:8096",
+      "variable": "TNL_ROUTE_MEDIA"
+    },
+    {
+      "hostname": "photos.example.com",
+      "service": "http://nas:2342",
+      "variable": "TNL_ROUTE_PHOTOS",
+      "waiting": true,
+      "reason": "taken by newbox"
+    }
+  ],
+  "attention": [
+    {
+      "kind": "tunnel down",
+      "subject": "edge.example.com",
+      "message": "no answer from the Edge for 4m"
+    }
+  ]
+}

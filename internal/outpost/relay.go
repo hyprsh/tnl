@@ -24,13 +24,15 @@ const notConnected = "Outpost not connected: the Edge did not answer through the
 const defaultRelayDialTimeout = 5 * time.Second
 
 // relay is the Outpost's tnl.sock: it forwards the local CLI's API calls to the
-// Edge unchanged, replies included, and answers info itself.
+// Edge unchanged, replies included, and answers info and status itself.
 type relay struct {
 	info api.Info
 	log  *slog.Logger
 	dial func(ctx context.Context, address string) (net.Conn, error)
 	// timeout bounds reaching the Edge.
 	timeout time.Duration
+	// status builds the answer to GET PathStatus; nil leaves it to the Edge.
+	status func(ctx context.Context) api.OutpostStatus
 }
 
 func (r *relay) handler() http.Handler {
@@ -58,6 +60,10 @@ func (r *relay) handler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		if req.Method == http.MethodGet && req.URL.Path == api.PathInfo {
 			r.reply(w, http.StatusOK, r.info)
+			return
+		}
+		if req.Method == http.MethodGet && req.URL.Path == api.PathStatus && r.status != nil {
+			r.reply(w, http.StatusOK, r.status(req.Context()))
 			return
 		}
 		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}

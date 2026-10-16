@@ -43,6 +43,7 @@ type watcher struct {
 	up          bool      // a "Tunnel up" has been logged for the current stretch
 	lastAnswer  time.Time // the last answer, or the start
 	lastResolve time.Time // zero when no re-resolution has run in this outage
+	heard       bool      // the Edge has answered at least once
 }
 
 const reminderKey = "edge"
@@ -77,6 +78,7 @@ func (w *watcher) answered(version string) {
 	outage := now.Sub(w.lastAnswer)
 	wasUp := w.up
 	w.up = true
+	w.heard = true
 	w.lastAnswer, w.lastResolve = now, time.Time{}
 	w.edgeVersion = version
 	ip := w.edgeIP
@@ -152,4 +154,26 @@ func (w *watcher) reresolve(ctx context.Context, old netip.Addr) netip.Addr {
 	w.mu.Unlock()
 	w.log.Info("the Edge's address changed", "edge_address", w.edgeAddress, "old_ip", old.String(), "edge_ip", ip.String())
 	return ip
+}
+
+// edgeSnapshot is what the watcher knows of the Edge, for `tnl status`.
+type edgeSnapshot struct {
+	IP      netip.Addr
+	Version string
+	// Up is false once the Edge has been silent for noAnswerAfter.
+	Up         bool
+	Heard      bool // the Edge has answered at least once
+	LastAnswer time.Time
+	Silent     time.Duration
+}
+
+func (w *watcher) snapshot() edgeSnapshot {
+	now := w.clock.Now()
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	silent := max(now.Sub(w.lastAnswer), 0)
+	return edgeSnapshot{
+		IP: w.edgeIP, Version: w.edgeVersion, Up: silent < w.noAnswerAfter,
+		Heard: w.heard, LastAnswer: w.lastAnswer, Silent: silent,
+	}
 }
