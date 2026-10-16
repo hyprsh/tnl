@@ -16,6 +16,7 @@ import (
 	"net"
 	"net/netip"
 	"os"
+	"sync"
 	"syscall"
 
 	"golang.zx2c4.com/wireguard/tun"
@@ -39,8 +40,13 @@ type netTun struct {
 	events         chan tun.Event
 	notifyHandle   *channel.NotificationHandle
 	incomingPacket chan *buffer.View
-	mtu            int
-	hasV4, hasV6   bool
+	// done is closed by Close. incomingPacket is never closed: gVisor can
+	// still call WriteNotify, which sends on it, while Close runs, and a send
+	// on a closed channel panics. WriteNotify and Read select on done instead.
+	done         chan struct{}
+	closeOnce    sync.Once
+	mtu          int
+	hasV4, hasV6 bool
 }
 
 type Net netTun
@@ -56,6 +62,7 @@ func CreateNetTUN(localAddresses []netip.Addr, mtu int) (tun.Device, *Net, error
 		stack:          stack.New(opts),
 		events:         make(chan tun.Event, 10),
 		incomingPacket: make(chan *buffer.View),
+		done:           make(chan struct{}),
 		mtu:            mtu,
 	}
 	sackEnabledOpt := tcpip.TCPSACKEnabled(true) // TCP SACK is disabled by default
@@ -119,8 +126,10 @@ func (tun *netTun) Events() <-chan tun.Event {
 }
 
 func (tun *netTun) Read(buf [][]byte, sizes []int, offset int) (int, error) {
-	view, ok := <-tun.incomingPacket
-	if !ok {
+	var view *buffer.View
+	select {
+	case view = <-tun.incomingPacket:
+	case <-tun.done:
 		return 0, os.ErrClosed
 	}
 
@@ -161,22 +170,26 @@ func (tun *netTun) WriteNotify() {
 	view := pkt.ToView()
 	pkt.DecRef()
 
-	tun.incomingPacket <- view
+	select {
+	case tun.incomingPacket <- view:
+	case <-tun.done:
+		view.Release()
+	}
 }
 
 func (tun *netTun) Close() error {
-	tun.stack.RemoveNIC(1)
-	tun.stack.Close()
-	tun.ep.RemoveNotify(tun.notifyHandle)
-	tun.ep.Close()
+	tun.closeOnce.Do(func() {
+		// Release a WriteNotify blocked on the send and any Read first.
+		close(tun.done)
+		tun.stack.RemoveNIC(1)
+		tun.stack.Close()
+		tun.ep.RemoveNotify(tun.notifyHandle)
+		tun.ep.Close()
 
-	if tun.events != nil {
-		close(tun.events)
-	}
-
-	if tun.incomingPacket != nil {
-		close(tun.incomingPacket)
-	}
+		if tun.events != nil {
+			close(tun.events)
+		}
+	})
 
 	return nil
 }
