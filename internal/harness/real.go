@@ -69,6 +69,11 @@ type EdgeOptions struct {
 	WireGuardPort int
 	// LogInfo lets LogOut receive info lines too.
 	LogInfo bool
+	// LogDebug lets LogOut receive debug lines too.
+	LogDebug bool
+	// AccessLog is --access-log. DrainTimeout shrinks the 10 s of stopping.
+	AccessLog    bool
+	DrainTimeout time.Duration
 	// OfflineAfter, LivenessPoll and PingInterval shrink the spec's 60 s, the
 	// Edge's check interval and the 10 s ping, for this Edge and for the
 	// Outposts that Connect to it. Zero keeps the spec's values, except that
@@ -119,6 +124,9 @@ func StartEdgeWith(t testing.TB, opts EdgeOptions) *RealEdge {
 		if opts.LogInfo {
 			level = slog.LevelInfo
 		}
+		if opts.LogDebug {
+			level = slog.LevelDebug
+		}
 		cfg.Log = logx.New(logx.Options{Level: level, Out: io.MultiWriter(testWriter{t}, opts.LogOut)})
 	}
 	var ce *CaddyEdge
@@ -129,6 +137,7 @@ func StartEdgeWith(t testing.TB, opts EdgeOptions) *RealEdge {
 			HTTPListen: fmt.Sprintf("127.0.0.1:%d", httpPort), HTTPSListen: fmt.Sprintf("127.0.0.1:%d", httpsPort),
 			HTTPPort: httpPort, HTTPSPort: httpsPort,
 			ACMECA: p.DirectoryURL, ACMEEmail: "ops@example.com", ACMETrustedRoots: []string{p.certFile}, ServiceRoots: opts.ServiceRoots,
+			AccessLog: opts.AccessLog, DrainTimeout: opts.DrainTimeout,
 		}
 		ce = &CaddyEdge{HTTPPort: httpPort, HTTPSPort: httpsPort, StateDir: dir, Roots: x509.NewCertPool()}
 		ce.Roots.AddCert(p.Root)

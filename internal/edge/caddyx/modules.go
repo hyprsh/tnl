@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
+	"time"
 
 	"github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
@@ -51,24 +53,61 @@ func (r *Router) Provision(caddy.Context) (err error) {
 	return err
 }
 
-// ServeHTTP implements caddyhttp.MiddlewareHandler.
-func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request, next caddyhttp.Handler) error {
-	ctx := req.Context()
+// ServeHTTP implements caddyhttp.MiddlewareHandler. It registers the request
+// for the drain, counts its bytes, and writes its request line when it ends.
+func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request, next caddyhttp.Handler) (err error) {
+	started := time.Now()
+	ctx, cancel := context.WithCancel(req.Context())
+	defer cancel()
+	req = req.WithContext(ctx)
 	id := newRequestID()
 	caddyhttp.SetVar(ctx, varRequestID, id)
-	route, ok := r.rt.Table.Lookup(dnsname.HostOnly(req.Host))
+	a := r.rt.begin(cancel, isEventStream(req) || isUpgrade(req))
+	defer r.rt.end(a)
+	caddyhttp.SetVar(ctx, varActive, a)
+
+	rec := &recorder{ResponseWriter: w}
+	var body *countBody
+	if req.Body != nil && req.Body != http.NoBody {
+		body = &countBody{ReadCloser: req.Body}
+		req.Body = body
+	}
+	host := dnsname.HostOnly(req.Host)
+	route, ok := r.rt.Table.Lookup(host)
+	line := requestLog{
+		req: req, id: id, rec: rec, body: body, started: started, a: a,
+		inZone: r.rt.InZone == nil || r.rt.InZone(host), outpost: route.Outpost,
+		vars: func(k string) any { return caddyhttp.GetVar(ctx, k) },
+	}
+	defer func() {
+		p := recover()
+		if p != nil {
+			line.failed = http.ErrAbortHandler
+		} else {
+			line.failed = err
+		}
+		r.rt.writeRequestLine(line)
+		if p != nil {
+			panic(p)
+		}
+	}()
 	if !ok {
-		r.rt.answer(w, req, id, http.StatusNotFound, "no route", false)
+		r.rt.answer(rec, req, id, http.StatusNotFound, "no route", false)
 		return nil
 	}
 	caddyhttp.SetVar(ctx, varRoute, route)
-	err := next.ServeHTTP(w, req)
-	if errors.Is(err, errResetStream) {
+	err = next.ServeHTTP(rec, req)
+	if errors.Is(err, errResetStream) || a.wasCut() {
 		// The Transport asked for the stream to be reset (HTTP/2, HTTP/3) or
-		// the connection closed (HTTP/1.1). Aborting the handler does both.
+		// the connection closed (HTTP/1.1), or the drain cut the request.
+		// Aborting the handler does both.
 		panic(http.ErrAbortHandler)
 	}
 	return err
+}
+
+func isUpgrade(req *http.Request) bool {
+	return strings.EqualFold(req.Header.Get("Upgrade"), "websocket")
 }
 
 func newRequestID() string {
@@ -147,6 +186,9 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 			return t.rt.fail(req, id, http.StatusBadGateway, replyReason(re))
 		}
 		return nil, err
+	}
+	if a, ok := caddyhttp.GetVar(ctx, varActive).(*active); ok {
+		a.attach(resp)
 	}
 	return resp, nil
 }

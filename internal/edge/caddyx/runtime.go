@@ -48,7 +48,15 @@ type Runtime struct {
 	// Clock drives the certificate reminders; nil is the wall clock.
 	Clock remind.Clock
 
+	// AccessLog adds a request line for every successful request and for
+	// whatever the Service answered (--access-log).
+	AccessLog bool
+	// InZone says whether a Hostname lies inside a Zone, which decides the level
+	// of a 404's line. Nil treats every Hostname as inside one.
+	InZone func(host string) bool
+
 	pool pool
+	reqs requests
 
 	certsOnce sync.Once
 	certs     *Certs

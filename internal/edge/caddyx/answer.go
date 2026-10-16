@@ -27,23 +27,19 @@ func (rt *Runtime) logger() *slog.Logger {
 	return rt.Log
 }
 
-// answer writes the error page and logs it at info with its reason. Slice 6's
-// request-line ticket gives the line its final fields.
+// answer writes the error page and notes why, for the request line the Router
+// writes when the request ends.
 func (rt *Runtime) answer(w http.ResponseWriter, req *http.Request, id string, status int, reason string, reset bool) {
 	host := dnsname.HostOnly(req.Host)
-	rt.logAnswer(id, host, status, reason, reset)
+	noteAnswer(req, status, reason, reset)
 	writeErrorPage(w, errorPage{Status: status, Host: host, ID: id, Accept: req.Header.Get("Accept"), Time: time.Now()})
-}
-
-func (rt *Runtime) logAnswer(id, host string, status int, reason string, reset bool) {
-	rt.logger().Info("answered", "id", id, "host", host, "status", status, "reason", reason, "reset", reset)
 }
 
 // fail is the Transport's answer for a Service or Outpost it can't reach: the
 // page as a synthetic response, or errResetStream for an event stream.
 func (rt *Runtime) fail(req *http.Request, id string, status int, reason string) (*http.Response, error) {
 	if isEventStream(req) {
-		rt.logAnswer(id, dnsname.HostOnly(req.Host), status, reason, true)
+		noteAnswer(req, status, reason, true)
 		return nil, errResetStream
 	}
 	rec := httptest.NewRecorder()
