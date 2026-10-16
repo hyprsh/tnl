@@ -85,6 +85,9 @@ type EdgeOptions struct {
 	// Address is the Edge's --address, a name or an IP the Outposts resolve; empty
 	// is 127.0.0.1.
 	Address string
+	// Reminders shortens the schedule of the Edge's reminders for waiting lines;
+	// zero keeps the spec's.
+	Reminders remind.Schedule
 	// Version is the version this Edge reports and judges by; empty is the
 	// harness's own. Each process takes its version here, so a test can run
 	// an Edge and an Outpost of different versions in one binary.
@@ -128,6 +131,7 @@ func StartEdgeWith(t testing.TB, opts EdgeOptions) *RealEdge {
 	}
 	cfg.LivenessPoll = cmp.Or(opts.LivenessPoll, 20*time.Millisecond)
 	cfg.OfflineAfter = opts.OfflineAfter // zero is the spec's 60 s
+	cfg.Reminders = opts.Reminders
 	if opts.LogOut != nil {
 		cfg.Log = logx.New(logx.Options{Level: opts.LogLevel, Out: io.MultiWriter(testWriter{t}, opts.LogOut)})
 	}

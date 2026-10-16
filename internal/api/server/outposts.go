@@ -72,7 +72,7 @@ func (s *Server) outpostRm(_ context.Context, actor api.Actor, req api.OutpostRm
 	}
 	var gone state.Outpost
 	var hosts []string
-	err := s.cfg.Store.Update(actor, func(st *state.State) error {
+	handed, err := s.cfg.Store.UpdateReport(actor, func(st *state.State) error {
 		i := slices.IndexFunc(st.Outposts, func(o state.Outpost) bool { return o.Name == req.Name })
 		if i < 0 {
 			return api.Errorf(http.StatusNotFound, "no Outpost %s", req.Name)
@@ -99,7 +99,7 @@ func (s *Server) outpostRm(_ context.Context, actor api.Actor, req api.OutpostRm
 	if hosts == nil {
 		hosts = []string{}
 	}
-	return api.OutpostRmReply{Name: gone.Name, Routes: hosts}, nil
+	return api.OutpostRmReply{Name: gone.Name, Routes: hosts, Handovers: served(handed)}, nil
 }
 
 // outpostRekey revokes the Outpost's current key at once and returns a new

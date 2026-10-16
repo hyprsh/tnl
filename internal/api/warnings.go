@@ -20,12 +20,14 @@ type WildcardInfo struct {
 type ZoneAddReply struct {
 	ZoneInfo
 	WildcardInfo
+	Handovers
 	Warnings
 }
 
 // RouteRmReply answers POST PathRouteRm: the removed Route and any warnings.
 type RouteRmReply struct {
 	RouteInfo
+	Handovers
 	Warnings
 }
 

@@ -107,29 +107,42 @@ func (s *Store) OnChange(fn func(*State)) {
 }
 
 // Update applies one change. Under the lock it hands fn a private copy of the
-// state, checks the result, saves it, and swaps it in. If fn, the check or the
-// save fails, nothing changes live. actor ("local" or "outpost:<name>") is for
-// the logs.
+// state, hands over any Hostname fn freed to the line waiting for it, checks the
+// result, saves it, and swaps it in. If fn, the check or the save fails, nothing
+// changes live. actor ("local" or "outpost:<name>") is for the logs.
 func (s *Store) Update(actor api.Actor, fn func(*State) error) error {
+	_, err := s.UpdateReport(actor, fn)
+	return err
+}
+
+// UpdateReport is Update that also returns the waiting lines the change turned
+// into Routes, so the command that freed a Hostname can say who serves it now.
+// The handover is part of the change, not a step after it: no other change
+// sees the Hostname free.
+func (s *Store) UpdateReport(actor api.Actor, fn func(*State) error) ([]Handed, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	next := s.cur.Load().Clone()
 	if err := fn(next); err != nil {
-		return err
+		return nil, err
 	}
+	handed := next.Handover()
 	if err := next.Validate(); err != nil {
-		return err
+		return nil, err
 	}
 	if err := s.save(next); err != nil {
 		s.log.Warn("state change refused", "actor", actor.String(), "error", err)
-		return err
+		return nil, err
 	}
 	s.cur.Store(next)
+	for _, h := range handed {
+		s.log.Info("declared line applies", "actor", actor.String(), "outpost", h.Outpost, "hostname", h.Route.Hostname, "service", h.Route.Service)
+	}
 	for _, sub := range s.subs {
 		sub(next)
 	}
-	return nil
+	return handed, nil
 }
 
 // save writes st to state.json: temp file, fsync, rename, fsync the directory.

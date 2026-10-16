@@ -21,7 +21,7 @@ func (s *Server) routeRm(_ context.Context, actor api.Actor, req api.RouteRmRequ
 		return api.RouteRmReply{}, err
 	}
 	var gone state.Route
-	err = s.cfg.Store.Update(actor, func(st *state.State) error {
+	handed, err := s.cfg.Store.UpdateReport(actor, func(st *state.State) error {
 		for i, have := range st.Routes {
 			if have.Hostname == host {
 				if isOutpost && have.Outpost != own {
@@ -44,5 +44,5 @@ func (s *Server) routeRm(_ context.Context, actor api.Actor, req api.RouteRmRequ
 	if s.cfg.Conns != nil {
 		s.cfg.Conns.CloseRoute(gone.Hostname)
 	}
-	return api.RouteRmReply{RouteInfo: routeInfo(gone)}, nil
+	return api.RouteRmReply{RouteInfo: routeInfo(gone), Handovers: served(handed)}, nil
 }

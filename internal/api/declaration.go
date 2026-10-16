@@ -36,6 +36,7 @@ type DeclarationReply struct {
 	Lines    []DeclaredLine `json:"lines"`
 	Removed  []string       `json:"removed,omitempty"`
 	Switched []string       `json:"switched,omitempty"`
+	Handovers
 	Warnings
 }
 
