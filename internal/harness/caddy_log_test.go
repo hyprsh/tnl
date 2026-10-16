@@ -21,8 +21,10 @@ import (
 func loudLines(s string) []string {
 	var out []string
 	for _, ln := range strings.Split(s, "\n") {
-		if strings.Contains(ln, "cleaning storage") {
-			continue // startup housekeeping, which runs in the background
+		// Startup housekeeping, which runs in background goroutines and so can
+		// log after the test has counted: it is not a handshake.
+		if strings.Contains(ln, "cleaning storage") || strings.Contains(ln, "started background certificate maintenance") {
+			continue
 		}
 		for _, l := range []string{" level=info ", " level=warn ", " level=error "} {
 			if strings.Contains(ln, l) {
