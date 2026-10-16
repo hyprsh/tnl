@@ -7,6 +7,7 @@ require (
 	github.com/caddyserver/certmagic v0.25.6
 	github.com/letsencrypt/pebble/v2 v2.10.1
 	github.com/quic-go/quic-go v0.63.0
+	go.uber.org/zap v1.28.0
 	golang.zx2c4.com/wireguard v0.0.0-20261006164505-2631ce99a06f
 	gvisor.dev/gvisor v0.0.0-20250503011706-39ed1f5ac29c
 )
@@ -154,7 +155,6 @@ require (
 	go.step.sm/crypto v0.91.0 // indirect
 	go.uber.org/automaxprocs v1.6.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
-	go.uber.org/zap v1.28.0 // indirect
 	go.uber.org/zap/exp v0.3.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/crypto v0.57.0 // indirect

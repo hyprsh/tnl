@@ -7,6 +7,7 @@ import (
 	"crypto/x509"
 	"encoding/hex"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/netip"
@@ -37,6 +38,8 @@ type CaddyOptions struct {
 	// Pebble makes Caddy get its certificates from this ACME CA, on demand,
 	// instead of from its internal CA. CaddyEdge.Roots is then Pebble's root.
 	Pebble *Pebble
+	// Log receives Caddy's entries through tnl's log core. Nil means slog.Default().
+	Log *slog.Logger
 }
 
 // CaddyEdge is the running Caddy side of the Edge. Caddy is a process singleton,
@@ -60,7 +63,7 @@ func (e *Edge) StartCaddy(t testing.TB, opts CaddyOptions) *CaddyEdge {
 	var id [8]byte
 	rand.Read(id[:])
 	edgeID := hex.EncodeToString(id[:])
-	unregister := caddyx.Register(edgeID, &caddyx.Runtime{Table: e.Routes, Outposts: e.Outposts, Dialer: func(ctx context.Context, a netip.AddrPort) (net.Conn, error) {
+	unregister := caddyx.Register(edgeID, &caddyx.Runtime{Table: e.Routes, Outposts: e.Outposts, Log: opts.Log, Dialer: func(ctx context.Context, a netip.AddrPort) (net.Conn, error) {
 		return e.Net.DialContextTCPAddrPort(ctx, a)
 	}})
 
