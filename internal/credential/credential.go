@@ -16,7 +16,6 @@ import (
 
 	"github.com/hyprsh/tnl/internal/addr"
 	"github.com/hyprsh/tnl/internal/keys"
-	"github.com/hyprsh/tnl/internal/token"
 )
 
 // Marker starts every credential of this format.
@@ -58,6 +57,20 @@ func (c Credential) Encode() string {
 
 func text(k keys.Key) string { b, _ := k.MarshalText(); return string(b) }
 
+// describeMarker says which marker s starts with, for a message about text this
+// tnl can't read. It names the marker only when it is a credential's (tnlc2,
+// tnlc3, ...), and never any other part of s, which may be a key or a
+// credential.
+func describeMarker(s string) string {
+	head, _, _ := strings.Cut(strings.TrimSpace(s), ".")
+	if rest, ok := strings.CutPrefix(head, "tnlc"); ok {
+		if n := len(rest); n > 0 && n <= 4 && strings.Trim(rest, "0123456789") == "" {
+			return fmt.Sprintf("marker %q", head)
+		}
+	}
+	return "no marker of tnl's"
+}
+
 // Decode parses a credential. No error it returns carries the credential or a
 // key.
 func Decode(s string) (Credential, error) {
@@ -67,7 +80,7 @@ func Decode(s string) (Credential, error) {
 	}
 	payload, ok := strings.CutPrefix(s, Marker)
 	if !ok {
-		return Credential{}, fmt.Errorf("this is not an Outpost credential this tnl can read (%s, expected %q): a newer tnl may be needed", token.DescribeMarker(s), strings.TrimSuffix(Marker, "."))
+		return Credential{}, fmt.Errorf("this is not an Outpost credential this tnl can read (%s, expected %q): a newer tnl may be needed", describeMarker(s), strings.TrimSuffix(Marker, "."))
 	}
 	raw, err := base64.RawURLEncoding.DecodeString(payload)
 	if err != nil {

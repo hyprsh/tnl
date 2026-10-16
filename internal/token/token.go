@@ -64,13 +64,11 @@ func (e *UnknownMarkerError) Error() string {
 }
 
 // DescribeMarker says which marker s starts with, for a message about text this
-// tnl can't read. It names the marker only when it is one of tnl's own (tnl2,
-// tnlc3, ...), and never any other part of s, which may be a key, a token or
-// a credential.
+// tnl can't read. It names the marker only when it is a join token's (tnl2,
+// tnl3, ...), and never any other part of s, which may be a key or a token.
 func DescribeMarker(s string) string {
 	head, _, _ := strings.Cut(strings.TrimSpace(s), ".")
 	if rest, ok := strings.CutPrefix(head, "tnl"); ok {
-		rest = strings.TrimPrefix(rest, "c")
 		if n := len(rest); n > 0 && n <= 4 && strings.Trim(rest, "0123456789") == "" {
 			return fmt.Sprintf("marker %q", head)
 		}
