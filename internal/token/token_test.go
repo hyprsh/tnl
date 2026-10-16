@@ -74,7 +74,7 @@ func TestAnUnknownMarkerErrorEchoesNothingButTnlMarkers(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), `"tnl2"`) {
 		t.Fatalf("a tnl marker is named: %v", err)
 	}
-	for in, needle := range map[string]string{"hunter2hunter2.rest": "hunter", "wg1.abcd": "wg1", "nonsense-secret": "nonsense", "tnl2secretsecret.x": "secret"} {
+	for in, needle := range map[string]string{"hunter2hunter2.rest": "hunter", "wg1.abcd": "wg1", "nonsense-secret": "nonsense", "tnl2secretsecret.x": "secret", "tnlc2.abcd": "tnlc2"} {
 		_, err := Decode(in)
 		if err == nil || strings.Contains(err.Error(), needle) {
 			t.Errorf("%q: the error echoes the input: %v", in, err)
