@@ -7,11 +7,14 @@ import (
 	"context"
 	"errors"
 	"io"
+	"log/slog"
 	"net"
+	"net/netip"
 	"sync"
 	"syscall"
 	"time"
 
+	"github.com/hyprsh/tnl/internal/allow"
 	"github.com/hyprsh/tnl/internal/wire"
 )
 
@@ -31,6 +34,13 @@ type Forwarder struct {
 	Dialer        Dialer        // nil dials with the host's resolver and network
 	DialTimeout   time.Duration // 0 means DefaultDialTimeout
 	HeaderTimeout time.Duration // 0 means DefaultHeaderTimeout
+	// Allow limits what the Edge may name; nil allows every Service.
+	Allow *allow.List
+	// Lookup resolves a Service's host for a CIDR in Allow; nil uses the
+	// host's resolver.
+	Lookup allow.Lookup
+	// Log receives the allowlist's refusals at info; nil logs nothing.
+	Log *slog.Logger
 
 	mu    sync.Mutex
 	conns map[net.Conn]struct{}
@@ -101,7 +111,19 @@ func (f *Forwarder) Handle(c net.Conn) {
 	if dial == nil {
 		dial = (&net.Dialer{}).DialContext
 	}
-	svc, err := dial(ctx, "tcp", h.Service)
+	target, err := f.Allow.Check(ctx, h.Service, f.lookup)
+	if errors.Is(err, allow.ErrRefused) {
+		cancel()
+		if f.Log != nil {
+			f.Log.Info("allowlist refused a Service", "id", h.RequestID, "service", h.Service, "hostname", h.Hostname)
+		}
+		wire.WriteReply(c, wire.Reply{Status: wire.StatusDialError, Reason: wire.ReasonAllowlist})
+		return
+	}
+	var svc net.Conn
+	if err == nil {
+		svc, err = dial(ctx, "tcp", target)
+	}
 	cancel()
 	if err != nil {
 		wire.WriteReply(c, wire.Reply{Status: wire.StatusDialError, Reason: Classify(err)})
@@ -113,6 +135,13 @@ func (f *Forwarder) Handle(c net.Conn) {
 		return
 	}
 	pipe(c, svc)
+}
+
+func (f *Forwarder) lookup(ctx context.Context, host string) ([]netip.Addr, error) {
+	if f.Lookup != nil {
+		return f.Lookup(ctx, host)
+	}
+	return net.DefaultResolver.LookupNetIP(ctx, "ip", host)
 }
 
 func isRefusal(err error) bool {

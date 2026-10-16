@@ -46,10 +46,11 @@ func routeEdit(args []string) error {
 	if flagGiven(c.fs, "insecure-skip-verify") {
 		req.InsecureSkipVerify = insecure
 	}
-	r, err := api.Call[api.RouteInfo](context.Background(), cl, http.MethodPost, api.PathRouteEdit, req)
+	r, err := api.Call[api.RouteEditReply](context.Background(), cl, http.MethodPost, api.PathRouteEdit, req)
 	if err != nil {
 		return err
 	}
 	fmt.Fprintf(stdout, "edited Route %s: %s through Outpost %s\n", r.Hostname, r.Service, r.Outpost)
+	printWarnings(r.Warnings)
 	return nil
 }

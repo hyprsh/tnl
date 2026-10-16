@@ -19,6 +19,7 @@ import (
 
 	"github.com/hyprsh/tnl/internal/api"
 	"github.com/hyprsh/tnl/internal/edge/liveness"
+	"github.com/hyprsh/tnl/internal/edge/routes"
 	"github.com/hyprsh/tnl/internal/keys"
 	"github.com/hyprsh/tnl/internal/state"
 )
@@ -67,6 +68,10 @@ type Config struct {
 	// CertWait bounds how long `route add` waits for a certificate; zero is
 	// DefaultCertWait.
 	CertWait time.Duration
+
+	// TestDialer test-dials a Route's Service after `route add` and `route
+	// edit`. Nil (no web side) skips the test dial.
+	TestDialer routes.TestDialer
 }
 
 // DefaultCertWait is the spec's "about 60 s" wait for a certificate.
