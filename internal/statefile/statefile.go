@@ -17,15 +17,26 @@ import (
 // crash.
 var ErrDirSync = errors.New("could not sync the directory")
 
+// tempFile is what Write needs of the temp file; tests swap createTemp to fail it.
+type tempFile interface {
+	Write([]byte) (int, error)
+	Sync() error
+	Close() error
+}
+
+var createTemp = func(name string) (tempFile, error) {
+	return os.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+}
+
 // Write replaces path with data (mode 0600): temp file, fsync, rename, fsync the
 // directory. A crash leaves the old file or the new one, never part of one.
 func Write(path string, data []byte) error {
 	tmp := path + ".tmp"
-	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+	f, err := createTemp(tmp)
 	if err != nil {
 		return err
 	}
-	if _, err := f.Write(data); err == nil {
+	if _, err = f.Write(data); err == nil {
 		err = f.Sync()
 	}
 	if cerr := f.Close(); err == nil {
