@@ -8,15 +8,27 @@ import (
 	"github.com/hyprsh/tnl/internal/edge/caddyx"
 )
 
+// renewValidity is how long the renewal tests' certificates last. Pebble
+// issues them for one second less, and certmagic renews at a third of that
+// left, so about 4.7 s after issuance. The Pebble gives no renewal info: with
+// it certmagic picks a moment of the whole life, and a certificate of seconds
+// sometimes expires without being renewed.
+const renewValidity = 8 * time.Second
+
+// startRenewing starts a Caddy that checks for renewals five times a second,
+// against a Pebble whose certificates last renewValidity.
+func startRenewing(t *testing.T, h *Harness) (*Pebble, *CaddyEdge) {
+	t.Helper()
+	pb := StartPebble(t, PebbleOptions{Validity: renewValidity, NoRenewalInfo: true})
+	return pb, h.Edge.StartCaddy(t, CaddyOptions{Pebble: pb, RenewCheckInterval: 200 * time.Millisecond})
+}
+
 // Caddy suite: a Route Hostname handed to the certificate manager is renewed in
 // the background, with no handshake asking for it, and the manager hears
 // cert_obtained for the first certificate and again for the renewal.
 func TestCaddySuiteRouteHostnameRenewsInTheBackground(t *testing.T) {
 	h := New(t)
-	// A certificate that lives 30 s is renewed when a third of it is left, and
-	// Caddy looks for renewals every second.
-	pb := StartPebble(t, PebbleOptions{Validity: 30 * time.Second})
-	ce := h.Edge.StartCaddy(t, CaddyOptions{Pebble: pb, RenewCheckInterval: time.Second})
+	pb, ce := startRenewing(t, h)
 
 	if err := ce.Certs().Manage("app.test"); err != nil {
 		t.Fatal(err)
@@ -26,7 +38,7 @@ func TestCaddySuiteRouteHostnameRenewsInTheBackground(t *testing.T) {
 		return st.Obtained >= 1
 	})
 	first, _ := ce.Certs().Status("app.test")
-	waitFor(t, "the background renewal", 50*time.Second, func() bool {
+	waitFor(t, "the background renewal", 30*time.Second, func() bool {
 		st, _ := ce.Certs().Status("app.test")
 		return st.Obtained >= 2
 	})
@@ -76,18 +88,20 @@ func TestCaddySuiteBothCertificateEventsReachTheManager(t *testing.T) {
 // serving the certificate it holds.
 func TestCaddySuiteStopEndsRenewalWithoutAReload(t *testing.T) {
 	h := New(t)
-	pb := StartPebble(t, PebbleOptions{Validity: 30 * time.Second})
-	ce := h.Edge.StartCaddy(t, CaddyOptions{Pebble: pb, RenewCheckInterval: time.Second})
+	_, ce := startRenewing(t, h)
 
 	if err := ce.Certs().Manage("gone.test", "kept.test"); err != nil {
 		t.Fatal(err)
 	}
-	waitFor(t, "both certificates", 30*time.Second, func() bool {
-		a, _ := ce.Certs().Status("gone.test")
-		b, _ := ce.Certs().Status("kept.test")
-		return a.Obtained >= 1 && b.Obtained >= 1
+	// The stopped Hostname goes as soon as its certificate is in; the kept one
+	// may still be being issued.
+	waitFor(t, "the stopped Hostname's certificate", 30*time.Second, func() bool {
+		st, _ := ce.Certs().Status("gone.test")
+		return st.Obtained >= 1
 	})
 	loads := caddyx.Loads()
+	gone, _ := ce.Certs().Status("gone.test")
+	goneExpires := gone.NotAfter
 	if err := ce.Certs().Stop("gone.test"); err != nil {
 		t.Fatal(err)
 	}
@@ -95,12 +109,13 @@ func TestCaddySuiteStopEndsRenewalWithoutAReload(t *testing.T) {
 	if _, ok := ce.Certs().Status("gone.test"); ok {
 		t.Error("the stopped Hostname still has a status")
 	}
-	waitFor(t, "the kept Hostname's renewal", 50*time.Second, func() bool {
+	waitFor(t, "the kept Hostname's renewal", 30*time.Second, func() bool {
 		st, _ := ce.Certs().Status("kept.test")
 		return st.Obtained >= 2
 	})
-	// The whole life of the stopped certificate has passed by now.
-	time.Sleep(12 * time.Second)
+	// Wait out the whole life of the stopped certificate, which Caddy would have
+	// renewed before it ended.
+	time.Sleep(time.Until(goneExpires) + 500*time.Millisecond)
 	if st, ok := ce.Certs().Status("gone.test"); ok {
 		t.Errorf("the stopped Hostname was renewed: %+v", st)
 	}

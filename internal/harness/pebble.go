@@ -2,6 +2,7 @@ package harness
 
 import (
 	"crypto/x509"
+	"encoding/json"
 	"encoding/pem"
 	"io"
 	"log"
@@ -31,6 +32,11 @@ type PebbleOptions struct {
 	// Validity is how long its certificates last; zero is Pebble's 90 days. The
 	// renewal tests use seconds.
 	Validity time.Duration
+	// NoRenewalInfo leaves ACME Renewal Information out of the directory. With
+	// it, certmagic renews at a third of a certificate's life left; without, at
+	// a moment Pebble's renewal info lets it pick from the whole life, which for
+	// a certificate of seconds is anywhere, and sometimes after it has expired.
+	NoRenewalInfo bool
 }
 
 // Pebble is an in-process ACME CA (Let's Encrypt's test server).
@@ -91,6 +97,26 @@ func StartPebble(t testing.TB, opts PebbleOptions) *Pebble {
 				io.WriteString(rw, `{"type":"urn:ietf:params:acme:error:serverInternal","detail":"the test CA is refusing orders"}`)
 				return
 			}
+		}
+		if opts.NoRenewalInfo && r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/dir") {
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, r)
+			var dir map[string]any
+			if err := json.Unmarshal(rec.Body.Bytes(), &dir); err == nil {
+				delete(dir, "renewalInfo")
+				if body, err := json.Marshal(dir); err == nil {
+					rw.Header().Set("Content-Type", "application/json")
+					rw.WriteHeader(rec.Code)
+					rw.Write(body)
+					return
+				}
+			}
+			for k, v := range rec.Header() {
+				rw.Header()[k] = v
+			}
+			rw.WriteHeader(rec.Code)
+			rw.Write(rec.Body.Bytes())
+			return
 		}
 		handler.ServeHTTP(rw, r)
 	}))
