@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/hyprsh/tnl/internal/edge/conntrack"
+	"github.com/hyprsh/tnl/internal/edge/liveness"
 	"github.com/hyprsh/tnl/internal/edge/routes"
 	"github.com/hyprsh/tnl/internal/wire"
 )
@@ -37,6 +39,11 @@ type Runtime struct {
 	// ServiceRoots are the roots an https:// Service's certificate is verified
 	// against. Nil means the system's. The harness sets it; no flag does.
 	ServiceRoots *x509.CertPool
+	// Liveness says whether an Outpost is online. Nil treats every Outpost as
+	// online.
+	Liveness interface {
+		State(outpost string) liveness.State
+	}
 
 	pool pool
 }
@@ -70,6 +77,12 @@ func lookupRuntime(id string) (*Runtime, error) {
 	}
 	return rt, nil
 }
+
+// tunnelWait is how long the transport waits for the Tunnel to an online
+// Outpost (spec section 6, step 3). A variable so tests can shrink it.
+var tunnelWait = 10 * time.Second
+
+var errTunnelWait = errors.New("tnl: the Tunnel to the Outpost did not come up in time")
 
 // poolIdleTimeout is how long an idle connection to a Service is kept.
 const poolIdleTimeout = 90 * time.Second
@@ -156,8 +169,16 @@ func (e *ReplyError) Error() string {
 // dialOutpostOnce opens a Tunnel connection to the Outpost's data port, sends the tnl
 // header and reads the reply. On ok the connection is ready for request bytes.
 func (rt *Runtime) dialOutpostOnce(ctx context.Context, addr netip.AddrPort, outpost string, h wire.Header) (net.Conn, error) {
-	c, err := rt.Dialer(ctx, addr)
+	// An online Outpost whose Tunnel isn't up (WireGuard has no session, so the
+	// connect hangs) is waited for up to tunnelWait, then answered with 503.
+	dctx, cancel := context.WithTimeout(ctx, tunnelWait)
+	c, err := rt.Dialer(dctx, addr)
+	waited := dctx.Err() == context.DeadlineExceeded && ctx.Err() == nil
+	cancel()
 	if err != nil {
+		if waited {
+			return nil, errTunnelWait
+		}
 		return nil, err
 	}
 	// Tracked from the dial on, so a close reaches connections still in the

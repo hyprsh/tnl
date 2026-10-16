@@ -47,6 +47,12 @@ func start(t *testing.T, version string, actor api.Actor) *fixture {
 // startWith is start with an injected resolver for the DNS checks.
 func startWith(t *testing.T, version string, actor api.Actor, res server.Resolver) *fixture {
 	t.Helper()
+	return startConfigured(t, version, actor, func(c *server.Config) { c.Resolver = res })
+}
+
+// startConfigured is start with a hook to set Config fields.
+func startConfigured(t *testing.T, version string, actor api.Actor, set func(*server.Config)) *fixture {
+	t.Helper()
 	// Unix socket paths are short on macOS, so keep the directory name short.
 	dir, err := os.MkdirTemp("", "tnl")
 	if err != nil {
@@ -59,7 +65,9 @@ func startWith(t *testing.T, version string, actor api.Actor, res server.Resolve
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv := server.New(server.Config{Store: store, Log: lg, Version: version, Build: "full", Revision: "abc123", Role: "edge", Address: "tnl.example.com", WireGuardPort: 51820, Resolver: res, StateDir: dir})
+	cfg := server.Config{Store: store, Log: lg, Version: version, Build: "full", Revision: "abc123", Role: "edge", Address: "tnl.example.com", WireGuardPort: 51820, StateDir: dir}
+	set(&cfg)
+	srv := server.New(cfg)
 	ln, err := server.ListenSocket(dir)
 	if err != nil {
 		t.Fatal(err)

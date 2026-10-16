@@ -1,6 +1,7 @@
 package harness
 
 import (
+	"cmp"
 	"context"
 	"crypto/x509"
 	"fmt"
@@ -16,6 +17,7 @@ import (
 	"github.com/hyprsh/tnl/internal/api"
 	"github.com/hyprsh/tnl/internal/api/server"
 	"github.com/hyprsh/tnl/internal/edge"
+	"github.com/hyprsh/tnl/internal/edge/liveness"
 	"github.com/hyprsh/tnl/internal/edge/routes"
 	"github.com/hyprsh/tnl/internal/logx"
 	"github.com/hyprsh/tnl/internal/outpost"
@@ -31,8 +33,11 @@ type RealEdge struct {
 	StateDir string      // short enough for tnl.sock
 	API      *api.Client // talks to tnl.sock
 	Store    *state.Store
+	// Liveness is the Edge's own: what it knows of each Outpost's reachability.
+	Liveness *liveness.Liveness
 
-	stop func()
+	stop         func()
+	pingInterval time.Duration
 }
 
 // harnessVersion is the version the real Edge, the Outposts and the API client
@@ -59,6 +64,13 @@ type EdgeOptions struct {
 	// WireGuardPort fixes the UDP port, as a restored Edge keeps the one its
 	// Outposts' credentials name. Zero picks a free one.
 	WireGuardPort int
+	// LogInfo lets LogOut receive info lines too.
+	LogInfo bool
+	// OfflineAfter, LivenessPoll and PingInterval shrink the spec's 60 s, the
+	// Edge's check interval and the 10 s ping, for this Edge and for the
+	// Outposts that Connect to it. Zero keeps the spec's values, except that
+	// the Edge checks every 20 ms and Outposts ping every 100 ms by default.
+	OfflineAfter, LivenessPoll, PingInterval time.Duration
 }
 
 // atEdge answers every name with the Edge's address.
@@ -95,8 +107,14 @@ func StartEdgeWith(t testing.TB, opts EdgeOptions) *RealEdge {
 	if cfg.Resolver == nil {
 		cfg.Resolver = atEdge{}
 	}
+	cfg.LivenessPoll = cmp.Or(opts.LivenessPoll, 20*time.Millisecond)
+	cfg.OfflineAfter = opts.OfflineAfter // zero is the spec's 60 s
 	if opts.LogOut != nil {
-		cfg.Log = logx.New(logx.Options{Level: slog.LevelWarn, Out: io.MultiWriter(testWriter{t}, opts.LogOut)})
+		level := slog.LevelWarn
+		if opts.LogInfo {
+			level = slog.LevelInfo
+		}
+		cfg.Log = logx.New(logx.Options{Level: level, Out: io.MultiWriter(testWriter{t}, opts.LogOut)})
 	}
 	var ce *CaddyEdge
 	if p := opts.Pebble; p != nil {
@@ -146,7 +164,10 @@ func StartEdgeWith(t testing.TB, opts EdgeOptions) *RealEdge {
 		StateDir: dir,
 		API:      &api.Client{StateDir: dir, Version: harnessVersion},
 		Store:    r.Store,
+		Liveness: r.Liveness,
 		stop:     stop,
+
+		pingInterval: cmp.Or(opts.PingInterval, 100*time.Millisecond),
 	}
 }
 
@@ -164,7 +185,7 @@ func (e *RealEdge) AddZone(t testing.TB, name string) {
 // AddRoute calls `route add` on the running Edge.
 func (e *RealEdge) AddRoute(t testing.TB, hostname, serviceURL, outpost string) {
 	t.Helper()
-	_, err := api.Call[api.RouteInfo](context.Background(), e.API, http.MethodPost, api.PathRoutes,
+	_, err := api.Call[api.RouteAddReply](context.Background(), e.API, http.MethodPost, api.PathRoutes,
 		api.RouteAddRequest{Hostname: hostname, Service: serviceURL, Outpost: outpost})
 	if err != nil {
 		t.Fatal(err)
@@ -242,9 +263,10 @@ func (e *RealEdge) TryConnectWith(t testing.TB, name, tok, stateDir string, opts
 	go func() {
 		done <- outpost.Run(ctx, outpost.Config{
 			Token: tok, StateDir: stateDir, Version: harnessVersion, Build: "outpost", Revision: "test",
-			Log:         logx.New(logx.Options{Level: slog.LevelInfo, Out: out}),
-			JoinTimeout: opts.JoinTimeout,
-			Started:     func(r *outpost.Running) { up <- r },
+			Log:          logx.New(logx.Options{Level: slog.LevelInfo, Out: out}),
+			JoinTimeout:  opts.JoinTimeout,
+			Started:      func(r *outpost.Running) { up <- r },
+			PingInterval: e.pingInterval,
 		})
 	}()
 	stop := func() error { cancel(); return <-done }
