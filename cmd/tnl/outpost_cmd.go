@@ -80,6 +80,7 @@ func outpostRm(args []string) error {
 	if len(r.Routes) > 0 {
 		fmt.Fprintf(stdout, "removed its Routes: %s\n", strings.Join(r.Routes, ", "))
 	}
+	printHandovers(r.Handovers)
 	printWarnings(r.Warnings)
 	return nil
 }

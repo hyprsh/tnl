@@ -16,5 +16,8 @@ type ZoneRmReply struct {
 	Name    string   `json:"name"`
 	Removed []string `json:"removed"`
 	Moved   []string `json:"moved"`
+	// Waiting names the declared Routes among Removed, which wait again.
+	Waiting []string `json:"waiting,omitempty"`
+	Handovers
 	Warnings
 }

@@ -29,6 +29,7 @@ func routeRm(args []string) error {
 		return err
 	}
 	fmt.Fprintf(stdout, "removed Route %s (was %s through Outpost %s)\n", r.Hostname, r.Service, r.Outpost)
+	printHandovers(r.Handovers)
 	printWarnings(r.Warnings)
 	return nil
 }

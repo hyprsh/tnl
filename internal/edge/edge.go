@@ -21,6 +21,7 @@ import (
 	"github.com/hyprsh/tnl/internal/edge/liveness"
 	"github.com/hyprsh/tnl/internal/keys"
 	"github.com/hyprsh/tnl/internal/logx"
+	"github.com/hyprsh/tnl/internal/remind"
 	"github.com/hyprsh/tnl/internal/state"
 	"github.com/hyprsh/tnl/internal/tunnel"
 )
@@ -53,6 +54,10 @@ type Config struct {
 	// DNS-01 challenges ask; none means the system's. The harness points them
 	// at its own server.
 	DNSResolvers []string
+	// Reminders and Clock drive the reminders for waiting lines; the zero
+	// Schedule is remind.Standard and a nil Clock is the wall clock.
+	Reminders remind.Schedule
+	Clock     remind.Clock
 }
 
 // Running is what a started Edge exposes.
@@ -103,6 +108,18 @@ func Run(ctx context.Context, cfg Config) error {
 	if err := checkProviders(store.Snapshot()); err != nil {
 		return refuse(err)
 	}
+	sched := cfg.Reminders
+	if sched.Every == 0 && len(sched.After) == 0 {
+		sched = remind.Standard
+	}
+	waits := newWaitingWatch(cfg.Log, sched, cfg.Clock)
+	waits.sync(store.Snapshot())
+	store.OnChange(waits.sync)
+	tickEvery := time.Second
+	if sched.Every > 0 && sched.Every < 4*time.Second {
+		tickEvery = sched.Every / 4
+	}
+	go waits.run(ctx, store, tickEvery)
 	conns := conntrack.New()
 	certs := new(certsRef)
 	wild := &wildcards{resolvers: cfg.DNSResolvers, certs: certs}

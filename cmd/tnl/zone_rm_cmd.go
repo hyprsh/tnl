@@ -39,6 +39,10 @@ func zoneRm(args []string) error {
 	if len(r.Removed) > 0 {
 		fmt.Fprintf(stdout, "removed its Routes: %s\n", strings.Join(r.Removed, ", "))
 	}
+	if len(r.Waiting) > 0 {
+		fmt.Fprintf(stdout, "declared Routes waiting again: %s\n", strings.Join(r.Waiting, ", "))
+	}
+	printHandovers(r.Handovers)
 	printWarnings(r.Warnings)
 	return nil
 }
