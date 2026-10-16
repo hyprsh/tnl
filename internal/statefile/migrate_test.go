@@ -58,6 +58,31 @@ func TestMigrateUpgradesAnOlderSchemaAndKeepsTheOldFile(t *testing.T) {
 	}
 }
 
+func TestASchemaItDoesNotKnowIsRefusedNamingBothVersionsAndTheSideToUpgrade(t *testing.T) {
+	var v struct {
+		Version int `json:"version"`
+	}
+	newer := Decode([]byte(`{"version": 3}`), "state.json", 2, &v)
+	older := Decode([]byte(`{"version": 1}`), "state.json", 2, &v)
+	path := filepath.Join(t.TempDir(), "state.json")
+	writeJSON(t, path, `{"version": 3}`)
+	_, migrateNewer := Migrate(path, "state.json", 2, addName)
+	for what, c := range map[string]struct {
+		err  error
+		want []string
+	}{
+		"decode newer":  {newer, []string{"schema version 3", "version 2", "upgrade this tnl"}},
+		"decode older":  {older, []string{"schema version 1", "version 2", "tnl that wrote it"}},
+		"migrate newer": {migrateNewer, []string{"schema version 3", "version 2", "upgrade this tnl"}},
+	} {
+		for _, w := range c.want {
+			if c.err == nil || !strings.Contains(c.err.Error(), w) {
+				t.Errorf("%s: %v lacks %q", what, c.err, w)
+			}
+		}
+	}
+}
+
 func TestMigrateRefusesASchemaItDoesNotKnow(t *testing.T) {
 	for name, content := range map[string]string{
 		"newer":        `{"version": 3}`,
