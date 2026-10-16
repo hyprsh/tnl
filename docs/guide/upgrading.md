@@ -27,7 +27,7 @@ Pin an exact `X.Y.Z` wherever you want to choose the moment of an upgrade.
 
 - **Before 1.0,** two versions work together only when they share the minor: `0.3.1` works with `0.3.4`, never with `0.4.0`. Upgrading to a new 0.x minor therefore means upgrading the Edge and every Outpost to it.
 - **From 1.0,** an Edge accepts Outposts of its own major, whichever side is newer, and of the previous major. A 2.x Edge takes 2.x and 1.x Outposts, not 0.x.
-- **An Outpost refuses only an Edge of an older major.** It cannot know whether a newer major still accepts it, so it leaves that to the Edge.
+- **An Outpost refuses only an Edge of an older major.** In a join token it refuses to join; once running it logs an error naming both versions and keeps running until the Edge is upgraded. It cannot know whether a newer major still accepts it, so it leaves that to the Edge.
 - **On one host,** the `tnl` you type and the process it talks to must be the exact same version. Restart the process after upgrading it.
 - **Builds with no release version** (`dev`) are never judged.
 
