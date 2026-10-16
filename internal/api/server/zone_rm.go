@@ -21,6 +21,9 @@ func (s *Server) zoneRm(ctx context.Context, actor api.Actor, req api.ZoneRmRequ
 	if err := localOnly(actor, "remove Zones", "zone rm"); err != nil {
 		return api.ZoneRmReply{}, err
 	}
+	if err := s.zonesDeclared(); err != nil {
+		return api.ZoneRmReply{}, err
+	}
 	name, err := zoneName(req.Name)
 	if err != nil {
 		return api.ZoneRmReply{}, err

@@ -22,6 +22,9 @@ func (s *Server) outpostAdd(_ context.Context, actor api.Actor, req api.OutpostA
 	if err := localOnly(actor, "add Outposts", "outpost add"); err != nil {
 		return api.OutpostAddReply{}, err
 	}
+	if err := s.outpostsDeclared(); err != nil {
+		return api.OutpostAddReply{}, err
+	}
 	if err := validOutpostName(req.Name); err != nil {
 		return api.OutpostAddReply{}, err
 	}
@@ -70,6 +73,9 @@ func (s *Server) outpostRm(_ context.Context, actor api.Actor, req api.OutpostRm
 	if err := localOnly(actor, "remove Outposts", "outpost rm"); err != nil {
 		return api.OutpostRmReply{}, err
 	}
+	if err := s.outpostsDeclared(); err != nil {
+		return api.OutpostRmReply{}, err
+	}
 	var gone state.Outpost
 	var hosts []string
 	handed, err := s.cfg.Store.UpdateReport(actor, func(st *state.State) error {
@@ -107,6 +113,9 @@ func (s *Server) outpostRm(_ context.Context, actor api.Actor, req api.OutpostRm
 // the old key's Tunnel stops, and the name, address and Routes stay.
 func (s *Server) outpostRekey(_ context.Context, actor api.Actor, req api.OutpostRekeyRequest) (api.OutpostAddReply, error) {
 	if err := localOnly(actor, "rekey Outposts", "outpost rekey"); err != nil {
+		return api.OutpostAddReply{}, err
+	}
+	if err := s.outpostsDeclared(); err != nil {
 		return api.OutpostAddReply{}, err
 	}
 	ttl, err := tokenTTL(req.TTL)

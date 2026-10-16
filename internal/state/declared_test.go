@@ -49,12 +49,12 @@ func TestANewZoneLineAddsAMarkedZoneAndAWildcardIsToBeChecked(t *testing.T) {
 	if len(st.Zones) != 2 || !st.Zones[0].Declared || !st.Zones[1].Declared || st.Zones[1].Mode != Wildcard {
 		t.Fatalf("zones %+v", st.Zones)
 	}
-	if len(res.Wildcards) != 1 || res.Wildcards[0].Name != "wild.org" {
-		t.Fatalf("wildcards to check: %+v", res.Wildcards)
+	if len(res.Checks) != 2 {
+		t.Fatalf("zones to check: %+v", res.Checks)
 	}
 	// Unchanged on a second pass: nothing to log, nothing to check.
 	res, err = apply(t, s, []DeclaredZone{{Name: "example.com"}, {Name: "wild.org", Provider: "p", Token: "tok"}}, nil)
-	if err != nil || len(res.Events) != 0 || len(res.Wildcards) != 0 {
+	if err != nil || len(res.Events) != 0 || len(res.Checks) != 0 {
 		t.Fatalf("second pass: %+v, %v", res, err)
 	}
 }
@@ -63,14 +63,14 @@ func TestAChangedTokenOrModeIsAZoneEdit(t *testing.T) {
 	s, _ := open(t, filepath.Join(t.TempDir(), "tnl"))
 	apply(t, s, []DeclaredZone{{Name: "example.com", Provider: "p", Token: "one"}}, nil)
 	res, err := apply(t, s, []DeclaredZone{{Name: "example.com", Provider: "p", Token: "two"}}, nil)
-	if err != nil || len(res.Wildcards) != 1 || !hasEvent(res, slog.LevelInfo, "zone edited") {
+	if err != nil || len(res.Checks) != 1 || !hasEvent(res, slog.LevelInfo, "zone edited") {
 		t.Fatalf("%+v, %v", res, err)
 	}
 	if got := s.Snapshot().Zones[0].Token; got != "two" {
 		t.Fatalf("token %q", got)
 	}
 	res, err = apply(t, s, []DeclaredZone{{Name: "example.com"}}, nil)
-	if err != nil || len(res.Wildcards) != 0 || s.Snapshot().Zones[0].Mode != PerHostname || s.Snapshot().Zones[0].Token != "" {
+	if err != nil || len(res.Checks) != 1 || s.Snapshot().Zones[0].Mode != PerHostname || s.Snapshot().Zones[0].Token != "" {
 		t.Fatalf("%+v, %v, %+v", res, err, s.Snapshot().Zones)
 	}
 }
