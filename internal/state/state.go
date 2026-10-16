@@ -321,8 +321,8 @@ type diskState struct {
 	Outposts   []diskOutpost `json:"outposts"`
 	Routes     []diskRoute   `json:"routes"`
 	Zones      []diskZone    `json:"zones"`
-	// Declarations is absent from a file written before Declarations existed,
-	// which reads as no Outpost declaring.
+	// Declarations is absent while no Outpost declares. (A file from before
+	// Declarations existed is schema 1, which this tnl refuses.)
 	Declarations []diskDeclaration `json:"declarations,omitempty"`
 }
 
