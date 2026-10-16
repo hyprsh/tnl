@@ -27,8 +27,10 @@ type Config struct {
 	Store   *state.Store
 	Log     *slog.Logger
 	Version string
-	Build   string
-	Role    api.Role
+	Build   string // "full" or "outpost"
+	// Revision is the VCS revision.
+	Revision string
+	Role     api.Role
 
 	// Address and WireGuardPort go into join tokens: what Outposts dial.
 	Address       string
@@ -217,5 +219,5 @@ func (s *Server) reply(w http.ResponseWriter, resp any, err error) {
 }
 
 func (s *Server) info(_ context.Context, _ api.Actor, _ struct{}) (api.Info, error) {
-	return api.Info{Role: s.cfg.Role, Version: s.cfg.Version, Build: s.cfg.Build}, nil
+	return api.Info{Role: s.cfg.Role, Version: s.cfg.Version, Build: s.cfg.Build, Revision: s.cfg.Revision}, nil
 }

@@ -3,18 +3,33 @@
 package main
 
 import (
-	"errors"
 	"fmt"
+	"strings"
 )
 
+const buildName = "outpost"
+
 // An Outpost-only build has no Edge, links no Caddy, and manages no Outposts,
-// Zones or Routes: those commands say so and point at the full build.
+// Zones or Routes: every Edge command says so and points at the full build.
+// A ticket that adds an Edge-only command adds one line here.
+var edgeOnlyCommands = []string{
+	"edge",
+	"outpost",
+	"route add",
+	"route rm",
+	"zone add",
+}
+
 func init() {
-	commands["edge"] = func([]string) error { return errors.New("this build is Outpost-only; it has no Edge") }
-	commands["outpost"] = needsFullBuild("outpost")
-	routeGroup.subs["add"] = needsFullBuild("route add")
-	routeGroup.subs["rm"] = needsFullBuild("route rm")
-	zoneGroup.subs["add"] = needsFullBuild("zone add")
+	refusedGroups := map[string]*group{"route": routeGroup, "zone": zoneGroup}
+	for _, name := range edgeOnlyCommands {
+		refuse := needsFullBuild(name)
+		if grp, sub, ok := strings.Cut(name, " "); ok {
+			refusedGroups[grp].subs[sub] = refuse
+		} else {
+			commands[name] = refuse
+		}
+	}
 }
 
 func needsFullBuild(command string) func([]string) error {

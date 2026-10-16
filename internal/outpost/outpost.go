@@ -30,7 +30,7 @@ type Config struct {
 	Token    string // empty to reconnect from the state
 	StateDir string
 	Version  string
-	Build    string
+	Build    string // "full" or "outpost"
 	Log      *slog.Logger
 
 	// Resolve turns the Edge's address into an IP, because wireguard-go takes
@@ -38,6 +38,8 @@ type Config struct {
 	Resolve func(ctx context.Context, host string) (netip.Addr, error)
 	// Started, if set, is called once the Tunnel is up and the forwarder listens.
 	Started func(*Running)
+	// Revision is the VCS revision, logged beside the build.
+	Revision string
 }
 
 // Running is what a started Outpost exposes.
@@ -124,6 +126,7 @@ func Run(ctx context.Context, cfg Config) error {
 	cfg.Log.Info("outpost started",
 		"version", cfg.Version,
 		"build", cfg.Build,
+		"revision", cfg.Revision,
 		"tunnel_address", st.Address.String(),
 		"edge_address", st.EdgeAddress,
 		"edge_ip", edgeIP.String(),

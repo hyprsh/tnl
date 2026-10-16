@@ -82,7 +82,7 @@ func StartEdgeWith(t testing.TB, opts EdgeOptions) *RealEdge {
 	}
 
 	cfg := edge.Config{
-		Address: "127.0.0.1", StateDir: dir, Version: harnessVersion, Build: "test",
+		Address: "127.0.0.1", StateDir: dir, Version: harnessVersion, Build: "full", Revision: "test",
 		Log:      logx.New(logx.Options{Level: slog.LevelWarn, Out: testWriter{t}}),
 		Resolver: opts.Resolver,
 	}
@@ -201,7 +201,7 @@ func (e *RealEdge) Connect(t testing.TB, name, tok, stateDir string) *JoinedOutp
 	done := make(chan error, 1)
 	go func() {
 		done <- outpost.Run(ctx, outpost.Config{
-			Token: tok, StateDir: stateDir, Version: harnessVersion, Build: "test",
+			Token: tok, StateDir: stateDir, Version: harnessVersion, Build: "outpost", Revision: "test",
 			Log:     logx.New(logx.Options{Level: slog.LevelWarn, Out: testWriter{t}}),
 			Started: func(r *outpost.Running) { up <- r },
 		})

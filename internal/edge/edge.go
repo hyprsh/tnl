@@ -25,7 +25,7 @@ type Config struct {
 	Address  string // --address: the DNS name Outposts dial
 	StateDir string
 	Version  string
-	Build    string
+	Build    string // "full" or "outpost"
 	Log      *slog.Logger
 
 	// WireGuardPort is the UDP port WireGuard listens on; 0 picks a free one.
@@ -37,6 +37,8 @@ type Config struct {
 	Started func(*Running)
 	// Resolver does the DNS checks that warn; nil uses the system's.
 	Resolver server.Resolver
+	// Revision is the VCS revision, logged and reported beside the build.
+	Revision string
 }
 
 // Running is what a started Edge exposes.
@@ -83,7 +85,7 @@ func Run(ctx context.Context, cfg Config) error {
 	conns := conntrack.New()
 	srv := server.New(server.Config{
 		Conns: conns,
-		Store: store, Log: cfg.Log, Version: cfg.Version, Build: cfg.Build, Role: api.RoleEdge,
+		Store: store, Log: cfg.Log, Version: cfg.Version, Build: cfg.Build, Revision: cfg.Revision, Role: api.RoleEdge,
 		Address: cfg.Address, WireGuardPort: wgPort, Resolver: cfg.Resolver,
 	})
 	served := make(chan error, 1)
@@ -105,6 +107,7 @@ func Run(ctx context.Context, cfg Config) error {
 	cfg.Log.Info("edge started",
 		"version", cfg.Version,
 		"build", cfg.Build,
+		"revision", cfg.Revision,
 		"address", cfg.Address,
 		"key_fingerprint", st.PrivateKey.Public().Fingerprint(),
 		"wireguard_port", wgPort,
