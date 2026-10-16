@@ -189,7 +189,7 @@ func Run(ctx context.Context, cfg Config) error {
 	var checked sync.WaitGroup
 	if len(checks) > 0 {
 		checked.Add(1)
-		go func() { defer checked.Done(); srv.CheckDeclaredZones(ctx, checks) }()
+		go func() { defer checked.Done(); srv.CheckDeclaredZones(ctx, checks, sched, cfg.Clock) }()
 	}
 	defer checked.Wait()
 

@@ -16,6 +16,7 @@ import (
 	"github.com/hyprsh/tnl/internal/credential"
 	"github.com/hyprsh/tnl/internal/edge"
 	"github.com/hyprsh/tnl/internal/keys"
+	"github.com/hyprsh/tnl/internal/remind"
 	"github.com/hyprsh/tnl/internal/state"
 )
 
@@ -361,6 +362,25 @@ func TestNoLogLineCarriesATokenAKeyOrACredential(t *testing.T) {
 				t.Errorf("the %s's log carries %q", name, secret[:6]+"…")
 			}
 		}
+	}
+}
+
+// The failed check is repeated on the reminder schedule, with an error each
+// time, and stops when the token is fixed at the provider.
+func TestAFailedTokenCheckAtStartIsRepeatedOnTheReminderScheduleUntilItPasses(t *testing.T) {
+	fake := StartFakeDNS(t, "example.test", dnsToken)
+	fake.SetToken("rotated-T0KEN")
+	elog := new(lockedBuf)
+	StartEdgeWith(t, EdgeOptions{
+		Pebble: StartPebble(t, PebbleOptions{}), LogOut: elog, LogLevel: slog.LevelInfo,
+		Reminders: remind.Schedule{Every: 400 * time.Millisecond},
+		Zones:     []state.DeclaredZone{{Name: "example.test", Provider: "fake", Token: dnsToken}},
+	})
+	waitFor(t, "a reminder error", 10*time.Second, func() bool { return countLines(elog, "level=error", "token check failed", "failing_for") >= 1 })
+	fake.SetToken(dnsToken)
+	waitFor(t, "the check to pass", 10*time.Second, func() bool { return countLines(elog, "level=info", "token check passes now") == 1 })
+	if strings.Contains(elog.String(), dnsToken) || strings.Contains(elog.String(), "rotated-T0KEN") {
+		t.Errorf("the log carries a token:\n%s", elog)
 	}
 }
 
