@@ -124,6 +124,14 @@ func TestEdgeACMEFlagsAndEnvironment(t *testing.T) {
 	}
 }
 
+func TestEdgeRefusesAnUnknownVariable(t *testing.T) {
+	t.Setenv("TNL_ADRESS", "tnl.example.com")
+	_, err := parse(t, "--address", "tnl.example.com")
+	if exitCode(err) != 78 || !strings.Contains(err.Error(), "did you mean TNL_ADDRESS") {
+		t.Fatalf("err=%v code=%d", err, exitCode(err))
+	}
+}
+
 func TestConfigErrorsExit78(t *testing.T) {
 	if exitCode(configError{errors.New("x")}) != 78 || exitCode(errors.New("x")) != 1 || exitCode(nil) != 0 {
 		t.Fatal("wrong exit codes")
