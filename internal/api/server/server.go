@@ -64,6 +64,12 @@ type Config struct {
 	// Liveness says which Outposts are Offline, for the warnings. Nil knows none.
 	Liveness Liveness
 
+	// CertReader gives the certificate manager's status to `zone ls` and
+	// `route ls`; nil knows nothing, and every certificate reads as obtaining.
+	CertReader CertReader
+	// Now is the clock of the `ls` replies; nil is time.Now.
+	Now func() time.Time
+
 	// Certs obtains Route Hostnames' certificates; nil waits for none.
 	Certs Certificates
 	// CertWait bounds how long `route add` waits for a certificate; zero is
@@ -145,6 +151,7 @@ func (s *Server) routes() {
 	endpoint(s, http.MethodPost, api.PathZones, s.zoneAdd)
 	endpoint(s, http.MethodPost, api.PathZoneEdit, s.zoneEdit)
 	endpoint(s, http.MethodPost, api.PathZoneRm, s.zoneRm)
+	endpoint(s, http.MethodGet, api.PathOutposts, s.outpostList)
 	endpoint(s, http.MethodPost, api.PathOutposts, s.outpostAdd)
 	endpoint(s, http.MethodPost, api.PathOutpostRm, s.outpostRm)
 	endpoint(s, http.MethodPost, api.PathOutpostRekey, s.outpostRekey)

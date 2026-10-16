@@ -7,6 +7,8 @@ sudo tnl zone add example.com
 sudo tnl zone ls
 ```
 
+`tnl zone ls` ends with a CERTIFICATE column. A wildcard Zone shows its certificate: `valid until 2026-12-01`, `obtaining`, `renewal failing for 3d: <error>`, `failed: <error>` or `expired`. A per-Hostname Zone shows a summary such as `12 certificates, 1 failing`. Zones the Edge's settings declare are marked "(declared)". `--json` gives each certificate's expiry, state and full error, and is the stable form.
+
 ## Wildcard Zones
 
 ```

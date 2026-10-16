@@ -147,3 +147,21 @@ func TestANewEndpointIsLoggedOnceAtInfo(t *testing.T) {
 		t.Fatalf("%d info lines:\n%s", n, r.log)
 	}
 }
+
+func TestASeededOutpostIsNotHeardUntilSomethingArrives(t *testing.T) {
+	r := newRig()
+	r.Seed("home")
+	if i := r.Info("home"); i.Heard {
+		t.Fatal("a seeded Outpost counts as heard")
+	}
+	r.clock.add(5 * time.Second)
+	r.Heard("home")
+	i := r.Info("home")
+	if !i.Heard || i.Silent != 0 {
+		t.Fatalf("after hearing: %+v", i)
+	}
+	r.clock.add(4 * time.Second)
+	if i := r.Info("home"); i.Silent != 4*time.Second {
+		t.Fatalf("silent for %v, want 4s", i.Silent)
+	}
+}

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -17,15 +16,6 @@ import (
 
 func zoneInfo(z state.Zone) api.ZoneInfo {
 	return api.ZoneInfo{Name: z.Name, Mode: string(z.Mode), Provider: z.Provider} // never the token
-}
-
-func (s *Server) zoneList(_ context.Context, _ api.Actor, _ struct{}) (api.ZoneList, error) {
-	out := api.ZoneList{Zones: []api.ZoneInfo{}}
-	for _, z := range s.cfg.Store.Snapshot().Zones {
-		out.Zones = append(out.Zones, zoneInfo(z))
-	}
-	sort.Slice(out.Zones, func(i, j int) bool { return out.Zones[i].Name < out.Zones[j].Name })
-	return out, nil
 }
 
 func (s *Server) zoneAdd(ctx context.Context, actor api.Actor, req api.ZoneAddRequest) (api.ZoneAddReply, error) {

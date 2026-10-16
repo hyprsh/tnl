@@ -1,0 +1,32 @@
+{
+  "zones": [
+    {
+      "name": "example.com",
+      "mode": "wildcard",
+      "provider": "cloudflare",
+      "declared": true,
+      "certificate": {
+        "name": "*.example.com",
+        "state": "renewal failing",
+        "expires": "2026-11-15T12:00:00Z",
+        "failing_for_seconds": 259200,
+        "error": "acme: error presenting token:\nrate limited"
+      }
+    },
+    {
+      "name": "home.lan",
+      "mode": "per-hostname",
+      "certificates": [
+        {
+          "name": "a.home.lan",
+          "state": "valid",
+          "expires": "2026-12-15T12:00:00Z"
+        },
+        {
+          "name": "b.home.lan",
+          "state": "obtaining"
+        }
+      ]
+    }
+  ]
+}

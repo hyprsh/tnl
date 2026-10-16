@@ -24,7 +24,7 @@ const (
 	PathInfo  = "/v1/info"  // GET: role, version and build of the running process
 	PathZones = "/v1/zones" // GET: list; POST: add a Zone
 
-	PathOutposts = "/v1/outposts" // POST: add an Outpost and mint its join token
+	PathOutposts = "/v1/outposts" // GET: list (local only); POST: add an Outpost and mint its join token
 	PathRoutes   = "/v1/routes"   // GET: list; POST: add a Route
 )
 
@@ -153,14 +153,4 @@ type RouteInfo struct {
 	Outpost  string   `json:"outpost"`
 	Service  string   `json:"service"`
 	Options  []string `json:"options,omitempty"`
-}
-
-// RouteList answers GET PathRoutes, sorted by Hostname.
-type RouteList struct {
-	Routes []RouteInfo `json:"routes"`
-}
-
-// ZoneList answers GET PathZones, sorted by name.
-type ZoneList struct {
-	Zones []ZoneInfo `json:"zones"`
 }

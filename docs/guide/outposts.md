@@ -55,6 +55,20 @@ volumes:
 - **Services are reached by container name,** on the network the Outpost shares with them: `http://immich:2283`. `localhost` inside the container is the container, not the host.
 - **A bind mount** for the state directory needs `chown 65532`.
 
+## List the Outposts
+
+```sh
+sudo tnl outpost ls
+```
+
+One row per Outpost, sorted by name:
+
+- **STATE** is `online` (heard from in the last 60 s), `offline`, `incompatible` (its version is outside the Edge's window) or `not joined` (added, token unused). A declared Outpost is never `not joined`, and is marked "(declared)".
+- **LAST SEEN** is relative ("4s ago"). A `not joined` row shows "token expires in 42m" or "expired" instead. For up to 60 s after an Edge restart, an Outpost the Edge has not heard from yet shows `online` with "-".
+- **ENDPOINT** and **VERSION** are what the Edge last heard, "-" when unknown. **ROUTES** is a count, or "3 declared" for an Outpost that declares its Routes.
+
+`--json` prints the same as JSON, the stable form for scripts: times are RFC 3339, durations are seconds, and the fields only ever grow within a major version. The tables may change in any release.
+
 ## Remove an Outpost
 
 ```sh

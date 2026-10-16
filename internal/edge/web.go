@@ -14,6 +14,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/hyprsh/tnl/internal/api/server"
 	"github.com/hyprsh/tnl/internal/edge/caddyx"
 	"github.com/hyprsh/tnl/internal/edge/conntrack"
 	"github.com/hyprsh/tnl/internal/edge/liveness"
@@ -66,6 +67,29 @@ func (r *certsRef) Obtain(ctx context.Context, hostname string) error {
 		return m.Obtain(ctx, hostname)
 	}
 	return nil
+}
+
+// Certificate, Covered and Now are the `ls` replies' read of the manager. With
+// no manager they know nothing.
+func (r *certsRef) Certificate(name string) server.CertState {
+	m := r.manager()
+	if m == nil {
+		return server.CertState{}
+	}
+	st := m.Report(name)
+	return server.CertState{Managed: true, NotAfter: st.NotAfter, Failures: st.Failures, FirstFailure: st.FirstFailure, LastError: st.LastError}
+}
+
+func (r *certsRef) Covered(host string) bool {
+	m := r.manager()
+	return m != nil && m.Covered(host)
+}
+
+func (r *certsRef) Now() time.Time {
+	if m := r.manager(); m != nil {
+		return m.Now()
+	}
+	return time.Now()
 }
 
 func (r *certsRef) Wait(ctx context.Context, name string) error {

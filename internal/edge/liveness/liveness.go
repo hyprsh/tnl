@@ -58,7 +58,13 @@ type Config struct {
 // Info is a read of one Outpost.
 type Info struct {
 	State    State
-	LastSeen time.Time      // zero when never heard
+	LastSeen time.Time // when it was last heard; a seeded Outpost's is the Edge's start
+	// Heard is false for an Outpost that is only seeded: nothing has arrived
+	// from it since the Edge started, so LastSeen is no sign of life. The
+	// tables show "-" for it.
+	Heard bool
+	// Silent is how long ago LastSeen was, by this clock; zero unless Heard.
+	Silent   time.Duration
 	Endpoint netip.AddrPort // the public endpoint last seen; zero when unknown
 	Version  string         // from the last ping; empty before the first
 }
@@ -72,6 +78,7 @@ type Liveness struct {
 
 type entry struct {
 	lastSeen time.Time
+	heard    bool // something has arrived; false for a seeded entry
 	endpoint netip.AddrPort
 	version  string
 	warned   string // the version the Incompatible warning was logged for
@@ -117,7 +124,7 @@ func (l *Liveness) Heard(name string) {
 	if e == nil {
 		e = new(entry)
 		l.m[name] = e
-		e.lastSeen = now
+		e.lastSeen, e.heard = now, true
 		l.mu.Unlock()
 		return
 	}
@@ -125,7 +132,7 @@ func (l *Liveness) Heard(name string) {
 	was := e.lastSeen
 	back := e.offline
 	e.offline = false
-	e.lastSeen = now
+	e.lastSeen, e.heard = now, true
 	l.mu.Unlock()
 	if wentOffline {
 		l.fireOffline(name, was)
@@ -232,5 +239,9 @@ func (l *Liveness) Info(name string) Info {
 	} else if l.outside(e.version) {
 		st = Incompatible
 	}
-	return Info{State: st, LastSeen: e.lastSeen, Endpoint: e.endpoint, Version: e.version}
+	info := Info{State: st, LastSeen: e.lastSeen, Heard: e.heard, Endpoint: e.endpoint, Version: e.version}
+	if e.heard {
+		info.Silent = max(now.Sub(e.lastSeen), 0)
+	}
+	return info
 }
