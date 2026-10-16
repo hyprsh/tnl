@@ -12,7 +12,14 @@ import (
 
 // relayAnswering serves a fake Outpost relay that answers status with s, and
 // points the CLI at it. It runs in both builds.
-func relayAnswering(t *testing.T, s any) {
+func relayAnswering(t *testing.T, s api.OutpostStatus) {
+	t.Helper()
+	relayServing(t, map[string]any{api.PathStatus: s})
+}
+
+// relayServing serves a fake Outpost relay that answers GET of each path in
+// replies with its value, and points the CLI at it.
+func relayServing(t *testing.T, replies map[string]any) {
 	t.Helper()
 	dir, err := os.MkdirTemp("", "tnl")
 	if err != nil {
@@ -33,7 +40,9 @@ func relayAnswering(t *testing.T, s any) {
 	mux.HandleFunc("GET "+api.PathInfo, func(w http.ResponseWriter, r *http.Request) {
 		reply(w, api.Info{Role: api.RoleOutpost, Version: v, Build: buildName, Revision: rev})
 	})
-	mux.HandleFunc("GET "+api.PathStatus, func(w http.ResponseWriter, r *http.Request) { reply(w, s) })
+	for path, body := range replies {
+		mux.HandleFunc("GET "+path, func(w http.ResponseWriter, r *http.Request) { reply(w, body) })
+	}
 	hs := &http.Server{Handler: mux}
 	go hs.Serve(ln)
 	t.Cleanup(func() { hs.Close() })
@@ -90,20 +99,51 @@ func TestStatusOfAnOutpostJSONIsTheReplyAsItCame(t *testing.T) {
 	}
 }
 
-// A newer Outpost's status may carry fields this tnl doesn't know; the text
-// and the exit code don't need them and --json passes them on.
-func TestStatusKeepsFieldsAnOlderTnlDoesNotKnow(t *testing.T) {
-	b, _ := json.Marshal(healthyOutpost())
-	var m map[string]any
-	json.Unmarshal(b, &m)
-	m["from_the_future"] = "x"
-	m["edge"].(map[string]any)["also_new"] = 1
-	relayAnswering(t, m)
-	if out, code, err := tnl("status"); err != nil || code != 0 || !strings.Contains(out, "Outpost nas") {
-		t.Fatalf("%q %v %d", out, err, code)
+// An Outpost's CLI may be older than the Edge its relay forwards to, and the
+// Edge may have added a field to a reply. `route ls`, `zone ls` and `status`
+// still print what they know, and --json passes the field on.
+func TestAnOlderOutpostReadsAFieldANewerEdgeAdded(t *testing.T) {
+	withExtra := func(v any, extra map[string]any, inside ...string) map[string]any {
+		b, _ := json.Marshal(v)
+		var m map[string]any
+		if err := json.Unmarshal(b, &m); err != nil {
+			t.Fatal(err)
+		}
+		at := m
+		for _, k := range inside {
+			if list, ok := at[k].([]any); ok {
+				at = list[0].(map[string]any)
+			} else {
+				at = at[k].(map[string]any)
+			}
+		}
+		for k, x := range extra {
+			at[k] = x
+		}
+		return m
 	}
-	out, _, err := tnl("status", "--json")
-	if err != nil || !strings.Contains(out, `"from_the_future": "x"`) || !strings.Contains(out, `"also_new": 1`) {
-		t.Fatalf("%v\n%s", err, out)
+	route := api.RouteRow{RouteInfo: api.RouteInfo{Hostname: "app.example.com", Outpost: "nas", Service: "http://localhost:80"}, Status: api.StatusOK}
+	zone := api.ZoneRow{ZoneInfo: api.ZoneInfo{Name: "example.com", Mode: "wildcard"}}
+	relayServing(t, map[string]any{
+		api.PathRoutes: withExtra(api.RouteList{Routes: []api.RouteRow{route}}, map[string]any{"weight": 3}, "routes"),
+		api.PathZones:  withExtra(api.ZoneList{Zones: []api.ZoneRow{zone}}, map[string]any{"tier": "gold"}, "zones"),
+		api.PathStatus: withExtra(healthyOutpost(), map[string]any{"also_new": 1}, "edge"),
+	})
+	for _, c := range []struct {
+		args       []string
+		want, json string
+	}{
+		{[]string{"route", "ls"}, "app.example.com", `"weight": 3`},
+		{[]string{"zone", "ls"}, "example.com", `"tier": "gold"`},
+		{[]string{"status"}, "Outpost nas", `"also_new": 1`},
+	} {
+		out, code, err := tnl(c.args...)
+		if err != nil || code != 0 || !strings.Contains(out, c.want) {
+			t.Errorf("%v: %q %v %d", c.args, out, err, code)
+		}
+		out, _, err = tnl(append(c.args, "--json")...)
+		if err != nil || !strings.Contains(out, c.json) {
+			t.Errorf("%v --json: %v\n%s", c.args, err, out)
+		}
 	}
 }

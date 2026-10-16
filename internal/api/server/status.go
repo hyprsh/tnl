@@ -7,7 +7,6 @@ import (
 
 	"github.com/hyprsh/tnl/internal/api"
 	"github.com/hyprsh/tnl/internal/render"
-	"github.com/hyprsh/tnl/internal/state"
 )
 
 // outpostAttention is the kind of AttentionItem an Outpost's state is, for the
@@ -44,7 +43,7 @@ func (s *Server) status(ctx context.Context, actor api.Actor, _ struct{}) (api.E
 	}
 	for _, o := range outposts.Outposts {
 		out.Outposts.Count(o.State)
-		if kind, bad := outpostAttention[o.State]; bad {
+		if kind, ok := outpostAttention[o.State]; ok {
 			out.Attention = append(out.Attention, api.AttentionItem{Kind: kind, Subject: o.Name, Message: outpostMessage(o)})
 		}
 	}
@@ -116,14 +115,15 @@ func certProblem(c api.CertInfo, now time.Time) string {
 	return msg
 }
 
+// waitingTails say how each kind of wait ends the sentence of an Attention
+// item: "newbox declares photos.example.com, which nas holds".
+var waitingTails = map[api.WaitKind]func(holder string) string{
+	api.WaitHeld:        func(holder string) string { return "which " + holder + " holds" },
+	api.WaitOutsideZone: func(string) string { return "which is outside every Zone" },
+	api.WaitNotApplied:  func(string) string { return "which is not applied yet" },
+}
+
 // waitingMessage is "newbox declares photos.example.com, which nas holds".
 func waitingMessage(w declaredWait) string {
-	head := fmt.Sprintf("%s declares %s", w.Line.Outpost, w.Line.Hostname)
-	switch w.Why.Kind {
-	case state.WaitHeld:
-		return head + ", which " + w.Why.Holder + " holds"
-	case state.WaitOutsideZone:
-		return head + ", which is outside every Zone"
-	}
-	return head + ", which is not applied yet"
+	return fmt.Sprintf("%s declares %s, %s", w.Line.Outpost, w.Line.Hostname, waitingTails[w.Why.Kind](w.Why.Holder))
 }

@@ -108,8 +108,8 @@ func (c *Client) http() *http.Client {
 }
 
 // Call sends one request and decodes the response into Resp. req is the JSON
-// body, or nil for none. A refusal comes back as *Error. Both sides refuse
-// fields they don't know, and the client refuses a process that isn't the
+// body, or nil for none. A refusal comes back as *Error. Call refuses fields
+// it doesn't know (see GetLenient for the replies that don't), and the client refuses a process that isn't the
 // same version: Call asks a local process for its info before the first
 // request and refuses unless the versions match exactly. (An Edge reached
 // through the Tunnel may be any version the Edge accepts.)
@@ -125,11 +125,12 @@ func Call[Resp any](ctx context.Context, c *Client, method, path string, req any
 	return out, nil
 }
 
-// Fetch is Call for a reply the client prints as it came: a GET of an `ls` or
-// status reply. It reads the reply leniently, since JSON only grows within a
-// major and an older client must still show what it knows of a newer peer's
-// reply, and returns the bytes too, for `--json`.
-func Fetch[Resp any](ctx context.Context, c *Client, path string) (Resp, []byte, error) {
+// GetLenient is Call for a GET whose reply an older client must still read when
+// a newer peer has added fields to it: an `ls` or status reply, or an
+// Outpost's Routes. It ignores a field it doesn't know, where Call refuses it,
+// and returns the reply's bytes too, for `--json`. (JSON only grows within a
+// major: docs/spec/v1.md, Status.)
+func GetLenient[Resp any](ctx context.Context, c *Client, path string) (Resp, []byte, error) {
 	var out Resp
 	raw, err := c.roundTrip(ctx, http.MethodGet, path, nil)
 	if err != nil {

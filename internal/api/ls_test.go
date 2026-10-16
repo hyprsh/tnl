@@ -82,11 +82,11 @@ func TestRouteListJSONIsPinned(t *testing.T) {
 		},
 		{
 			RouteInfo: RouteInfo{Hostname: "photos.example.com", Outpost: "newbox", Service: "http://localhost:9000"},
-			Status:    StatusWaiting(WaitingTakenBy("nas")), Waiting: WaitingTakenBy("nas"),
+			Status:    StatusWaiting(WaitHeld.Words("nas")), Waiting: WaitHeld.Words("nas"),
 		},
 		{
 			RouteInfo: RouteInfo{Hostname: "x.other.org", Outpost: "newbox", Service: "http://localhost:9001"},
-			Status:    StatusWaiting(WaitingOutsideEveryZone), Waiting: WaitingOutsideEveryZone,
+			Status:    StatusWaiting(WaitOutsideZone.Words("")), Waiting: WaitOutsideZone.Words(""),
 		},
 	}})
 }

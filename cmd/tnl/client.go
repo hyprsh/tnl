@@ -113,7 +113,7 @@ func lsCommand[L any](name, path string, print func(io.Writer, L) error) func([]
 // came: the Edge's own bytes, indented, so a field this build doesn't know
 // still reaches the script and doesn't stop the table. It returns the reply.
 func showReply[R any](c *clientCommand, path string, asJSON bool, print func(io.Writer, R) error) (R, error) {
-	reply, raw, err := api.Fetch[R](context.Background(), c.client(), path)
+	reply, raw, err := api.GetLenient[R](context.Background(), c.client(), path)
 	if err != nil {
 		return reply, err
 	}

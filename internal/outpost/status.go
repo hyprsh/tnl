@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
 	"time"
 
 	"github.com/hyprsh/tnl/internal/api"
@@ -14,6 +13,11 @@ import (
 // RoutesUnavailable is what `tnl status` says of the Outpost's Routes while it
 // cannot ask the Edge.
 const RoutesUnavailable = "unavailable while the Tunnel is down"
+
+// RoutesNotRead is what `tnl status` says of the Outpost's Routes when the
+// Tunnel is up but the Edge's answer could not be had or read; the cause
+// follows it.
+const RoutesNotRead = "could not be read from the Edge: "
 
 // statusSource builds the Outpost's answer to `tnl status`. The relay calls it
 // for each request, so it reads live state and asks the Edge for the Routes
@@ -68,14 +72,15 @@ func (s *statusSource) status(ctx context.Context) api.OutpostStatus {
 		out.RoutesUnavailable = RoutesUnavailable
 	} else {
 		fctx, cancel := context.WithTimeout(ctx, s.timeout)
-		reply, err := api.Call[api.MyRoutes](fctx, s.edge, http.MethodGet, api.PathDeclaration, nil)
+		// Leniently: an Edge newer than this Outpost may add fields to the reply.
+		reply, _, err := api.GetLenient[api.MyRoutes](fctx, s.edge, api.PathDeclaration)
 		cancel()
 		var ae *api.Error
 		switch {
 		case errors.As(err, &ae):
 			out.RoutesUnavailable = ae.Message
 		case err != nil:
-			out.RoutesUnavailable = RoutesUnavailable
+			out.RoutesUnavailable = RoutesNotRead + err.Error()
 		default:
 			mine = reply.Routes
 		}
@@ -94,11 +99,12 @@ func (s *statusSource) status(ctx context.Context) api.OutpostStatus {
 	for _, l := range s.dec.lines {
 		d := api.DeclaredLineStatus{Hostname: l.Hostname, Service: l.Service, Variable: s.dec.labels[l.Hostname]}
 		if r, ok := waiting[l.Hostname]; ok {
-			// The Edge's reason is its log wording ("held by Outpost nas");
-			// the surfaces say "taken by nas".
-			reason := r.Reason
-			if r.Holder != "" {
-				reason = api.WaitingTakenBy(r.Holder)
+			// The Edge's Reason is its log wording; the surfaces word the kind.
+			// An Edge that sends no kind (older, or one this build does not
+			// know) leaves only that wording.
+			reason := r.WaitKind.Words(r.Holder)
+			if reason == "" {
+				reason = r.Reason
 			}
 			d.Waiting, d.Reason = true, reason
 			out.Attention = append(out.Attention, api.AttentionItem{

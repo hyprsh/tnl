@@ -61,7 +61,7 @@ type Info struct {
 	LastSeen time.Time // when it was last heard; a seeded Outpost's is the Edge's start
 	// Heard is false for an Outpost that is only seeded: nothing has arrived
 	// from it since the Edge started, so LastSeen is no sign of life. The
-	// tables show "-" for it.
+	// tables show "–" for it.
 	Heard bool
 	// Silent is how long ago LastSeen was, by this clock; zero unless Heard.
 	Silent   time.Duration

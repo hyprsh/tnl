@@ -49,8 +49,11 @@ type MyRoutes struct {
 // MyRoute is one Route or waiting line.
 type MyRoute struct {
 	declare.Line
-	Waiting bool   `json:"waiting,omitempty"`
-	Reason  string `json:"reason,omitempty"` // why it waits, in the Edge's log wording
+	Waiting bool `json:"waiting,omitempty"`
+	// WaitKind is why it waits; the Outpost words it from this. An Edge older
+	// than the field sends none, and then Reason is all there is.
+	WaitKind WaitKind `json:"wait_kind,omitempty"`
+	Reason   string   `json:"reason,omitempty"` // why it waits, in the Edge's log wording
 	// Holder is the Outpost that holds the Hostname, when that is why it waits.
 	Holder string `json:"holder,omitempty"`
 }
