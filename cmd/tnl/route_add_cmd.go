@@ -29,8 +29,9 @@ func checkOutpostFlag(cl *api.Client, command string, given, empty bool, service
 	return nil
 }
 
-// routeAdd saves a Route and swaps it in. The test dial and the certificate wait
-// come in later slices.
+// routeAdd saves a Route and swaps it in. The Edge waits for the Hostname's
+// certificate and checks its DNS before it replies, and the reply's warnings
+// are printed to stderr. The test dial comes in a later slice.
 func routeAdd(args []string) error {
 	c := newClientCommand("route add")
 	outpost := c.fs.String("outpost", "", "the Outpost whose network the Service is on (required on the Edge host, absent on an Outpost)")

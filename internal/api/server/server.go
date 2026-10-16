@@ -61,6 +61,22 @@ type Config struct {
 
 	// Liveness says which Outposts are Offline, for the warnings. Nil knows none.
 	Liveness Liveness
+
+	// Certs obtains Route Hostnames' certificates; nil waits for none.
+	Certs Certificates
+	// CertWait bounds how long `route add` waits for a certificate; zero is
+	// DefaultCertWait.
+	CertWait time.Duration
+}
+
+// DefaultCertWait is the spec's "about 60 s" wait for a certificate.
+const DefaultCertWait = 60 * time.Second
+
+// Certificates is the certificate manager as the handlers see it. Obtain makes
+// sure Caddy manages the Hostname and returns once a certificate is held for
+// it, or with an error when ctx ends first; Caddy keeps trying either way.
+type Certificates interface {
+	Obtain(ctx context.Context, hostname string) error
 }
 
 // Liveness is the Edge's view of the Outposts, as the handlers read it.

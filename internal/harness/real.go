@@ -17,6 +17,7 @@ import (
 	"github.com/hyprsh/tnl/internal/api"
 	"github.com/hyprsh/tnl/internal/api/server"
 	"github.com/hyprsh/tnl/internal/edge"
+	"github.com/hyprsh/tnl/internal/edge/caddyx"
 	"github.com/hyprsh/tnl/internal/edge/liveness"
 	"github.com/hyprsh/tnl/internal/edge/routes"
 	"github.com/hyprsh/tnl/internal/logx"
@@ -35,6 +36,8 @@ type RealEdge struct {
 	Store    *state.Store
 	// Liveness is the Edge's own: what it knows of each Outpost's reachability.
 	Liveness *liveness.Liveness
+	// Certs is the certificate manager; nil unless the Edge has Caddy.
+	Certs *caddyx.Certs
 
 	stop         func()
 	pingInterval time.Duration
@@ -71,6 +74,8 @@ type EdgeOptions struct {
 	// Outposts that Connect to it. Zero keeps the spec's values, except that
 	// the Edge checks every 20 ms and Outposts ping every 100 ms by default.
 	OfflineAfter, LivenessPoll, PingInterval time.Duration
+	// CertWait shortens the certificate wait at `route add`; zero keeps 60 s.
+	CertWait time.Duration
 }
 
 // atEdge answers every name with the Edge's address.
@@ -102,7 +107,7 @@ func StartEdgeWith(t testing.TB, opts EdgeOptions) *RealEdge {
 	cfg := edge.Config{
 		Address: "127.0.0.1", StateDir: dir, Version: harnessVersion, Build: "full", Revision: "test",
 		Log:      logx.New(logx.Options{Level: slog.LevelWarn, Out: testWriter{t}}),
-		Resolver: opts.Resolver, WireGuardPort: opts.WireGuardPort,
+		Resolver: opts.Resolver, WireGuardPort: opts.WireGuardPort, CertWait: opts.CertWait,
 	}
 	if cfg.Resolver == nil {
 		cfg.Resolver = atEdge{}
@@ -165,6 +170,7 @@ func StartEdgeWith(t testing.TB, opts EdgeOptions) *RealEdge {
 		API:      &api.Client{StateDir: dir, Version: harnessVersion},
 		Store:    r.Store,
 		Liveness: r.Liveness,
+		Certs:    r.Certs,
 		stop:     stop,
 
 		pingInterval: cmp.Or(opts.PingInterval, 100*time.Millisecond),
@@ -185,11 +191,18 @@ func (e *RealEdge) AddZone(t testing.TB, name string) {
 // AddRoute calls `route add` on the running Edge.
 func (e *RealEdge) AddRoute(t testing.TB, hostname, serviceURL, outpost string) {
 	t.Helper()
-	_, err := api.Call[api.RouteAddReply](context.Background(), e.API, http.MethodPost, api.PathRoutes,
+	e.AddRouteReply(t, hostname, serviceURL, outpost)
+}
+
+// AddRouteReply is AddRoute that returns the reply, warnings included.
+func (e *RealEdge) AddRouteReply(t testing.TB, hostname, serviceURL, outpost string) api.RouteAddReply {
+	t.Helper()
+	r, err := api.Call[api.RouteAddReply](context.Background(), e.API, http.MethodPost, api.PathRoutes,
 		api.RouteAddRequest{Hostname: hostname, Service: serviceURL, Outpost: outpost})
 	if err != nil {
 		t.Fatal(err)
 	}
+	return r
 }
 
 // AddOutpost calls `outpost add` on the running Edge and returns the join token.

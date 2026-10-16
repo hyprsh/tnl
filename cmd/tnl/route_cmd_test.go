@@ -49,3 +49,23 @@ func TestRouteAddNeedsOutpostAndRefusalsExitOne(t *testing.T) {
 		}
 	}
 }
+
+func TestRouteAddWarnsOnStderrWhenTheHostnameDoesNotPointAtTheEdge(t *testing.T) {
+	runningEdgeWith(t, fakeDNS{"example.com": true, "away.test": false})
+	tnl("zone", "add", "example.com")
+	tnl("zone", "add", "away.test")
+	tnl("outpost", "add", "nas")
+
+	out, errOut, code, err := tnlBoth("route", "add", "app.away.test", "http://nas:1", "--outpost", "nas")
+	if err != nil || code != 0 || !strings.Contains(out, "added Route app.away.test") {
+		t.Fatalf("%q %v %d", out, err, code)
+	}
+	if !strings.HasPrefix(errOut, "warning: ") || !strings.Contains(errOut, "app.away.test") || strings.Contains(out, "warning") {
+		t.Fatalf("stderr %q, stdout %q", errOut, out)
+	}
+
+	_, errOut, code, err = tnlBoth("route", "add", "app.example.com", "http://nas:1", "--outpost", "nas")
+	if err != nil || code != 0 || errOut != "" {
+		t.Fatalf("a Hostname at the Edge: %q %v %d", errOut, err, code)
+	}
+}

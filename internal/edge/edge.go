@@ -16,6 +16,7 @@ import (
 	"github.com/hyprsh/tnl/internal/addr"
 	"github.com/hyprsh/tnl/internal/api"
 	"github.com/hyprsh/tnl/internal/api/server"
+	"github.com/hyprsh/tnl/internal/edge/caddyx"
 	"github.com/hyprsh/tnl/internal/edge/conntrack"
 	"github.com/hyprsh/tnl/internal/edge/liveness"
 	"github.com/hyprsh/tnl/internal/keys"
@@ -46,6 +47,8 @@ type Config struct {
 	// OfflineAfter is the silence after which an Outpost is Offline (60 s), and
 	// LivenessPoll how often the Edge checks (1 s). The harness shrinks them.
 	OfflineAfter, LivenessPoll time.Duration
+	// CertWait bounds the certificate wait at `route add`; zero is 60 s.
+	CertWait time.Duration
 }
 
 // Running is what a started Edge exposes.
@@ -54,6 +57,8 @@ type Running struct {
 	Tunnel        *tunnel.Tunnel
 	WireGuardPort int // the port WireGuard actually listens on
 	Liveness      *liveness.Liveness
+	// Certs is the certificate manager; nil when the Edge has no Caddy.
+	Certs *caddyx.Certs
 }
 
 // Run opens the state, brings WireGuard up with every Outpost in it as a peer,
@@ -92,15 +97,16 @@ func Run(ctx context.Context, cfg Config) error {
 	}
 	defer os.Remove(filepath.Join(cfg.StateDir, api.SocketName))
 	conns := conntrack.New()
+	certs := new(certsRef)
 	hooks := livenessHooks{
 		Version: cfg.Version, OfflineAfter: cfg.OfflineAfter, Poll: cfg.LivenessPoll, Log: cfg.Log,
 		CloseOutpost: conns.CloseOutpost,
 	}
 	live := newLiveness(hooks, store.Snapshot())
 	srv := server.New(server.Config{
-		Conns: conns, Liveness: live,
+		Conns: conns, Liveness: live, Certs: certs,
 		Store: store, Log: cfg.Log, Version: cfg.Version, Build: cfg.Build, Revision: cfg.Revision, Role: api.RoleEdge,
-		Address: cfg.Address, WireGuardPort: wgPort, Resolver: cfg.Resolver, StateDir: cfg.StateDir,
+		Address: cfg.Address, WireGuardPort: wgPort, Resolver: cfg.Resolver, StateDir: cfg.StateDir, CertWait: cfg.CertWait,
 		PreparePeer: peers.prepare,
 		SwapPeer:    func(old, new keys.Key, a netip.Addr) { peers.swap(old, new, a, cfg.Log) },
 		DropPeer:    func(k keys.Key, a netip.Addr) { peers.drop(k, a, cfg.Log) },
@@ -118,7 +124,7 @@ func Run(ctx context.Context, cfg Config) error {
 	}
 
 	if cfg.Web != nil {
-		stopWeb, err := startWeb(cfg.Web, cfg.StateDir, wgPort, store, tun, conns, live, cfg.Log)
+		stopWeb, err := startWeb(cfg.Web, cfg.StateDir, wgPort, store, tun, conns, live, certs, cfg.Log)
 		if err != nil {
 			return refuse(err)
 		}
@@ -139,7 +145,7 @@ func Run(ctx context.Context, cfg Config) error {
 		"zones", len(st.Zones),
 	)
 	if cfg.Started != nil {
-		cfg.Started(&Running{Store: store, Tunnel: tun, WireGuardPort: wgPort, Liveness: live})
+		cfg.Started(&Running{Store: store, Tunnel: tun, WireGuardPort: wgPort, Liveness: live, Certs: certs.p.Load()})
 	}
 	select {
 	case <-ctx.Done():
