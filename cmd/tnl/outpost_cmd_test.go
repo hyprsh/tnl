@@ -9,17 +9,18 @@ import (
 	"github.com/hyprsh/tnl/internal/token"
 )
 
-func TestOutpostAddPrintsTheTokenAlone(t *testing.T) {
+func TestOutpostAddPrintsTheTokenFirst(t *testing.T) {
 	runningEdge(t)
 	out, code, err := tnl("outpost", "add", "laptop")
 	if err != nil || code != 0 {
 		t.Fatalf("%v %d", err, code)
 	}
-	tok, err := token.Decode(out)
+	first, _, _ := strings.Cut(out, "\n")
+	tok, err := token.Decode(first)
 	if err != nil {
 		t.Fatalf("stdout %q is not a token: %v", out, err)
 	}
-	if strings.Count(out, "\n") != 1 || tok.TunnelAddr.String() != "100.64.0.2" {
+	if strings.Count(out, "\n") != 2 || tok.TunnelAddr.String() != "100.64.0.2" {
 		t.Fatalf("stdout %q, token %+v", out, tok)
 	}
 }

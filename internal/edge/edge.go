@@ -103,6 +103,8 @@ func Run(ctx context.Context, cfg Config) error {
 		Address: cfg.Address, WireGuardPort: wgPort, Resolver: cfg.Resolver, StateDir: cfg.StateDir,
 		PreparePeer: peers.prepare,
 		SwapPeer:    func(old, new keys.Key, a netip.Addr) { peers.swap(old, new, a, cfg.Log) },
+		DropPeer:    func(k keys.Key, a netip.Addr) { peers.drop(k, a, cfg.Log) },
+		RevokePeer:  func(old, new keys.Key, a netip.Addr) { peers.swap(old, new, a, cfg.Log) },
 	})
 	served := make(chan error, 1)
 	go func() { served <- srv.Serve(ctx, ln, api.ActorLocal) }()
@@ -213,4 +215,14 @@ func (ps *peerSet) swap(old, new keys.Key, address netip.Addr, log *slog.Logger)
 		log.Error("could not remove the one-time WireGuard peer", "address", address.String(), "error", err)
 	}
 	ps.have[address] = new
+}
+
+// drop removes the peer at address, and forgets it.
+func (ps *peerSet) drop(key keys.Key, address netip.Addr, log *slog.Logger) {
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+	if err := ps.tun.RemovePeer(key); err != nil {
+		log.Error("could not remove the Outpost's WireGuard peer", "address", address.String(), "error", err)
+	}
+	delete(ps.have, address)
 }

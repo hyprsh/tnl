@@ -53,6 +53,11 @@ type Config struct {
 	// PreparePeer, if set, adds the new key as a peer with no Tunnel address
 	// yet, before the join replies, so its handshake can complete early.
 	PreparePeer func(new keys.Key) error
+	// DropPeer removes an Outpost's WireGuard peer; `outpost rm` calls it.
+	DropPeer func(key keys.Key, address netip.Addr)
+	// RevokePeer replaces an Outpost's peer at once: the new key takes the
+	// Tunnel address and the old key's peer goes. `outpost rekey` calls it.
+	RevokePeer func(old, new keys.Key, address netip.Addr)
 
 	// StateDir is where backup finds Caddy's storage.
 	StateDir string
@@ -70,6 +75,7 @@ type Liveness interface {
 // domain's terms. The handlers call it after the store's lock is released.
 type ConnCloser interface {
 	CloseRoute(hostname string)
+	CloseOutpost(name string)
 }
 
 // Server is the handler set. It has no listener of its own.
@@ -91,6 +97,8 @@ func (s *Server) routes() {
 	endpoint(s, http.MethodGet, api.PathZones, s.zoneList)
 	endpoint(s, http.MethodPost, api.PathZones, s.zoneAdd)
 	endpoint(s, http.MethodPost, api.PathOutposts, s.outpostAdd)
+	endpoint(s, http.MethodPost, api.PathOutpostRm, s.outpostRm)
+	endpoint(s, http.MethodPost, api.PathOutpostRekey, s.outpostRekey)
 	endpoint(s, http.MethodGet, api.PathRoutes, s.routeList)
 	endpoint(s, http.MethodPost, api.PathRoutes, s.routeAdd)
 	endpoint(s, http.MethodPost, api.PathRouteRm, s.routeRm)
