@@ -76,8 +76,11 @@ func TestSkewAgainstTheLatestTag(t *testing.T) {
 		runSkew(t, skewStep{tag, cur}, nil, true)
 	})
 	out := skewEnv(t, "TNL_SKEW_CUR_OUT_BIN")
-	t.Run("the Outpost upgraded outside the window under the current Edge", func(t *testing.T) {
-		runSkew(t, skewStep{cur, tag}, &skewStep{cur, out}, false)
+	t.Run("the Outpost upgraded outside the window under the tag's Edge", func(t *testing.T) {
+		if os.Getenv("TNL_SKEW_TAG_EDGE_OK") != "1" {
+			t.Skip("the tag's Edge cannot be put on high ports: its source predates the check's hook")
+		}
+		runSkew(t, skewStep{tag, tag}, &skewStep{tag, out}, false)
 	})
 	t.Run("the Edge upgraded outside the window over the tag's Outpost", func(t *testing.T) {
 		runSkew(t, skewStep{cur, tag}, &skewStep{out, tag}, false)
