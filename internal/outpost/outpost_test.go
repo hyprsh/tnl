@@ -35,7 +35,6 @@ type fakeEdge struct {
 	tun  *tunnel.Tunnel
 	port int
 	key  keys.Key // private
-	tok  token.Token
 }
 
 func newFakeEdge(t *testing.T, edgeKey keys.Key, port int, oneTime keys.Key) *fakeEdge {

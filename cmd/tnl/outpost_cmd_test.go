@@ -11,7 +11,7 @@ import (
 
 func TestOutpostAddPrintsTheTokenAlone(t *testing.T) {
 	runningEdge(t)
-	out, err, code := tnl("outpost", "add", "laptop")
+	out, code, err := tnl("outpost", "add", "laptop")
 	if err != nil || code != 0 {
 		t.Fatalf("%v %d", err, code)
 	}
@@ -26,11 +26,11 @@ func TestOutpostAddPrintsTheTokenAlone(t *testing.T) {
 
 func TestOutpostAddRefusalsExitOne(t *testing.T) {
 	runningEdge(t)
-	if _, err, _ := tnl("outpost", "add", "laptop"); err != nil {
+	if _, _, err := tnl("outpost", "add", "laptop"); err != nil {
 		t.Fatal(err)
 	}
 	for _, args := range [][]string{{"outpost", "add", "laptop"}, {"outpost", "add", "Bad_Name"}, {"outpost", "add"}} {
-		if out, err, code := tnl(args...); err == nil || code != 1 || out != "" {
+		if out, code, err := tnl(args...); err == nil || code != 1 || out != "" {
 			t.Errorf("%v: out=%q err=%v code=%d", args, out, err, code)
 		}
 	}
