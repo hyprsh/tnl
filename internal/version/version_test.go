@@ -89,7 +89,7 @@ func TestRefusalMessages(t *testing.T) {
 	if got, want := UnknownField("1.4.2", "--new-opt", ""), "the Edge (1.4.2) doesn't support `--new-opt`; it needs a newer version; upgrade the Edge"; got != want {
 		t.Errorf("got %q", got)
 	}
-	if got, want := EdgeTooOld("2.0.0", "1.4.2"), "this Outpost (2.0.0) is a newer major than the Edge (1.4.2) and won't connect to it; upgrade the Edge to 2.x or newer, or install Outpost 1.x"; got != want {
+	if got, want := EdgeTooOld("2.0.0", "1.4.2"), "this Outpost (2.0.0) is a newer major than the Edge (1.4.2) and can't work with it; it keeps trying; upgrade the Edge to 2.x or newer, or install Outpost 1.x"; got != want {
 		t.Errorf("got %q", got)
 	}
 }
