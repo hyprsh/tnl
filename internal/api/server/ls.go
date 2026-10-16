@@ -120,7 +120,7 @@ func (s *Server) routeStatus(st *state.State, r state.Route, now time.Time) api.
 			continue
 		}
 		name, _ := s.outpostState(o)
-		if problem, bad := outpostProblem[name]; bad {
+		if problem, ok := outpostProblem[name]; ok {
 			return problem
 		}
 	}
@@ -157,7 +157,7 @@ func waitingLines(st *state.State) []declaredWait {
 	for _, d := range st.Declarations {
 		for _, l := range d.Lines {
 			why := st.Waiting(d.Outpost, l.Hostname)
-			if why.Kind == state.NotWaiting {
+			if why.Kind == api.NotWaiting {
 				continue // it is a Route, already listed
 			}
 			line := state.Route{Hostname: l.Hostname, Outpost: d.Outpost, Service: l.Service, HostHeader: l.HostHeader, InsecureSkipVerify: l.InsecureSkipVerify}
@@ -174,17 +174,6 @@ func waitingLines(st *state.State) []declaredWait {
 	return out
 }
 
-// waitingWords is the reason a line waits in the words of `ls` and `status`.
-func waitingWords(w state.Wait) string {
-	switch w.Kind {
-	case state.WaitHeld:
-		return api.WaitingTakenBy(w.Holder)
-	case state.WaitOutsideZone:
-		return api.WaitingOutsideEveryZone
-	}
-	return api.WaitingNotAppliedYet
-}
-
 func (s *Server) routeList(_ context.Context, _ api.Actor, _ struct{}) (api.RouteList, error) {
 	st := s.cfg.Store.Snapshot()
 	now := s.now()
@@ -193,7 +182,7 @@ func (s *Server) routeList(_ context.Context, _ api.Actor, _ struct{}) (api.Rout
 		out.Routes = append(out.Routes, api.RouteRow{RouteInfo: routeInfo(r), Status: s.routeStatus(st, r, now)})
 	}
 	for _, w := range waitingLines(st) {
-		why := waitingWords(w.Why)
+		why := w.Why.Kind.Words(w.Why.Holder)
 		out.Routes = append(out.Routes, api.RouteRow{RouteInfo: routeInfo(w.Line), Status: api.StatusWaiting(why), Waiting: why})
 	}
 	// A move shows its Hostname twice: the Route, then the line that waits.

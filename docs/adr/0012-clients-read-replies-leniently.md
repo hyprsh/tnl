@@ -1,0 +1,5 @@
+# Clients read the `ls`, status and own-Routes replies leniently
+
+ADR 0008 has both sides refuse fields they don't know, so that a mismatch is caught at once. That is wrong for the replies that only report: the `ls` and status replies (`route ls`, `zone ls`, `outpost ls`, `status`) and an Outpost's `GET /v1/declaration`. A newer Edge adds a field to one of them, which is allowed within a major, and an older Outpost's `tnl` then refused the whole reply: no table, no Routes in `tnl status`. So a client now ignores a field it doesn't know in these replies, whichever object it sits in, and still prints the rest. `--json` prints the reply's own bytes, so a script gets the field. The `route ls` table shows a Route's extra fields in a last column. Everything else stays strict: requests, the Declaration and the Declaration's reply, the tnl header, the ping, and the `TNL_*` variables. A refused request is what names the version to upgrade, and a reply that only reports changes nothing when part of it goes unread.
+
+See [docs/spec/v1.md](../spec/v1.md), Status.

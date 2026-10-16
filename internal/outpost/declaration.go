@@ -147,7 +147,7 @@ func (d *declarer) fetch(ctx context.Context, digest wire.Digest) {
 func (d *declarer) baseline(ctx context.Context, want *wire.Digest) {
 	cctx, cancel := context.WithTimeout(ctx, sendTimeout)
 	defer cancel()
-	got, err := api.Call[api.MyRoutes](cctx, d.api, http.MethodGet, api.PathDeclaration, nil)
+	got, _, err := api.GetLenient[api.MyRoutes](cctx, d.api, api.PathDeclaration)
 	if err != nil {
 		if ctx.Err() == nil {
 			d.log.Debug("could not fetch the Outpost's Routes", "error", err)

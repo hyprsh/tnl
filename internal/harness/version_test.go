@@ -123,9 +123,7 @@ func TestAnOutpostRefusesAnEdgeOfAnOlderMajor(t *testing.T) {
 	}
 
 	// `tnl status` needs attention for it, as its own fact, not as Incompatible.
-	if s, err := api.Call[api.OutpostStatus](ctx(t), again.CLI, http.MethodGet, api.PathStatus, nil); err != nil {
-		t.Fatal(err)
-	} else if !s.Edge.TooOld || s.Edge.Incompatible || len(s.Attention) != 1 || s.Attention[0].Kind != api.AttentionEdgeTooOld {
+	if s, _ := outpostStatus(t, again); !s.Edge.TooOld || s.Edge.Incompatible || len(s.Attention) != 1 || s.Attention[0].Kind != api.AttentionEdgeTooOld {
 		t.Errorf("status of an Outpost with an Edge too old: %+v", s)
 	}
 
