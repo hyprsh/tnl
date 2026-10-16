@@ -72,3 +72,17 @@ tnl connect --allow 192.168.1.0/24,localhost:3000
 - A malformed list makes `tnl connect` exit with status 78.
 
 A Service the list refuses is answered with the `allowlist` dial error: Visitors get a 502, and the request is not retried. The Outpost logs each refusal at `info`, with the request ID and the address the Edge named, and logs its allowlist when it starts (`allow=none` when it has none).
+
+## Declaring Routes on the Outpost
+
+`tnl connect` takes one line per Route, as `TNL_ROUTE_<LABEL>` variables or repeated `--route` flags, never both:
+
+```sh
+TNL_ROUTE_MEDIA="media.example.com http://localhost:8096 --host-header jellyfin --insecure-skip-verify" tnl connect
+tnl connect --route "media.example.com http://localhost:8096"
+```
+
+- `<LABEL>` is letters, digits and `_`. It names the line in messages and never reaches the Edge.
+- Words are split on whitespace, with no quoting. The Hostname and Service URL come first, then the options.
+- The lines are checked when `tnl connect` starts. A syntax error, an unknown option, a Service URL with a path or a scheme other than `http` or `https`, an invalid Hostname, one Hostname on two lines, or `--route` together with `TNL_ROUTE_*` makes it exit with status 78. The message names the variable: `TNL_ROUTE_MEDIA: unknown option --host-heder`.
+- `tnl connect` and `tnl edge` also refuse any other `TNL_*` variable they don't know, with a "did you mean" (`unknown variable TNL_ADRESS: did you mean TNL_ADDRESS?`) that echoes names, never values.

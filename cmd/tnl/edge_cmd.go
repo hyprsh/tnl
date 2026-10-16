@@ -13,7 +13,14 @@ import (
 
 	"github.com/hyprsh/tnl/internal/edge"
 	"github.com/hyprsh/tnl/internal/logx"
+	"github.com/hyprsh/tnl/internal/settings"
 )
+
+// edgeEnvVars are the TNL_* variables tnl edge reads; any other is refused.
+var edgeEnvVars = append([]string{
+	"TNL_ADDRESS", "TNL_WIREGUARD_PORT", "TNL_ACME_EMAIL", "TNL_ACME_CA",
+	"TNL_STATE_DIR", "TNL_ACCESS_LOG",
+}, logx.EnvVars...)
 
 // Edge-only commands register from //go:build !outpost files like this one.
 func init() {
@@ -45,6 +52,9 @@ func parseEdgeFlags(args []string, usageOut io.Writer) (edgeSettings, error) {
 		fs.BoolVar(&s.cfg.Web.AccessLog, "access-log", envAccess,
 			"also log successful requests and what the Service answered (TNL_ACCESS_LOG)")
 	}, func(fs *flag.FlagSet) error {
+		if err := settings.CheckEnv(os.Environ(), edgeEnvVars); err != nil {
+			return err
+		}
 		if envAccessErr != nil && !flagGiven(fs, "access-log") {
 			return envAccessErr
 		}
