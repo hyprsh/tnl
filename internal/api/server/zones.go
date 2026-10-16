@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"sort"
+	"sync"
 	"strings"
 	"time"
 
@@ -28,6 +29,9 @@ func (s *Server) zoneList(_ context.Context, _ api.Actor, _ struct{}) (api.ZoneL
 
 func (s *Server) zoneAdd(ctx context.Context, actor api.Actor, req api.ZoneAddRequest) (api.ZoneAddReply, error) {
 	if err := localOnly(actor, "add Zones", "zone add"); err != nil {
+		return api.ZoneAddReply{}, err
+	}
+	if err := s.zonesDeclared(); err != nil {
 		return api.ZoneAddReply{}, err
 	}
 	name, err := zoneName(req.Name)
@@ -166,4 +170,49 @@ func dnsName(kind, in, noWildcard string) (string, error) {
 		return "", api.Errorf(http.StatusBadRequest, "invalid %s name %q: %v", kind, in, err)
 	}
 	return name, nil
+}
+
+// CheckDeclaredZones runs the checks of `zone add` for Zones the Edge saved at
+// start, after the lock and without stopping anything: a wildcard token that
+// can't read its DNS zone is logged at error and the Zone is kept, for Caddy to
+// retry like a failed issuance. The other checks warn as they do at `zone add`.
+// It returns when every check has ended.
+func (s *Server) CheckDeclaredZones(ctx context.Context, zones []state.Zone) {
+	var wg sync.WaitGroup
+	for _, z := range zones {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			var warnings []string
+			if z.Mode == state.Wildcard {
+				if s.cfg.Wildcards == nil {
+					return
+				}
+				if _, err := s.checkToken(ctx, z.Provider, z.Token, z.Name); err != nil {
+					// checkToken redacts the token from the message.
+					s.cfg.Log.Error("the declared wildcard Zone's token check failed; the Zone is kept and its certificate is retried",
+						"zone", z.Name, "provider", z.Provider, "error", redact(err.Error(), z.Token))
+					return
+				}
+				warnings = append(warnings, s.declaredCertificate(ctx, z.Name)...)
+			}
+			warnings = append(warnings, s.zoneDNSWarnings(ctx, z.Name)...)
+			s.warn(api.ActorLocal, warnings, "zone", z.Name)
+		}()
+	}
+	wg.Wait()
+}
+
+// declaredCertificate waits, up to CertWait, for a declared wildcard Zone's
+// certificate. Caddy's config already holds the Zone, so nothing is reloaded.
+func (s *Server) declaredCertificate(ctx context.Context, zone string) []string {
+	ctx, cancel := context.WithTimeout(ctx, s.certWait())
+	defer cancel()
+	for _, name := range dnsname.WildcardNames(zone) {
+		if err := s.cfg.Wildcards.Wait(ctx, name); err != nil {
+			return []string{fmt.Sprintf("no certificate for %s yet: %v; Caddy keeps retrying", name, err)}
+		}
+	}
+	s.cfg.Wildcards.Settle()
+	return nil
 }

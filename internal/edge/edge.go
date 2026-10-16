@@ -5,11 +5,13 @@ package edge
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/netip"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"time"
 
@@ -58,7 +60,24 @@ type Config struct {
 	// Schedule is remind.Standard and a nil Clock is the wall clock.
 	Reminders remind.Schedule
 	Clock     remind.Clock
+
+	// Key is the Edge's WireGuard private key from --key-file, TNL_KEY_FILE or
+	// TNL_KEY, and KeySource names which, for the refusal when state.json holds
+	// another. Nil generates a key at first start.
+	Key       *keys.Key
+	KeySource string
+	// Zones and Outposts are the declared lines, already checked. A kind with
+	// lines is the Edge's whole set of that kind; a kind with none is the CLI's.
+	Zones    []state.DeclaredZone
+	Outposts []state.DeclaredOutpost
 }
+
+// ConfigError is a problem the operator must fix in the Edge's settings; `tnl
+// edge` exits 78.
+type ConfigError struct{ Err error }
+
+func (e *ConfigError) Error() string { return e.Err.Error() }
+func (e *ConfigError) Unwrap() error { return e.Err }
 
 // Running is what a started Edge exposes.
 type Running struct {
@@ -78,9 +97,17 @@ func Run(ctx context.Context, cfg Config) error {
 		cfg.Log.Error("refusing to start", "state_dir", cfg.StateDir, "error", err)
 		return &logx.LoggedError{Err: err}
 	}
-	store, err := state.Open(cfg.StateDir, cfg.Log)
+	store, err := state.OpenWithKey(cfg.StateDir, cfg.Log, cfg.Key, cfg.KeySource)
 	if err != nil {
+		var diff *state.DifferentKeyError
+		if errors.As(err, &diff) {
+			err = &ConfigError{err}
+		}
 		return refuse(err)
+	}
+	checks, err := applyDeclared(ctx, store, cfg)
+	if err != nil {
+		return refuse(&ConfigError{err})
 	}
 	tun, err := tunnel.New(tunnel.Config{
 		Address:    addr.Edge,
@@ -133,6 +160,7 @@ func Run(ctx context.Context, cfg Config) error {
 		Conns: conns, Liveness: live, Certs: certs, TestDialer: testDial, Wildcards: wild,
 		Store: store, Log: cfg.Log, Version: cfg.Version, Build: cfg.Build, Revision: cfg.Revision, Role: api.RoleEdge,
 		Address: cfg.Address, WireGuardPort: wgPort, Resolver: cfg.Resolver, StateDir: cfg.StateDir, CertWait: cfg.CertWait,
+		ZonesDeclared: len(cfg.Zones) > 0, OutpostsDeclared: len(cfg.Outposts) > 0,
 		PreparePeer: peers.prepare,
 		SwapPeer:    func(old, new keys.Key, a netip.Addr) { peers.swap(old, new, a, cfg.Log) },
 		DropPeer:    func(k keys.Key, a netip.Addr) { peers.drop(k, a, cfg.Log) },
@@ -157,7 +185,26 @@ func Run(ctx context.Context, cfg Config) error {
 		defer stopWeb()
 	}
 
+	// The remote checks of declared Zones never stop the Edge.
+	var checked sync.WaitGroup
+	if len(checks) > 0 {
+		checked.Add(1)
+		go func() { defer checked.Done(); srv.CheckDeclaredZones(ctx, checks) }()
+	}
+	defer checked.Wait()
+
 	st := store.Snapshot()
+	declaredZones, declaredOutposts := 0, 0
+	for _, z := range st.Zones {
+		if z.Declared {
+			declaredZones++
+		}
+	}
+	for _, o := range st.Outposts {
+		if o.Declared {
+			declaredOutposts++
+		}
+	}
 	cfg.Log.Info("edge started",
 		"version", cfg.Version,
 		"build", cfg.Build,
@@ -167,8 +214,10 @@ func Run(ctx context.Context, cfg Config) error {
 		"wireguard_port", wgPort,
 		"state_dir", cfg.StateDir,
 		"outposts", len(st.Outposts),
+		"outposts_declared", declaredOutposts,
 		"routes", len(st.Routes),
 		"zones", len(st.Zones),
+		"zones_declared", declaredZones,
 	)
 	if cfg.Started != nil {
 		cfg.Started(&Running{Store: store, Tunnel: tun, WireGuardPort: wgPort, Liveness: live, Certs: certs.manager()})
@@ -185,6 +234,32 @@ func Run(ctx context.Context, cfg Config) error {
 		cfg.Log.Error("the API stopped", "error", err)
 		return &logx.LoggedError{Err: err}
 	}
+}
+
+// applyDeclared brings the Zones and Outposts to the Edge's settings in one
+// locked change, before the peers and Caddy's config are built from the state,
+// and logs what it did. It returns the Zones whose remote checks run later.
+func applyDeclared(ctx context.Context, store *state.Store, cfg Config) ([]state.Zone, error) {
+	if len(cfg.Zones) == 0 && len(cfg.Outposts) == 0 && !anyDeclared(store.Snapshot()) {
+		return nil, nil
+	}
+	var res state.DeclaredResult
+	_, err := store.UpdateReport(api.ActorLocal, func(st *state.State) (err error) {
+		res, err = st.ApplyDeclared(cfg.Zones, cfg.Outposts)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	for _, e := range res.Events {
+		cfg.Log.Log(ctx, e.Level, e.Msg, append([]any{"actor", api.ActorLocal.String()}, e.Attrs...)...)
+	}
+	return res.Checks, nil
+}
+
+func anyDeclared(st *state.State) bool {
+	return slices.ContainsFunc(st.Zones, func(z state.Zone) bool { return z.Declared }) ||
+		slices.ContainsFunc(st.Outposts, func(o state.Outpost) bool { return o.Declared })
 }
 
 // peerSet is the Edge's WireGuard peers, one per Outpost Tunnel address.

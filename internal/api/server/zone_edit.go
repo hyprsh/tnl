@@ -18,6 +18,9 @@ func (s *Server) zoneEdit(ctx context.Context, actor api.Actor, req api.ZoneEdit
 	if err := localOnly(actor, "edit Zones", "zone edit"); err != nil {
 		return api.ZoneEditReply{}, err
 	}
+	if err := s.zonesDeclared(); err != nil {
+		return api.ZoneEditReply{}, err
+	}
 	name, err := zoneName(req.Name)
 	if err != nil {
 		return api.ZoneEditReply{}, err
