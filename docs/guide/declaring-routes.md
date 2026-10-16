@@ -7,7 +7,7 @@ TNL_ROUTE_MEDIA="media.example.com http://localhost:8096 --host-header jellyfin 
 tnl connect --route "media.example.com http://localhost:8096"
 ```
 
-In Compose, the Outpost lists them next to its token ([`examples/compose/outpost.yaml`](../../examples/compose/outpost.yaml)):
+In Compose, the Outpost lists them next to its token or credential ([`examples/compose/outpost.yaml`](../../examples/compose/outpost.yaml) shows the credential; [Declaring the Edge](declaring-the-edge.md) explains it):
 
 ```yaml
 environment:

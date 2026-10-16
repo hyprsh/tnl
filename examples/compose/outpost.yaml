@@ -1,22 +1,25 @@
-# An Outpost, on the network of the Services it forwards to. Replace X.Y.Z with
-# the exact release, and `apps` with that network. The token comes from
-# `docker exec tnl tnl outpost add <name>` on the Edge. It works once; the named
-# volume keeps what the Outpost saves, so a restart needs no token.
+# A declared Outpost, on the network of the Services it forwards to. Replace
+# X.Y.Z with the exact release, and `apps` with that network. Put the credential
+# that `tnl credential nas --address edge.example.com` printed (the part after
+# `TNL_CREDENTIAL=`) in ./tnl-credential, readable by uid 65532. It is the
+# Outpost's identity and never expires, and it needs no state volume.
 # The TNL_ROUTE_* lines declare this Outpost's Routes, so no `tnl route add` is
 # needed. Remove them to add Routes with the CLI instead.
+# To join an Edge that doesn't declare its Outposts, use TNL_TOKEN and a named
+# volume for /var/lib/tnl-outpost instead; see docs/guide/outposts.md.
 services:
   tnl-outpost:
     image: ghcr.io/hyprsh/tnl-outpost:X.Y.Z
     container_name: tnl-outpost
     restart: unless-stopped
     environment:
-      TNL_TOKEN: paste-the-token-here
-      TNL_ROUTE_PHOTOS: "photos.example.com http://immich:2283"
-      TNL_ROUTE_MEDIA: "media.example.com http://jellyfin:8096"
-    volumes: ["tnl-outpost:/var/lib/tnl-outpost"]
+      TNL_CREDENTIAL_FILE: /run/secrets/tnl-credential
+      TNL_ROUTE_PHOTOS: photos.example.com http://immich:2283
+    secrets: [tnl-credential]
     networks: [apps]
-volumes:
-  tnl-outpost:
+secrets:
+  tnl-credential:
+    file: ./tnl-credential
 networks:
   apps:
     external: true

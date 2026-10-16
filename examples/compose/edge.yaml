@@ -1,6 +1,8 @@
-# The Edge. Replace X.Y.Z with the exact release you install, and the address
-# with the DNS name Outposts dial. (The declared setup, with Zones and Outposts
-# in the environment, comes later.)
+# The Edge, declared. Replace X.Y.Z with the exact release you install, the
+# address with the DNS name Outposts dial, the zone with yours, and the Outpost
+# line with the one `tnl credential` printed. The key file comes from
+# `docker run --rm ghcr.io/hyprsh/tnl:X.Y.Z keygen > tnl-key`; make it readable
+# by uid 65532. See docs/guide/declaring-the-edge.md.
 services:
   tnl:
     image: ghcr.io/hyprsh/tnl:X.Y.Z
@@ -9,7 +11,14 @@ services:
     stop_grace_period: 20s
     environment:
       TNL_ADDRESS: edge.example.com
+      TNL_KEY_FILE: /run/secrets/tnl-key
+      TNL_ZONE_MAIN: example.com
+      TNL_OUTPOST_NAS: nas 6WvT…=
+    secrets: [tnl-key]
     ports: ["80:80/tcp", "443:443/tcp", "443:443/udp", "51820:51820/udp"]
     volumes: ["tnl:/var/lib/tnl"]
+secrets:
+  tnl-key:
+    file: ./tnl-key
 volumes:
   tnl:
