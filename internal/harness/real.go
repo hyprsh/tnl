@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/hyprsh/tnl/internal/api"
+	"github.com/hyprsh/tnl/internal/api/server"
 	"github.com/hyprsh/tnl/internal/edge"
 	"github.com/hyprsh/tnl/internal/edge/routes"
 	"github.com/hyprsh/tnl/internal/logx"
@@ -49,6 +50,16 @@ type EdgeOptions struct {
 	Pebble *Pebble
 	// LogOut, if set, also receives the Edge's log lines, at warn and above.
 	LogOut io.Writer
+	// Resolver answers the Edge's DNS checks. Nil answers every name with
+	// 127.0.0.1, the Edge's --address, so no check warns and none uses real DNS.
+	Resolver server.Resolver
+}
+
+// atEdge answers every name with the Edge's address.
+type atEdge struct{}
+
+func (atEdge) LookupNetIP(context.Context, string, string) ([]netip.Addr, error) {
+	return []netip.Addr{netip.MustParseAddr("127.0.0.1")}, nil
 }
 
 // StartEdge runs edge.Run on a temporary state directory, WireGuard on a free
@@ -72,7 +83,11 @@ func StartEdgeWith(t testing.TB, opts EdgeOptions) *RealEdge {
 
 	cfg := edge.Config{
 		Address: "127.0.0.1", StateDir: dir, Version: harnessVersion, Build: "test",
-		Log: logx.New(logx.Options{Level: slog.LevelWarn, Out: testWriter{t}}),
+		Log:      logx.New(logx.Options{Level: slog.LevelWarn, Out: testWriter{t}}),
+		Resolver: opts.Resolver,
+	}
+	if cfg.Resolver == nil {
+		cfg.Resolver = atEdge{}
 	}
 	if opts.LogOut != nil {
 		cfg.Log = logx.New(logx.Options{Level: slog.LevelWarn, Out: io.MultiWriter(testWriter{t}, opts.LogOut)})
@@ -135,7 +150,7 @@ func (e *RealEdge) Stop() { e.stop() }
 // AddZone calls `zone add` on the running Edge.
 func (e *RealEdge) AddZone(t testing.TB, name string) {
 	t.Helper()
-	if _, err := api.Call[api.ZoneInfo](context.Background(), e.API, http.MethodPost, api.PathZones, api.ZoneAddRequest{Name: name}); err != nil {
+	if _, err := api.Call[api.ZoneAddReply](context.Background(), e.API, http.MethodPost, api.PathZones, api.ZoneAddRequest{Name: name}); err != nil {
 		t.Fatal(err)
 	}
 }

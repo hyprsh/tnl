@@ -121,7 +121,7 @@ func TestZonesSurviveARestart(t *testing.T) {
 	}
 
 	serve(func() {
-		if _, err := api.Call[api.ZoneInfo](context.Background(), c, http.MethodPost, api.PathZones, api.ZoneAddRequest{Name: "example.com"}); err != nil {
+		if _, err := api.Call[api.ZoneAddReply](context.Background(), c, http.MethodPost, api.PathZones, api.ZoneAddRequest{Name: "example.com"}); err != nil {
 			t.Fatal(err)
 		}
 	})

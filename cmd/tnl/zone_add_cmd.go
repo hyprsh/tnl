@@ -24,10 +24,11 @@ func zoneAdd(args []string) error {
 	if len(pos) != 1 {
 		return fmt.Errorf("usage: tnl zone add <zone>")
 	}
-	z, err := api.Call[api.ZoneInfo](context.Background(), c.client(), http.MethodPost, api.PathZones, api.ZoneAddRequest{Name: pos[0]})
+	z, err := api.Call[api.ZoneAddReply](context.Background(), c.client(), http.MethodPost, api.PathZones, api.ZoneAddRequest{Name: pos[0]})
 	if err != nil {
 		return err
 	}
 	fmt.Fprintf(stdout, "added Zone %s (%s)\n", z.Name, z.Mode)
+	printWarnings(z.Warnings)
 	return nil
 }

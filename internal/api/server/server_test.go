@@ -8,11 +8,13 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/hyprsh/tnl/internal/api"
 	"github.com/hyprsh/tnl/internal/api/server"
@@ -39,6 +41,12 @@ type fixture struct {
 // actor on the listener.
 func start(t *testing.T, version string, actor api.Actor) *fixture {
 	t.Helper()
+	return startWith(t, version, actor, edgeResolver())
+}
+
+// startWith is start with an injected resolver for the DNS checks.
+func startWith(t *testing.T, version string, actor api.Actor, res server.Resolver) *fixture {
+	t.Helper()
 	// Unix socket paths are short on macOS, so keep the directory name short.
 	dir, err := os.MkdirTemp("", "tnl")
 	if err != nil {
@@ -51,7 +59,7 @@ func start(t *testing.T, version string, actor api.Actor) *fixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv := server.New(server.Config{Store: store, Log: lg, Version: version, Build: "abc", Role: "edge", Address: "tnl.example.com", WireGuardPort: 51820})
+	srv := server.New(server.Config{Store: store, Log: lg, Version: version, Build: "abc", Role: "edge", Address: "tnl.example.com", WireGuardPort: 51820, Resolver: res})
 	ln, err := server.ListenSocket(dir)
 	if err != nil {
 		t.Fatal(err)
@@ -63,8 +71,8 @@ func start(t *testing.T, version string, actor api.Actor) *fixture {
 	return &fixture{dir: dir, log: buf, store: store, client: &api.Client{StateDir: dir, Version: version}}
 }
 
-func addZone(c *api.Client, name string) (api.ZoneInfo, error) {
-	return api.Call[api.ZoneInfo](context.Background(), c, http.MethodPost, api.PathZones, api.ZoneAddRequest{Name: name})
+func addZone(c *api.Client, name string) (api.ZoneAddReply, error) {
+	return api.Call[api.ZoneAddReply](context.Background(), c, http.MethodPost, api.PathZones, api.ZoneAddRequest{Name: name})
 }
 
 func rawClient(dir string) *http.Client {
@@ -90,7 +98,7 @@ func TestZoneAddThenLsAndLogsActorLocal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if z != (api.ZoneInfo{Name: "example.com", Mode: "per-hostname"}) {
+	if z.ZoneInfo != (api.ZoneInfo{Name: "example.com", Mode: "per-hostname"}) || z.Warnings.Warnings != nil {
 		t.Fatalf("%+v", z)
 	}
 	list, err := api.Call[api.ZoneList](context.Background(), f.client, http.MethodGet, api.PathZones, nil)
@@ -238,4 +246,107 @@ func TestAStaleSocketIsReplaced(t *testing.T) {
 		t.Fatal(err)
 	}
 	ln2.Close()
+}
+
+// fakeResolver answers from a table; a name not in it is NXDOMAIN. Names under
+// block, if set, wait for it to close.
+type fakeResolver struct {
+	hosts map[string][]netip.Addr
+	block chan struct{}
+}
+
+func (r *fakeResolver) LookupNetIP(ctx context.Context, _, host string) ([]netip.Addr, error) {
+	if r.block != nil && strings.HasSuffix(host, ".slow.test") {
+		select {
+		case <-r.block:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+	if a, ok := r.hosts[host]; ok {
+		return a, nil
+	}
+	if strings.HasSuffix(host, ".points-here.test") || strings.HasSuffix(host, ".example.com") {
+		return r.hosts["tnl.example.com"], nil
+	}
+	if strings.HasSuffix(host, ".points-away.test") {
+		return []netip.Addr{netip.MustParseAddr("203.0.113.9")}, nil
+	}
+	return nil, &net.DNSError{Err: "no such host", Name: host, IsNotFound: true}
+}
+
+func edgeResolver() *fakeResolver {
+	return &fakeResolver{hosts: map[string][]netip.Addr{"tnl.example.com": {netip.MustParseAddr("198.51.100.7")}}}
+}
+
+func logLines(f *fixture, substr string) []string {
+	var out []string
+	for _, l := range strings.Split(f.log.String(), "\n") {
+		if strings.Contains(l, substr) {
+			out = append(out, l)
+		}
+	}
+	return out
+}
+
+func TestZoneAddWarnsWhenNamesPointElsewhereOrNowhere(t *testing.T) {
+	for _, zone := range []string{"points-away.test", "nowhere.test"} {
+		f := startWith(t, "1.2.3", api.ActorLocal, edgeResolver())
+		z, err := addZone(f.client, zone)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(z.Warnings.Warnings) != 1 || !strings.Contains(z.Warnings.Warnings[0], zone) || !strings.Contains(z.Warnings.Warnings[0], "tnl.example.com") {
+			t.Fatalf("%s: warnings %q", zone, z.Warnings.Warnings)
+		}
+		if got := f.store.Snapshot().Zones; len(got) != 1 {
+			t.Fatalf("%s: the Zone was not saved: %+v", zone, got)
+		}
+		lines := logLines(f, "level=warn")
+		if len(lines) != 1 || !strings.Contains(lines[0], "actor=local") || !strings.Contains(lines[0], z.Warnings.Warnings[0]) {
+			t.Fatalf("%s: warn lines %q", zone, lines)
+		}
+	}
+}
+
+func TestZoneAddNoWarningWhenNamesPointAtTheEdge(t *testing.T) {
+	f := startWith(t, "1.2.3", api.ActorLocal, edgeResolver())
+	z, err := addZone(f.client, "points-here.test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if z.Warnings.Warnings != nil || len(logLines(f, "level=warn")) != 0 {
+		t.Fatalf("warnings %q, log %s", z.Warnings.Warnings, f.log.String())
+	}
+}
+
+func TestZoneAddResolvesAfterTheLock(t *testing.T) {
+	res := edgeResolver()
+	res.block = make(chan struct{})
+	f := startWith(t, "1.2.3", api.ActorLocal, res)
+	done := make(chan error, 1)
+	go func() { _, err := addZone(f.client, "slow.test"); done <- err }()
+	// Wait until the Zone is saved: the resolver is then running, blocked.
+	deadline := time.Now().Add(5 * time.Second)
+	for len(f.store.Snapshot().Zones) == 0 {
+		if time.Now().After(deadline) {
+			t.Fatal("the Zone was never saved")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	// A concurrent change must not wait for the resolver.
+	other := make(chan error, 1)
+	go func() { _, err := addZone(f.client, "points-here.test"); other <- err }()
+	select {
+	case err := <-other:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("a concurrent change waited for the resolver")
+	}
+	close(res.block)
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
 }
