@@ -3,16 +3,18 @@ package main
 import (
 	"fmt"
 	"strings"
+
+	ver "github.com/hyprsh/tnl/internal/version"
 )
 
-// `tnl version` runs anywhere and contacts nothing. Its compatibility line
-// comes in slice 7.
+// `tnl version` runs anywhere and contacts nothing. It prints the version, the
+// build and one compatibility line.
 func init() {
 	commands["version"] = func(args []string) error {
 		if len(args) > 0 {
 			return fmt.Errorf("version takes no arguments, got %q", strings.Join(args, " "))
 		}
-		fmt.Fprintf(stdout, "tnl %s %s\n", version, buildName)
+		fmt.Fprintf(stdout, "tnl %s %s\n%s\n", version, buildName, ver.CompatibilityLine(version, buildName))
 		return nil
 	}
 }

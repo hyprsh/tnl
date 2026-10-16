@@ -22,6 +22,7 @@ import (
 	"github.com/hyprsh/tnl/internal/edge/routes"
 	"github.com/hyprsh/tnl/internal/keys"
 	"github.com/hyprsh/tnl/internal/state"
+	"github.com/hyprsh/tnl/internal/version"
 )
 
 // Config is what the handlers need.
@@ -110,6 +111,7 @@ type Wildcards interface {
 // Liveness is the Edge's view of the Outposts, as the handlers read it.
 type Liveness interface {
 	State(outpost string) liveness.State
+	Info(outpost string) liveness.Info
 }
 
 // ConnCloser is the connection tracker as the handlers see it, in the
@@ -161,6 +163,10 @@ func (s *Server) Handler(actor api.Actor) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set(api.VersionHeader, s.cfg.Version)
 		after := &afterList{}
+		if err := s.incompatible(actor); err != nil {
+			s.reply(w, nil, err)
+			return
+		}
 		ctx := context.WithValue(context.WithValue(r.Context(), actorKey{}, actor), afterKey{}, after)
 		s.mux.ServeHTTP(w, r.WithContext(ctx))
 		if len(after.fns) > 0 {
@@ -176,6 +182,20 @@ func (s *Server) Handler(actor api.Actor) http.Handler {
 			})
 		}
 	})
+}
+
+// incompatible refuses every call from an Outpost the Edge has judged
+// Incompatible. The Edge logged that once, when it learned the version, so the
+// refusals are not logged again.
+func (s *Server) incompatible(actor api.Actor) error {
+	name, ok := actor.OutpostName()
+	if !ok || s.cfg.Liveness == nil {
+		return nil
+	}
+	if s.cfg.Liveness.State(name) != liveness.Incompatible {
+		return nil
+	}
+	return api.Errorf(http.StatusForbidden, "%s", version.IncompatibleOutpost(s.cfg.Version, s.cfg.Liveness.Info(name).Version))
 }
 
 // HandlerBySource serves the API for callers whose actor comes from the
@@ -266,8 +286,12 @@ func (s *Server) decode(r *http.Request, v any) error {
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(v); err != nil {
 		if field, ok := strings.CutPrefix(err.Error(), "json: unknown field "); ok {
-			return api.Errorf(http.StatusBadRequest,
-				"the Edge (%s) doesn't support the field %s; it needs a newer version; upgrade the Edge", s.cfg.Version, field)
+			field = strings.Trim(field, `"`)
+			// The Edge knows only that the field is unknown. The newer side knows
+			// which version added it, so the client may reword this (api.FieldAdded).
+			ae := api.Errorf(http.StatusBadRequest, "%s", version.UnknownField(s.cfg.Version, field, ""))
+			ae.UnknownField = field
+			return ae
 		}
 		return api.Errorf(http.StatusBadRequest, "the request is not valid: %v", err)
 	}
@@ -299,6 +323,9 @@ func (s *Server) reply(w http.ResponseWriter, resp any, err error) {
 		default:
 			s.cfg.Log.Error("api request failed", "error", err)
 			ae = api.Errorf(http.StatusInternalServerError, "%v", err)
+		}
+		if ae.UnknownField != "" {
+			w.Header().Set(api.UnknownFieldHeader, ae.UnknownField)
 		}
 		send(ae.Status, struct {
 			Error string `json:"error"`

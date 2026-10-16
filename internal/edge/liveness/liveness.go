@@ -11,6 +11,8 @@ import (
 	"net/netip"
 	"sync"
 	"time"
+
+	ver "github.com/hyprsh/tnl/internal/version"
 )
 
 // DefaultOfflineAfter is the silence after which an Outpost is Offline.
@@ -24,10 +26,15 @@ const (
 	Unknown State = iota
 	Online
 	Offline
+	// Incompatible is an Outpost heard from lately whose version is outside the
+	// Edge's window.
+	Incompatible
 )
 
 func (s State) String() string {
 	switch s {
+	case Incompatible:
+		return "incompatible"
 	case Online:
 		return "online"
 	case Offline:
@@ -38,9 +45,12 @@ func (s State) String() string {
 
 // Config tunes a Liveness. The zero value of each field is its default.
 type Config struct {
-	OfflineAfter time.Duration    // 60 s
-	Now          func() time.Time // the clock; time.Now
-	Log          *slog.Logger     // transitions; nil logs nothing
+	OfflineAfter time.Duration // 60 s
+	// EdgeVersion is the Edge's own version, which the window is judged from.
+	// Empty judges nothing.
+	EdgeVersion string
+	Now         func() time.Time // the clock; time.Now
+	Log         *slog.Logger     // transitions; nil logs nothing
 	// OnOffline runs, with no lock held, once each time an Outpost goes Offline.
 	OnOffline func(name string)
 }
@@ -64,7 +74,14 @@ type entry struct {
 	lastSeen time.Time
 	endpoint netip.AddrPort
 	version  string
-	offline  bool // the Offline transition has been taken
+	warned   string // the version the Incompatible warning was logged for
+	offline  bool   // the Offline transition has been taken
+}
+
+// outside reports whether the version the Outpost reported is outside the
+// Edge's window.
+func (l *Liveness) outside(version string) bool {
+	return l.cfg.EdgeVersion != "" && version != "" && !ver.EdgeAccepts(l.cfg.EdgeVersion, version)
 }
 
 // New returns an empty Liveness.
@@ -119,11 +136,26 @@ func (l *Liveness) Heard(name string) {
 }
 
 // SetVersion records the version the Outpost's ping reported.
+// Outside the window, the Outpost is Incompatible, and the Edge logs that at
+// warn with both versions, once per version change.
 func (l *Liveness) SetVersion(name, version string) {
 	l.mu.Lock()
-	defer l.mu.Unlock()
-	if e := l.m[name]; e != nil {
+	e := l.m[name]
+	warn := false
+	if e != nil {
 		e.version = version
+		if l.outside(version) {
+			warn = e.warned != version
+			e.warned = version
+		} else {
+			e.warned = ""
+		}
+	}
+	l.mu.Unlock()
+	if warn {
+		l.cfg.Log.Warn("outpost is incompatible", "outpost", name,
+			"edge_version", l.cfg.EdgeVersion, "outpost_version", version,
+			"error", ver.IncompatibleOutpost(l.cfg.EdgeVersion, version))
 	}
 }
 
@@ -197,6 +229,8 @@ func (l *Liveness) Info(name string) Info {
 	st := Online
 	if e.offline || now.Sub(e.lastSeen) >= l.cfg.OfflineAfter {
 		st = Offline
+	} else if l.outside(e.version) {
+		st = Incompatible
 	}
 	return Info{State: st, LastSeen: e.lastSeen, Endpoint: e.endpoint, Version: e.version}
 }

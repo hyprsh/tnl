@@ -42,6 +42,31 @@ type diskState struct {
 	TokenSHA256 string `json:"token_sha256"`
 }
 
+// stateSteps are the migrations of state.json, one per schema that has a
+// successor. Schema 1 predates the join exchange and has no name; the Tunnel
+// address, which is unique, stands in until the Outpost joins again.
+var stateSteps = statefile.Steps{
+	1: func(doc map[string]any) error {
+		if _, ok := doc["name"]; !ok {
+			addr, _ := doc["address"].(string)
+			doc["name"] = addr
+		}
+		return nil
+	},
+}
+
+// migrateState brings dir's state.json to the current schema, keeping the old
+// file as state.json.v<n>. from is the schema it had, or 0 when there was
+// nothing to migrate. A schema this tnl doesn't know, older or newer, is an
+// error and the file is untouched.
+func migrateState(dir string) (from int, err error) {
+	path := filepath.Join(dir, FileName)
+	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+		return 0, nil
+	}
+	return statefile.Migrate(path, FileName, StateVersion, stateSteps)
+}
+
 // loadState reads dir's state.json. It returns (nil, nil) when there is none.
 func loadState(dir string) (*State, error) {
 	raw, err := os.ReadFile(filepath.Join(dir, FileName))

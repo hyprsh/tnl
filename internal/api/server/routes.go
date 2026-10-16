@@ -182,6 +182,8 @@ func (s *Server) routeAdd(ctx context.Context, actor api.Actor, req api.RouteAdd
 	case liveness.Offline:
 		// An Offline Outpost can't be test-dialed; the warning says why.
 		warnings = append(warnings, fmt.Sprintf("Outpost %s is Offline: %s answers 503 until it is back", r.Outpost, r.Hostname))
+	case liveness.Incompatible:
+		warnings = append(warnings, fmt.Sprintf("Outpost %s is Incompatible with this Edge: %s answers 503 until it is upgraded", r.Outpost, r.Hostname))
 	case liveness.Unknown:
 		warnings = append(warnings, fmt.Sprintf("Outpost %s has not connected yet, so there was no test dial of %s", r.Outpost, r.Service))
 	default:
