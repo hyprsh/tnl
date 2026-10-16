@@ -35,8 +35,6 @@ func init() {
 type connectSettings struct {
 	cfg outpost.Config
 	log *logx.Config
-	// declaration is the Routes this Outpost declares, checked at start. They
-	// are also in cfg.Declaration, with their labels, for the Edge to be sent.
 }
 
 // outpostStateDir is $XDG_STATE_HOME/tnl-outpost, which is
