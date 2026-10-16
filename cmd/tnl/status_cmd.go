@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
+	"io"
 	"path/filepath"
 	"time"
 
@@ -63,38 +63,24 @@ func statusCmd(args []string) error {
 	}
 	var attention []api.AttentionItem
 	if info.Role == api.RoleEdge {
-		s, err := api.Call[api.EdgeStatus](ctx, c.client(), http.MethodGet, api.PathStatus, nil)
+		s, err := showReply(c, api.PathStatus, *asJSON, render.EdgeStatus)
 		if err != nil {
 			return err
 		}
 		attention = s.Attention
-		err = printStatus(*asJSON, s, func() error { return render.EdgeStatus(stdout, s) })
-		if err != nil {
-			return err
-		}
 	} else {
-		s, err := api.Call[api.OutpostStatus](ctx, c.client(), http.MethodGet, api.PathStatus, nil)
+		s, err := showReply(c, api.PathStatus, *asJSON, func(w io.Writer, s api.OutpostStatus) error {
+			return render.OutpostStatus(w, s, time.Now())
+		})
 		if err != nil {
 			return err
 		}
 		attention = s.Attention
-		err = printStatus(*asJSON, s, func() error { return render.OutpostStatus(stdout, s, time.Now()) })
-		if err != nil {
-			return err
-		}
 	}
 	if len(attention) > 0 {
 		return exitError{code: exitAttention}
 	}
 	return nil
-}
-
-// printStatus prints the reply as JSON, or as text by text.
-func printStatus(asJSON bool, reply any, text func() error) error {
-	if asJSON {
-		return render.JSON(stdout, reply)
-	}
-	return text()
 }
 
 // silent reports whether err is an exit code alone, which main does not print.

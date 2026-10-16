@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"sort"
 
@@ -105,15 +104,23 @@ func lsCommand[L any](name, path string, print func(io.Writer, L) error) func([]
 		if len(pos) > 0 {
 			return fmt.Errorf("%s takes no arguments, got %q", name, pos[0])
 		}
-		list, err := api.Call[L](context.Background(), c.client(), http.MethodGet, path, nil)
-		if err != nil {
-			return err
-		}
-		if *asJSON {
-			return render.JSON(stdout, list)
-		}
-		return print(stdout, list)
+		_, err = showReply(c, path, *asJSON, print)
+		return err
 	}
+}
+
+// showReply GETs path and prints the reply with print, or, with asJSON, as it
+// came: the Edge's own bytes, indented, so a field this build doesn't know
+// still reaches the script and doesn't stop the table. It returns the reply.
+func showReply[R any](c *clientCommand, path string, asJSON bool, print func(io.Writer, R) error) (R, error) {
+	reply, raw, err := api.Fetch[R](context.Background(), c.client(), path)
+	if err != nil {
+		return reply, err
+	}
+	if asJSON {
+		return reply, render.RawJSON(stdout, raw)
+	}
+	return reply, print(stdout, reply)
 }
 
 func (c *clientCommand) client() *api.Client {

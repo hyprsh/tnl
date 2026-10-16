@@ -69,8 +69,8 @@ func (r *certsRef) Obtain(ctx context.Context, hostname string) error {
 	return nil
 }
 
-// Certificate, Covered and Now are the `ls` replies' read of the manager. With
-// no manager they know nothing.
+// Certificate and Covered are the `ls` replies' read of the manager. With no
+// manager they know nothing.
 func (r *certsRef) Certificate(name string) server.CertState {
 	m := r.manager()
 	if m == nil {
@@ -83,13 +83,6 @@ func (r *certsRef) Certificate(name string) server.CertState {
 func (r *certsRef) Covered(host string) bool {
 	m := r.manager()
 	return m != nil && m.Covered(host)
-}
-
-func (r *certsRef) Now() time.Time {
-	if m := r.manager(); m != nil {
-		return m.Now()
-	}
-	return time.Now()
 }
 
 func (r *certsRef) Wait(ctx context.Context, name string) error {

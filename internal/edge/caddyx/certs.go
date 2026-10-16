@@ -484,9 +484,6 @@ func (c *Certs) Covered(name string) bool {
 	return dnsname.WildcardCovers(normalize(name), covering)
 }
 
-// Now is the manager's clock.
-func (c *Certs) Now() time.Time { return c.clock.Now() }
-
 // Statuses lists every Hostname the manager has heard of, in no order.
 func (c *Certs) Statuses() []CertStatus {
 	c.mu.Lock()

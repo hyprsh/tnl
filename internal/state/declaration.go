@@ -55,20 +55,54 @@ func (s *State) Route(host string) (Route, bool) {
 	return Route{}, false
 }
 
-// WaitingReason says why the Outpost's line for host is not a Route, or ""
+// WaitKind is why a declared line is not a Route.
+type WaitKind int
+
+const (
+	NotWaiting      WaitKind = iota // the line is a Route
+	WaitHeld                        // another Outpost holds the Hostname
+	WaitOutsideZone                 // the Hostname is in no Zone
+	WaitNotApplied                  // free and inside a Zone: it waits for the change that makes it a Route
+)
+
+// Wait is why a declared line is not a Route, with who holds the Hostname
+// where another Outpost does. Every surface words it from this.
+type Wait struct {
+	Kind   WaitKind
+	Holder string // the Outpost holding the Hostname, for WaitHeld
+}
+
+// String is the Edge's log wording; the zero Wait is "".
+func (w Wait) String() string {
+	switch w.Kind {
+	case WaitHeld:
+		return "held by Outpost " + w.Holder
+	case WaitOutsideZone:
+		return "outside every Zone"
+	case WaitNotApplied:
+		return "not applied yet"
+	}
+	return ""
+}
+
+// Waiting says why the Outpost's line for host is not a Route; the zero Wait
 // when it is one.
-func (s *State) WaitingReason(outpost, host string) string {
+func (s *State) Waiting(outpost, host string) Wait {
 	if r, held := s.Route(host); held {
 		if r.Outpost == outpost {
-			return ""
+			return Wait{}
 		}
-		return "held by Outpost " + r.Outpost
+		return Wait{Kind: WaitHeld, Holder: r.Outpost}
 	}
 	if !s.InZone(host) {
-		return "outside every Zone"
+		return Wait{Kind: WaitOutsideZone}
 	}
-	// Free and inside a Zone: it only waits for the change that makes it a Route.
-	return "not applied yet"
+	return Wait{Kind: WaitNotApplied}
+}
+
+// WaitingReason is Waiting in the Edge's log wording, or "" when the line is a Route.
+func (s *State) WaitingReason(outpost, host string) string {
+	return s.Waiting(outpost, host).String()
 }
 
 // Entries are the Outpost's Routes and waiting lines as the Edge has them,

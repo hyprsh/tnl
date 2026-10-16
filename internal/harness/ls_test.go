@@ -81,7 +81,7 @@ func TestOutpostLsShowsOnlineOfflineIncompatibleAndNotJoined(t *testing.T) {
 		t.Fatalf("rows are not sorted by name: %v", names)
 	}
 	up := strings.Fields(rowOf(t, lines, "up"))
-	if up[1] != "online" || !strings.HasSuffix(up[2], "s") || up[3] != "ago" || up[4] == "-" || up[5] != "0.3.4" || up[7] != "0" {
+	if up[1] != "online" || !strings.HasSuffix(up[2], "s") || up[3] != "ago" || up[4] == "–" || up[5] != "0.3.4" || up[7] != "0" {
 		t.Errorf("up: %v", up)
 	}
 	if f := strings.Fields(rowOf(t, lines, "gone")); f[1] != "offline" || f[3] != "ago" {
@@ -91,7 +91,7 @@ func TestOutpostLsShowsOnlineOfflineIncompatibleAndNotJoined(t *testing.T) {
 		t.Errorf("old: %v", f)
 	}
 	nb := rowOf(t, lines, "newbox")
-	if !strings.HasPrefix(nb, "newbox not joined token expires in ") || !strings.HasSuffix(nb, "m - - 100.64.0.5 0") {
+	if !strings.HasPrefix(nb, "newbox not joined token expires in ") || !strings.HasSuffix(nb, "m – – 100.64.0.5 0") {
 		t.Errorf("newbox: %q", nb)
 	}
 }
@@ -108,7 +108,7 @@ func TestOutpostLsAfterARestartShowsDashesUntilTheOutpostIsHeard(t *testing.T) {
 
 	again := StartEdgeWith(t, EdgeOptions{StateDir: re.StateDir})
 	got := rowOf(t, outpostRows(t, again.API), "nas")
-	if f := strings.Fields(got); f[1] != "online" || f[2] != "-" || f[3] != "-" || f[4] != "-" {
+	if f := strings.Fields(got); f[1] != "online" || f[2] != "–" || f[3] != "–" || f[4] != "–" {
 		t.Fatalf("right after the restart: %q", got)
 	}
 }
@@ -144,13 +144,13 @@ func TestRouteLsAndZoneLsOnAnOutpostPrintWhatTheEdgePrints(t *testing.T) {
 		t.Fatalf("on the Outpost:\n%s\n%s\non the Edge:\n%s\n%s", strings.Join(or, "\n"), strings.Join(oz, "\n"), strings.Join(er, "\n"), strings.Join(ez, "\n"))
 	}
 	// A move: one Hostname, two rows, the Route first.
-	if er[1] != photos+" nas http://"+svc.Addr()+" - ok" {
+	if er[1] != photos+" nas http://"+svc.Addr()+" – ok" {
 		t.Errorf("the Route row: %q", er[1])
 	}
 	if !strings.HasPrefix(er[2], photos+" newbox ") || !strings.HasSuffix(er[2], "waiting: taken by nas") {
 		t.Errorf("the waiting row: %q", er[2])
 	}
-	if ez[1] != "test per-hostname - 1 certificate" {
+	if ez[1] != "test per-hostname – 1 certificate" {
 		t.Errorf("the Zone row: %q", ez[1])
 	}
 }

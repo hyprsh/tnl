@@ -99,8 +99,8 @@ func TestReportGivesTheTablesTheStatusUnderAnyCase(t *testing.T) {
 	if st := c.Report("other.test"); !st.NotAfter.IsZero() || st.Failures != 0 {
 		t.Fatalf("a name never heard of: %+v", st)
 	}
-	if c.Covered("app.test") || !c.Now().Equal(clock.Now()) {
-		t.Fatal("covered with no wildcard held, or a clock that isn't the manager's")
+	if c.Covered("app.test") {
+		t.Fatal("covered with no wildcard held")
 	}
 }
 

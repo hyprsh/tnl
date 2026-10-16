@@ -12,11 +12,7 @@ import (
 // Routes and declared lines, a blank line, and what needs attention. now is
 // the time "last answer" is relative to.
 func OutpostStatus(w io.Writer, s api.OutpostStatus, now time.Time) error {
-	version := fmt.Sprintf("tnl %s (%s", s.Version, s.Build)
-	if s.Revision != "" {
-		version += ", " + s.Revision
-	}
-	fmt.Fprintf(w, "Outpost %s, %s)\n", s.Name, version)
+	fmt.Fprintf(w, "Outpost %s, %s\n", s.Name, versionLine(s.Version, s.Build, s.Revision))
 	allow := s.Allow
 	if allow == "" {
 		allow = "no limit"
@@ -29,7 +25,7 @@ func OutpostStatus(w io.Writer, s api.OutpostStatus, now time.Time) error {
 	if s.Edge.LastAnswer != nil {
 		answer = Span(int64(now.Sub(*s.Edge.LastAnswer).Seconds())) + " ago"
 	}
-	edgeVersion := dash(s.Edge.Version)
+	edgeVersion := orDash(s.Edge.Version)
 	if s.Edge.Message != "" {
 		edgeVersion += ", " + s.Edge.Message
 	}
@@ -37,7 +33,7 @@ func OutpostStatus(w io.Writer, s api.OutpostStatus, now time.Time) error {
 		{"Tunnel address", s.TunnelAddress},
 		{"State directory", s.StateDir},
 		{"Allow", allow},
-		{"Edge", fmt.Sprintf("%s (%s)", s.Edge.Address, dash(s.Edge.IP))},
+		{"Edge", fmt.Sprintf("%s (%s)", s.Edge.Address, orDash(s.Edge.IP))},
 		{"Tunnel", tunnel},
 		{"Last answer", answer},
 		{"Edge version", edgeVersion},
@@ -67,11 +63,4 @@ func OutpostStatus(w io.Writer, s api.OutpostStatus, now time.Time) error {
 	}
 	fmt.Fprintln(w)
 	return Attention(w, s.Attention)
-}
-
-func dash(s string) string {
-	if s == "" {
-		return "-"
-	}
-	return s
 }

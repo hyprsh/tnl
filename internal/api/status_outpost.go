@@ -35,10 +35,12 @@ type OutpostStatus struct {
 	Attention []AttentionItem `json:"attention"`
 }
 
-// The states of OutpostEdge.
+// TunnelState is the state of the Tunnel to the Edge, as OutpostEdge has it.
+type TunnelState string
+
 const (
-	TunnelUp   = "up"
-	TunnelDown = "down"
+	TunnelUp   TunnelState = "up"
+	TunnelDown TunnelState = "down"
 )
 
 // OutpostEdge is the Edge as its Outpost sees it.
@@ -46,14 +48,16 @@ type OutpostEdge struct {
 	Address string `json:"address"` // --address as given
 	IP      string `json:"ip"`      // as last resolved
 	// State is TunnelUp, or TunnelDown once the Edge has been silent too long.
-	State string `json:"state"`
+	State TunnelState `json:"state"`
 	// LastAnswer is when the Edge last answered; left out before the first answer.
 	LastAnswer    *time.Time `json:"last_answer,omitempty"`
 	SilentSeconds int64      `json:"silent_seconds"`
 	Version       string     `json:"version,omitempty"`
 	// Incompatible is set when the Edge says this Outpost is outside its window.
-	// Message is that, or the Edge being too old, in words; left out otherwise.
+	// TooOld is set when the Edge is of an older major than this Outpost
+	// works with. Message is either, in words; left out otherwise.
 	Incompatible bool   `json:"incompatible"`
+	TooOld       bool   `json:"too_old,omitempty"`
 	Message      string `json:"message,omitempty"`
 }
 
@@ -76,8 +80,8 @@ type DeclaredLineStatus struct {
 
 // More kinds of AttentionItem, for an Outpost.
 const (
-	AttentionTunnelDown      = "tunnel down"
-	AttentionEdgeIncompat    = "edge incompatible"
-	AttentionEdgeTooOld      = "edge too old"
-	AttentionDeclaredWaiting = "declared line waiting"
+	AttentionTunnelDown       AttentionKind = "tunnel down"
+	AttentionEdgeIncompatible AttentionKind = "edge incompatible"
+	AttentionEdgeTooOld       AttentionKind = "edge too old"
+	AttentionDeclaredWaiting  AttentionKind = "declared line waiting"
 )

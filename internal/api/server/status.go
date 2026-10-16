@@ -3,16 +3,24 @@ package server
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/hyprsh/tnl/internal/api"
 	"github.com/hyprsh/tnl/internal/render"
+	"github.com/hyprsh/tnl/internal/state"
 )
 
+// outpostAttention is the kind of AttentionItem an Outpost's state is, for the
+// states that are a problem: `not joined` is not.
+var outpostAttention = map[api.OutpostState]api.AttentionKind{
+	api.StateOffline:      api.AttentionOutpostOffline,
+	api.StateIncompatible: api.AttentionOutpostIncompatible,
+}
+
 // status answers GET PathStatus: the Edge's summary and what needs attention.
-// It reads the same facts the `ls` handlers do, by calling them, so the two
-// never disagree on what an Outpost's state or a certificate's is.
+// It reads the same facts the `ls` handlers do, by calling them or the
+// functions they use, so the two never disagree on what an Outpost's state or
+// a certificate's is.
 func (s *Server) status(ctx context.Context, actor api.Actor, _ struct{}) (api.EdgeStatus, error) {
 	if err := localOnly(actor, "read the Edge's status", "status"); err != nil {
 		return api.EdgeStatus{}, err
@@ -23,11 +31,11 @@ func (s *Server) status(ctx context.Context, actor api.Actor, _ struct{}) (api.E
 		Role: api.RoleEdge, Version: s.cfg.Version, Build: s.cfg.Build, Revision: s.cfg.Revision,
 		Address: s.cfg.Address, WireGuardPort: s.cfg.WireGuardPort, KeyFingerprint: st.PrivateKey.Public().Fingerprint(),
 		StateDir: s.cfg.StateDir, LogLevel: s.cfg.LogLevel, AccessLog: s.cfg.AccessLog,
-		Zones: len(st.Zones), Attention: []api.AttentionItem{},
+		Routes: len(st.Routes), Zones: len(st.Zones), Attention: []api.AttentionItem{},
 	}
 	if !s.cfg.StartedAt.IsZero() {
 		out.Started = s.cfg.StartedAt.UTC()
-		out.UptimeSeconds = *seconds(max(now.Sub(s.cfg.StartedAt), 0))
+		out.UptimeSeconds = seconds(max(now.Sub(s.cfg.StartedAt), 0))
 	}
 
 	outposts, err := s.outpostList(ctx, actor, struct{}{})
@@ -35,35 +43,10 @@ func (s *Server) status(ctx context.Context, actor api.Actor, _ struct{}) (api.E
 		return out, err
 	}
 	for _, o := range outposts.Outposts {
-		switch o.State {
-		case api.StateOnline:
-			out.Outposts.Online++
-		case api.StateOffline:
-			out.Outposts.Offline++
-			out.Attention = append(out.Attention, api.AttentionItem{
-				Kind: api.AttentionOutpostOffline, Subject: o.Name, Message: outpostProblem(o, "is offline"),
-			})
-		case api.StateIncompatible:
-			out.Outposts.Incompatible++
-			out.Attention = append(out.Attention, api.AttentionItem{
-				Kind: api.AttentionOutpostIncompatible, Subject: o.Name, Message: outpostProblem(o, "is incompatible"),
-			})
-		case api.StateNotJoined:
-			out.Outposts.NotJoined++
+		out.Outposts.Count(o.State)
+		if kind, bad := outpostAttention[o.State]; bad {
+			out.Attention = append(out.Attention, api.AttentionItem{Kind: kind, Subject: o.Name, Message: outpostMessage(o)})
 		}
-	}
-
-	routes, _ := s.routeList(ctx, actor, struct{}{})
-	var waiting []api.AttentionItem
-	for _, r := range routes.Routes {
-		if r.Waiting == "" {
-			out.Routes++
-			continue
-		}
-		waiting = append(waiting, api.AttentionItem{
-			Kind: api.AttentionLineWaiting, Subject: r.Hostname, Outpost: r.Outpost,
-			Message: waitingLine(r),
-		})
 	}
 
 	zones, _ := s.zoneList(ctx, actor, struct{}{})
@@ -90,26 +73,27 @@ func (s *Server) status(ctx context.Context, actor api.Actor, _ struct{}) (api.E
 		case c.Expires != nil && c.Expires.Sub(now) < api.CertExpirySoon:
 			out.Attention = append(out.Attention, api.AttentionItem{
 				Kind: api.AttentionCertificateExpiring, Subject: c.Name,
-				Message: fmt.Sprintf("certificate %s expires in %s", c.Name, render.Span(*seconds(c.Expires.Sub(now)))),
+				Message: fmt.Sprintf("certificate %s expires in %s", c.Name, render.Span(seconds(c.Expires.Sub(now)))),
 			})
 		}
 	}
-	out.Attention = append(out.Attention, waiting...)
+
+	for _, w := range waitingLines(st) {
+		out.Attention = append(out.Attention, api.AttentionItem{
+			Kind: api.AttentionLineWaiting, Subject: w.Line.Hostname, Outpost: w.Line.Outpost,
+			Message: waitingMessage(w),
+		})
+	}
 	return out, nil
 }
 
-// outpostProblem is "Outpost nas is offline, last seen 4m ago, 3 Routes".
-func outpostProblem(o api.OutpostInfo, what string) string {
+// outpostMessage is "Outpost nas is offline, last seen 4m ago, 3 Routes".
+func outpostMessage(o api.OutpostInfo) string {
 	seen := "not heard from since the Edge started"
 	if o.LastSeenAgoSeconds != nil {
 		seen = "last seen " + render.Span(*o.LastSeenAgoSeconds) + " ago"
 	}
-	n := o.Routes
-	routes := fmt.Sprintf("%d Routes", n)
-	if n == 1 {
-		routes = "1 Route"
-	}
-	return fmt.Sprintf("Outpost %s %s, %s, %s", o.Name, what, seen, routes)
+	return fmt.Sprintf("Outpost %s is %s, %s, %s", o.Name, o.State, seen, render.Count(o.Routes, "Route", "Routes"))
 }
 
 func certProblem(c api.CertInfo, now time.Time) string {
@@ -124,7 +108,7 @@ func certProblem(c api.CertInfo, now time.Time) string {
 		msg += " for " + render.Span(*c.FailingForSeconds)
 	}
 	if c.Expires != nil {
-		msg += ", expires in " + render.Span(*seconds(c.Expires.Sub(now)))
+		msg += ", expires in " + render.Span(seconds(c.Expires.Sub(now)))
 	}
 	if c.Error != "" {
 		msg += ": " + render.OneLine(c.Error)
@@ -132,17 +116,14 @@ func certProblem(c api.CertInfo, now time.Time) string {
 	return msg
 }
 
-// waitingLine is "newbox declares photos.example.com, which nas holds".
-func waitingLine(r api.RouteRow) string {
-	head := fmt.Sprintf("%s declares %s", r.Outpost, r.Hostname)
-	switch {
-	case r.Waiting == api.WaitingOutsideEveryZone:
+// waitingMessage is "newbox declares photos.example.com, which nas holds".
+func waitingMessage(w declaredWait) string {
+	head := fmt.Sprintf("%s declares %s", w.Line.Outpost, w.Line.Hostname)
+	switch w.Why.Kind {
+	case state.WaitHeld:
+		return head + ", which " + w.Why.Holder + " holds"
+	case state.WaitOutsideZone:
 		return head + ", which is outside every Zone"
-	case r.Waiting == api.WaitingNotAppliedYet:
-		return head + ", which is not applied yet"
 	}
-	if holder, ok := strings.CutPrefix(r.Waiting, "taken by "); ok {
-		return head + ", which " + holder + " holds"
-	}
-	return head + ", which waits: " + r.Waiting
+	return head + ", which is not applied yet"
 }
