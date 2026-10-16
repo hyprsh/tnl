@@ -55,3 +55,17 @@ func CheckName(name string) error {
 	}
 	return nil
 }
+
+// LongestZone returns the longest of the zones that contains host: the zone
+// whose name host is, or ends with after a dot. A partial label does not count,
+// so "evilexample.com" is not in "example.com". Names are normalised.
+// Validation, the router and the certificate manager all ask this one question.
+func LongestZone(host string, zones []string) (string, bool) {
+	best, found := "", false
+	for _, z := range zones {
+		if (host == z || strings.HasSuffix(host, "."+z)) && (!found || len(z) > len(best)) {
+			best, found = z, true
+		}
+	}
+	return best, found
+}

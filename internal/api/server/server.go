@@ -114,6 +114,7 @@ func (s *Server) routes() {
 	endpoint(s, http.MethodGet, api.PathInfo, s.info)
 	endpoint(s, http.MethodGet, api.PathZones, s.zoneList)
 	endpoint(s, http.MethodPost, api.PathZones, s.zoneAdd)
+	endpoint(s, http.MethodPost, api.PathZoneRm, s.zoneRm)
 	endpoint(s, http.MethodPost, api.PathOutposts, s.outpostAdd)
 	endpoint(s, http.MethodPost, api.PathOutpostRm, s.outpostRm)
 	endpoint(s, http.MethodPost, api.PathOutpostRekey, s.outpostRekey)
