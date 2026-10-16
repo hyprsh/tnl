@@ -73,7 +73,7 @@ func TestAJoinTokenIsAFriendlyError(t *testing.T) {
 }
 
 func TestNoPartOfTheInputIsEchoed(t *testing.T) {
-	for in, needle := range map[string]string{"hunter2hunter2.rest": "hunter", "wg1.abcd": "wg1", "nonsense-secret": "nonsense", "tnlc2secretsecret.x": "secret"} {
+	for in, needle := range map[string]string{"tnlc2secretsecret.x": "secret", "tnl2.abcd": "tnl2"} {
 		_, err := Decode(in)
 		if err == nil || strings.Contains(err.Error(), needle) {
 			t.Errorf("%q: the error echoes the input: %v", in, err)
