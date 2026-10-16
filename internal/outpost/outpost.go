@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"net/netip"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/hyprsh/tnl/internal/addr"
@@ -28,6 +29,7 @@ import (
 	"github.com/hyprsh/tnl/internal/remind"
 	"github.com/hyprsh/tnl/internal/token"
 	"github.com/hyprsh/tnl/internal/tunnel"
+	"github.com/hyprsh/tnl/internal/version"
 	"github.com/hyprsh/tnl/internal/wire"
 )
 
@@ -95,6 +97,14 @@ func Run(ctx context.Context, cfg Config) error {
 		}
 		tok = &t
 	}
+	from, err := migrateState(cfg.StateDir)
+	if err != nil {
+		return configErr("state in %s: %w", cfg.StateDir, err)
+	}
+	if from != 0 {
+		cfg.Log.Info(fmt.Sprintf("migrated %s from schema %d to %d; the old file is kept as %s.v%d", FileName, from, StateVersion, FileName, from),
+			"state_dir", cfg.StateDir)
+	}
 	st, err := loadState(cfg.StateDir)
 	if err != nil {
 		return configErr("state in %s: %w", cfg.StateDir, err)
@@ -109,6 +119,10 @@ func Run(ctx context.Context, cfg Config) error {
 	case st != nil && tok != nil && token.Hash(cfg.Token) == st.TokenSHA256:
 		cfg.Log.Info("ignoring the join token: this state was made from it", "state_dir", cfg.StateDir)
 	case tok != nil:
+		// A token this Outpost can't use is refused before the state is touched.
+		if !version.EdgeAccepts(tok.EdgeVersion, cfg.Version) || !version.OutpostAcceptsEdge(cfg.Version, tok.EdgeVersion) {
+			return &ConfigError{errors.New(version.TokenOutOfWindow(cfg.Version, tok.EdgeVersion))}
+		}
 		joining = true
 		st = &State{
 			PrivateKey: tok.OneTimeKey, Address: tok.TunnelAddr,
@@ -167,7 +181,13 @@ func Run(ctx context.Context, cfg Config) error {
 	defer stopPinging()
 	w := newWatcher(cfg, tun, st, edgeIP, func(ctx context.Context, host string) (netip.Addr, error) { return resolve(ctx, cfg, host) })
 	go w.run(pingCtx)
-	if err := runPinger(pingCtx, tun, st.Address, cfg.Version, cmp.Or(cfg.PingInterval, DefaultPingInterval), w.answered, cfg.Log); err != nil {
+	refused := make(chan error, 1)
+	judge := &edgeJudge{cfg: cfg, refused: refused}
+	answered := func(p wire.Pong) {
+		w.answered(p.Version)
+		judge.judge(p)
+	}
+	if err := runPinger(pingCtx, tun, st.Address, cfg.Version, cmp.Or(cfg.PingInterval, DefaultPingInterval), answered, cfg.Log); err != nil {
 		return fmt.Errorf("start pinging the Edge: %w", err)
 	}
 	stopRelay, err := startRelay(cfg, tun)
@@ -196,8 +216,56 @@ func Run(ctx context.Context, cfg Config) error {
 	if cfg.Started != nil {
 		cfg.Started(&Running{Tunnel: tun, Address: st.Address, Name: st.Name, API: edgeAPI})
 	}
-	<-ctx.Done()
-	return nil
+	select {
+	case <-ctx.Done():
+		return nil
+	case err := <-refused:
+		cfg.Log.Error("refusing the Edge", "edge_version", judge.edgeVersion(), "version", cfg.Version, "error", err.Error())
+		return &ConfigError{err}
+	}
+}
+
+// edgeJudge applies what an Outpost may refuse of an Edge it is already
+// talking to: an Edge of an older major. Whether the Edge accepts this Outpost
+// is the Edge's call; when it says no, the Outpost only says so, once per
+// Edge version.
+type edgeJudge struct {
+	cfg     Config
+	refused chan error
+
+	mu       sync.Mutex
+	version  string
+	reported string
+}
+
+func (j *edgeJudge) edgeVersion() string {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	return j.version
+}
+
+func (j *edgeJudge) judge(p wire.Pong) {
+	j.mu.Lock()
+	j.version = p.Version
+	tell := !p.Inside && j.reported != p.Version
+	if tell {
+		j.reported = p.Version
+	}
+	if p.Inside {
+		j.reported = ""
+	}
+	j.mu.Unlock()
+	if !version.OutpostAcceptsEdge(j.cfg.Version, p.Version) {
+		select {
+		case j.refused <- errors.New(version.EdgeTooOld(j.cfg.Version, p.Version)):
+		default:
+		}
+		return
+	}
+	if tell {
+		j.cfg.Log.Warn("the Edge says this Outpost is Incompatible", "edge_version", p.Version, "version", j.cfg.Version,
+			"error", version.IncompatibleOutpost(p.Version, j.cfg.Version))
+	}
 }
 
 // joinExchange is the Outpost's half of the join: it asks the Edge to swap the

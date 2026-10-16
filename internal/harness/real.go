@@ -84,6 +84,10 @@ type EdgeOptions struct {
 	// Address is the Edge's --address, a name or an IP the Outposts resolve; empty
 	// is 127.0.0.1.
 	Address string
+	// Version is the version this Edge reports and judges by; empty is the
+	// harness's own. Each process takes its version here, so a test can run
+	// an Edge and an Outpost of different versions in one binary.
+	Version string
 }
 
 // atEdge answers every name with the Edge's address.
@@ -113,7 +117,7 @@ func StartEdgeWith(t testing.TB, opts EdgeOptions) *RealEdge {
 	}
 
 	cfg := edge.Config{
-		Address: cmp.Or(opts.Address, "127.0.0.1"), StateDir: dir, Version: harnessVersion, Build: "full", Revision: "test",
+		Address: cmp.Or(opts.Address, "127.0.0.1"), StateDir: dir, Version: cmp.Or(opts.Version, harnessVersion), Build: "full", Revision: "test",
 		Log:      logx.New(logx.Options{Level: slog.LevelWarn, Out: testWriter{t}}),
 		Resolver: opts.Resolver, WireGuardPort: opts.WireGuardPort, CertWait: opts.CertWait,
 		DNSResolvers: []string{fakeDNSServer(t)},
@@ -175,7 +179,7 @@ func StartEdgeWith(t testing.TB, opts EdgeOptions) *RealEdge {
 	return &RealEdge{
 		Edge:     e,
 		StateDir: dir,
-		API:      &api.Client{StateDir: dir, Version: harnessVersion},
+		API:      &api.Client{StateDir: dir, Version: cmp.Or(opts.Version, harnessVersion)},
 		Store:    r.Store,
 		Liveness: r.Liveness,
 		Certs:    r.Certs,
@@ -276,6 +280,9 @@ type ConnectOptions struct {
 	Reminders     remind.Schedule
 	// Allow is the Outpost's --allow list; nil allows every Service.
 	Allow *allow.List
+	// Version is the version this Outpost reports and judges by; empty is the
+	// harness's own.
+	Version string
 }
 
 // ConnectWith is Connect with options, for an Outpost that joins by token.
@@ -309,7 +316,7 @@ func (e *RealEdge) TryConnectWith(t testing.TB, name, tok, stateDir string, opts
 	}
 	go func() {
 		done <- outpost.Run(ctx, outpost.Config{
-			Token: tok, StateDir: stateDir, Version: harnessVersion, Build: "outpost", Revision: "test",
+			Token: tok, StateDir: stateDir, Version: cmp.Or(opts.Version, harnessVersion), Build: "outpost", Revision: "test",
 			Log:         logx.New(logx.Options{Level: slog.LevelInfo, Out: out}),
 			JoinTimeout: opts.JoinTimeout, RelayDialTimeout: 2 * time.Second, Allow: opts.Allow,
 			Started:      func(r *outpost.Running) { up <- r },
@@ -347,7 +354,7 @@ func (e *RealEdge) TryConnectWith(t testing.TB, name, tok, stateDir string, opts
 	}
 	o := &Outpost{Name: name, Addr: r.Address, Tunnel: r.Tunnel, Net: r.Tunnel.Net}
 	e.Outposts.Set(name, o.DataAddr())
-	return &JoinedOutpost{Outpost: o, API: r.API, CLI: &api.Client{StateDir: stateDir, Version: harnessVersion}, Token: tok, StateDir: stateDir, Stop: func() error { stopped = true; return stop() }}, nil
+	return &JoinedOutpost{Outpost: o, API: r.API, CLI: &api.Client{StateDir: stateDir, Version: cmp.Or(opts.Version, harnessVersion)}, Token: tok, StateDir: stateDir, Stop: func() error { stopped = true; return stop() }}, nil
 }
 
 // waitHandshake waits until the Edge has completed a handshake with the peer

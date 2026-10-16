@@ -95,7 +95,7 @@ func newToken(t *testing.T, address string) (token.Token, keys.Key) {
 	t.Helper()
 	edgeKey, _, _ := keys.Generate()
 	oneTime, _, _ := keys.Generate()
-	return token.Token{Address: address, EdgeKey: edgeKey.Public(), OneTimeKey: oneTime, TunnelAddr: addr.Outpost(0), EdgeVersion: "0.1.0"}, edgeKey
+	return token.Token{Address: address, EdgeKey: edgeKey.Public(), OneTimeKey: oneTime, TunnelAddr: addr.Outpost(0), EdgeVersion: "v9.9.9"}, edgeKey
 }
 
 type run struct {
@@ -109,7 +109,10 @@ func start(t *testing.T, cfg Config) (*run, error) {
 	t.Helper()
 	r := &run{log: &syncBuf{}, done: make(chan error, 1)}
 	cfg.Log = logx.New(logx.Options{Level: slog.LevelInfo, Out: r.log})
-	cfg.Version, cfg.Build = "v9.9.9", "abc123"
+	cfg.Build = "abc123"
+	if cfg.Version == "" {
+		cfg.Version = "v9.9.9"
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 	up := make(chan *Running, 1)

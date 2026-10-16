@@ -37,7 +37,7 @@ type livenessHooks struct {
 // newLiveness makes the Edge's Liveness and counts its own start as hearing
 // from every Outpost the state holds.
 func newLiveness(h livenessHooks, st *state.State) *liveness.Liveness {
-	l := liveness.New(liveness.Config{OfflineAfter: h.OfflineAfter, Log: h.Log, OnOffline: h.CloseOutpost})
+	l := liveness.New(liveness.Config{EdgeVersion: h.Version, OfflineAfter: h.OfflineAfter, Log: h.Log, OnOffline: h.CloseOutpost})
 	for _, o := range st.Outposts {
 		if o.OneTimeKey == nil {
 			l.Seed(o.Name)
@@ -89,7 +89,7 @@ func serveLiveness(ctx context.Context, l *liveness.Liveness, h livenessHooks, t
 			}
 			l.Heard(name)
 			l.SetVersion(name, ping.Version)
-			if pong, err := wire.AppendPong(nil, wire.Pong{Version: h.Version}); err == nil {
+			if pong, err := wire.AppendPong(nil, wire.Pong{Version: h.Version, Inside: l.State(name) != liveness.Incompatible}); err == nil {
 				conn.WriteTo(pong, from)
 			}
 		}

@@ -54,8 +54,20 @@ type Header struct {
 	RequestID string
 }
 
+// FormatFor is the header format the Edge sends an Outpost of the given
+// version. Only format 1 exists, so every version gets it; when format 2
+// arrives, this is where an Outpost that can't read it keeps format 1.
+func FormatFor(outpostVersion string) int { return FormatV1 }
+
 // WriteHeader writes h in the current format.
-func WriteHeader(w io.Writer, h Header) error {
+func WriteHeader(w io.Writer, h Header) error { return WriteHeaderFormat(w, h, FormatV1) }
+
+// WriteHeaderFormat writes h in the given format, sending only the fields that
+// format has. A format that doesn't exist is an error.
+func WriteHeaderFormat(w io.Writer, h Header, format int) error {
+	if format != FormatV1 {
+		return fmt.Errorf("tnl: no header format %d", format)
+	}
 	if h.Service == "" {
 		return ErrMissingField
 	}

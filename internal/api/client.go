@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -16,6 +17,7 @@ import (
 	"syscall"
 
 	"github.com/hyprsh/tnl/internal/addr"
+	"github.com/hyprsh/tnl/internal/version"
 )
 
 // Client talks to the process whose tnl.sock is in StateDir, or, when Dial is
@@ -152,7 +154,11 @@ func Call[Resp any](ctx context.Context, c *Client, method, path string, req any
 		if dec := strictDecoder(raw); dec.Decode(&eb) == nil && eb.Error != "" {
 			msg = eb.Error
 		}
-		return out, &Error{Status: resp.StatusCode, Message: msg}
+		ae := &Error{Status: resp.StatusCode, Message: msg, UnknownField: resp.Header.Get(UnknownFieldHeader)}
+		if note, ok := FieldAdded[ae.UnknownField]; ok {
+			ae.Message = version.UnknownField(resp.Header.Get(VersionHeader), cmp.Or(note.Name, ae.UnknownField), note.Since)
+		}
+		return out, ae
 	}
 	if err := strictDecoder(raw).Decode(&out); err != nil {
 		return out, fmt.Errorf("the running process (%s) sent a reply this tnl doesn't understand: %w", c.Version, err)
