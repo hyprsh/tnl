@@ -51,15 +51,22 @@ func (r *Router) Provision(caddy.Context) (err error) {
 
 // ServeHTTP implements caddyhttp.MiddlewareHandler.
 func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request, next caddyhttp.Handler) error {
+	ctx := req.Context()
+	id := newRequestID()
+	caddyhttp.SetVar(ctx, varRequestID, id)
 	route, ok := r.rt.Table.Lookup(dnsname.HostOnly(req.Host))
 	if !ok {
-		w.WriteHeader(http.StatusNotFound)
+		r.rt.answer(w, req, id, http.StatusNotFound, "no route", false)
 		return nil
 	}
-	ctx := req.Context()
 	caddyhttp.SetVar(ctx, varRoute, route)
-	caddyhttp.SetVar(ctx, varRequestID, newRequestID())
-	return next.ServeHTTP(w, req)
+	err := next.ServeHTTP(w, req)
+	if errors.Is(err, errResetStream) {
+		// The Transport asked for the stream to be reset (HTTP/2, HTTP/3) or
+		// the connection closed (HTTP/1.1). Aborting the handler does both.
+		panic(http.ErrAbortHandler)
+	}
+	return err
 }
 
 func newRequestID() string {
@@ -101,18 +108,18 @@ func (t *Transport) Cleanup() error {
 }
 
 // RoundTrip implements http.RoundTripper. A Service the Edge can't reach gets a
-// bare 502; the error page, 503 and dial retries come in a later slice.
+// 502 page, or a reset if the request is for an event stream (ADR 0007).
 func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	ctx := req.Context()
 	route, ok := caddyhttp.GetVar(ctx, varRoute).(routes.Route)
 	if !ok {
 		return nil, errors.New("tnl: request reached the transport without a Route")
 	}
+	id, _ := caddyhttp.GetVar(ctx, varRequestID).(string)
 	addr, ok := t.rt.Outposts.Addr(route.Outpost)
 	if !ok {
-		return bad(req), nil
+		return t.rt.fail(req, id, http.StatusBadGateway, "outpost offline")
 	}
-	id, _ := caddyhttp.GetVar(ctx, varRequestID).(string)
 	out := req.Clone(context.WithValue(ctx, requestIDKey, id))
 	out.URL.Scheme = "http"
 	out.URL.Host = route.Hostname
@@ -121,22 +128,11 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	if err != nil {
 		var re *ReplyError
 		if errors.As(err, &re) {
-			return bad(req), nil
+			return t.rt.fail(req, id, http.StatusBadGateway, replyReason(re))
 		}
 		return nil, err
 	}
 	return resp, nil
-}
-
-func bad(req *http.Request) *http.Response {
-	return &http.Response{
-		StatusCode: http.StatusBadGateway,
-		Status:     "502 Bad Gateway",
-		Proto:      "HTTP/1.1", ProtoMajor: 1, ProtoMinor: 1,
-		Header:  http.Header{},
-		Body:    http.NoBody,
-		Request: req,
-	}
 }
 
 // Permission is the tls.permission.tnl module. Caddy asks it before it issues a

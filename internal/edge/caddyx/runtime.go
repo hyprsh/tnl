@@ -140,9 +140,9 @@ func (e *ReplyError) Error() string {
 	return "outpost " + e.Reply.Version + " refused the tnl header"
 }
 
-// dialOutpost opens a Tunnel connection to the Outpost's data port, sends the tnl
+// dialOutpostOnce opens a Tunnel connection to the Outpost's data port, sends the tnl
 // header and reads the reply. On ok the connection is ready for request bytes.
-func (rt *Runtime) dialOutpost(ctx context.Context, addr netip.AddrPort, outpost string, h wire.Header) (net.Conn, error) {
+func (rt *Runtime) dialOutpostOnce(ctx context.Context, addr netip.AddrPort, outpost string, h wire.Header) (net.Conn, error) {
 	c, err := rt.Dialer(ctx, addr)
 	if err != nil {
 		return nil, err
