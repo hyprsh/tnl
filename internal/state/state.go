@@ -184,6 +184,9 @@ func (s *State) Validate() error {
 		if _, err := ParseService(r.Service); err != nil {
 			return invalid(e, "%v", err)
 		}
+		if err := CheckHostHeader(r.HostHeader); err != nil {
+			return invalid(e, "%v", err)
+		}
 	}
 	return nil
 }

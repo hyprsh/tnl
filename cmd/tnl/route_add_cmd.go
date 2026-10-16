@@ -14,11 +14,13 @@ func init() {
 	routeGroup.subs["add"] = routeAdd
 }
 
-// routeAdd saves a Route and swaps it in. The test dial, the certificate wait
-// and the options come in later slices.
+// routeAdd saves a Route and swaps it in. The test dial and the certificate wait
+// come in later slices.
 func routeAdd(args []string) error {
 	c := newClientCommand("route add")
 	outpost := c.fs.String("outpost", "", "the Outpost whose network the Service is on (required on the Edge host)")
+	hostHeader := c.fs.String("host-header", "", "the Host header to send to the Service, instead of the Visitor's")
+	insecure := c.fs.Bool("insecure-skip-verify", false, "skip verifying an https:// Service's certificate")
 	pos, err := c.parse(args)
 	if err != nil {
 		return err
@@ -30,7 +32,8 @@ func routeAdd(args []string) error {
 		return fmt.Errorf("--outpost is required on the Edge host: which Outpost's network is %s on?", pos[1])
 	}
 	r, err := api.Call[api.RouteInfo](context.Background(), c.client(), http.MethodPost, api.PathRoutes,
-		api.RouteAddRequest{Hostname: pos[0], Service: pos[1], Outpost: *outpost})
+		api.RouteAddRequest{Hostname: pos[0], Service: pos[1], Outpost: *outpost,
+			HostHeader: *hostHeader, InsecureSkipVerify: *insecure})
 	if err != nil {
 		return err
 	}

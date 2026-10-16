@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"crypto/rand"
+	"crypto/x509"
 	"encoding/hex"
 	"fmt"
 	"log/slog"
@@ -31,6 +32,9 @@ type Web struct {
 	ACMEEmail string
 	// ACMETrustedRoots are PEM files of roots to trust for the CA's own TLS.
 	ACMETrustedRoots []string
+	// ServiceRoots are the roots an https:// Service is verified against; nil
+	// means the system's. Only the harness sets it.
+	ServiceRoots *x509.CertPool
 }
 
 // startWeb builds Caddy's config from the state and the flags, loads it, and
@@ -48,7 +52,11 @@ func startWeb(w *Web, stateDir string, wgPort int, store *state.Store, tun *tunn
 		}
 		rs := make([]routes.Route, 0, len(st.Routes))
 		for _, r := range st.Routes {
-			rs = append(rs, routes.Route{Hostname: r.Hostname, Outpost: r.Outpost, Service: r.HostPort()})
+			svc := r.Parsed()
+			rs = append(rs, routes.Route{
+				Hostname: r.Hostname, Outpost: r.Outpost, Service: svc.HostPort,
+				TLS: svc.TLS, ServerName: svc.Host, InsecureSkipVerify: r.InsecureSkipVerify, HostHeader: r.HostHeader,
+			})
 		}
 		table.Swap(rs)
 	}
@@ -61,7 +69,7 @@ func startWeb(w *Web, stateDir string, wgPort int, store *state.Store, tun *tunn
 	}
 	edgeID := hex.EncodeToString(id[:])
 	unregister := caddyx.Register(edgeID, &caddyx.Runtime{
-		Table: table, Outposts: outposts, Log: log, Conns: conns,
+		Table: table, Outposts: outposts, Log: log, Conns: conns, ServiceRoots: w.ServiceRoots,
 		Dialer: func(ctx context.Context, a netip.AddrPort) (net.Conn, error) {
 			return tun.Net.DialContextTCPAddrPort(ctx, a)
 		},

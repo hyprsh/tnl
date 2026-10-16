@@ -68,7 +68,6 @@ func TestRouteAddRefusals(t *testing.T) {
 		"unknown Outpost":          {"b.example.com", "http://x:1", "ghost", "ghost"},
 		"no Outpost":               {"b.example.com", "http://x:1", "", "Outpost"},
 		"path":                     {"b.example.com", "http://x:1/api", "nas", "path"},
-		"https":                    {"b.example.com", "https://x:1", "nas", "http"},
 		"other scheme":             {"b.example.com", "ftp://x:1", "nas", "http"},
 		"no host":                  {"b.example.com", "http://:80", "nas", "host"},
 		"bad port":                 {"b.example.com", "http://x:99999", "nas", "port"},

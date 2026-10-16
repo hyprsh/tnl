@@ -83,6 +83,7 @@ func (s *Server) routes() {
 	endpoint(s, http.MethodPost, api.PathRoutes, s.routeAdd)
 	endpoint(s, http.MethodPost, api.PathRouteRm, s.routeRm)
 	endpoint(s, http.MethodPost, api.PathJoin, s.join)
+	endpoint(s, http.MethodPost, api.PathRouteEdit, s.routeEdit)
 }
 
 // afterReplyGrace is how long after a reply is written the functions queued
