@@ -35,14 +35,15 @@ func (s *Server) zoneRm(ctx context.Context, actor api.Actor, req api.ZoneRmRequ
 		if i < 0 {
 			return api.Errorf(http.StatusNotFound, "no Zone %s", name)
 		}
-		stranded := st.RoutesStrandedBy(name)
-		if len(stranded) > 0 && !req.WithRoutes {
+		wasWildcard = st.Zones[i].Mode == state.Wildcard
+		// The change is made on a copy the error below discards.
+		res := st.RemoveZone(name)
+		removed, waiting, moved = slices.Concat(res.Removed, res.Waiting), res.Waiting, res.Moved
+		if len(removed) > 0 && !req.WithRoutes {
+			stranded := slices.Clone(removed)
 			slices.Sort(stranded)
 			return api.Errorf(http.StatusConflict, "Routes would be left outside every Zone: %s; remove them first, or pass --with-routes", strings.Join(stranded, ", "))
 		}
-		wasWildcard = st.Zones[i].Mode == state.Wildcard
-		res := st.RemoveZone(name)
-		removed, waiting, moved = append(res.Removed, res.Waiting...), res.Waiting, res.Moved
 		return nil
 	})
 	if err != nil {
