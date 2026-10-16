@@ -130,18 +130,27 @@ func (c Config) wildcardPolicy(zone string) map[string]any {
 		if c.DNSPropagationTimeout != 0 {
 			dns["propagation_timeout"] = int64(c.DNSPropagationTimeout)
 		}
-		iss["challenges"] = map[string]any{"dns": dns}
+		iss["challenges"].(map[string]any)["dns"] = dns
 	}
 	return map[string]any{"subjects": dnsname.WildcardNames(zone), "issuers": []any{iss}}
 }
 
-// issuer is the issuer module every automation policy uses.
+// issuer is the issuer module every automation policy uses, those the config
+// holds and those the certificate manager adds at runtime. Caddy fills the
+// HTTP app's ports into the issuers of the config's own policies only, so the
+// challenge ports are explicit here: the challenge servers listen on the
+// Edge's HTTP and HTTPS ports (--http-port), which a non-root Edge can bind,
+// not on 80 and 443.
 func (c Config) issuer() map[string]any {
 	a := c.ACME
 	if a == nil {
 		return map[string]any{"module": "internal"}
 	}
-	iss := map[string]any{"module": "acme", "ca": a.CA}
+	c = c.withDefaults()
+	iss := map[string]any{"module": "acme", "ca": a.CA, "challenges": map[string]any{
+		"http":     map[string]any{"alternate_port": c.HTTPPort},
+		"tls-alpn": map[string]any{"alternate_port": c.HTTPSPort},
+	}}
 	if a.CA == "" {
 		iss["ca"] = certmagic.LetsEncryptProductionCA
 	}

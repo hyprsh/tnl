@@ -224,14 +224,20 @@ func (rt *Runtime) dialOutpostOnce(ctx context.Context, addr netip.AddrPort, out
 	stop := context.AfterFunc(ctx, func() { c.Close() })
 	defer stop()
 	c.SetDeadline(time.Now().Add(replyTimeout))
-	if err := wire.WriteHeader(c, h); err != nil {
+	// When ctx ended the exchange, the close above is why it failed; say so.
+	fail := func(err error) (net.Conn, error) {
 		c.Close()
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
 		return nil, err
+	}
+	if err := wire.WriteHeader(c, h); err != nil {
+		return fail(err)
 	}
 	rp, err := wire.ReadReply(c)
 	if err != nil {
-		c.Close()
-		return nil, err
+		return fail(err)
 	}
 	if rp.Status != wire.StatusOK {
 		c.Close()
