@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -12,6 +13,7 @@ import (
 	"strconv"
 
 	"github.com/hyprsh/tnl/internal/edge"
+	"github.com/hyprsh/tnl/internal/edge/dns"
 	"github.com/hyprsh/tnl/internal/logx"
 	"github.com/hyprsh/tnl/internal/settings"
 )
@@ -19,7 +21,7 @@ import (
 // edgeEnvVars are the TNL_* variables tnl edge reads; any other is refused.
 var edgeEnvVars = append([]string{
 	"TNL_ADDRESS", "TNL_WIREGUARD_PORT", "TNL_ACME_EMAIL", "TNL_ACME_CA",
-	"TNL_STATE_DIR", "TNL_ACCESS_LOG",
+	"TNL_STATE_DIR", "TNL_ACCESS_LOG", "TNL_KEY", "TNL_KEY_FILE",
 }, logx.EnvVars...)
 
 // Edge-only commands register from //go:build !outpost files like this one.
@@ -38,6 +40,8 @@ func parseEdgeFlags(args []string, usageOut io.Writer) (edgeSettings, error) {
 	envPort, envPortErr := envInt("TNL_WIREGUARD_PORT", 51820)
 	envAccess, envAccessErr := envBool("TNL_ACCESS_LOG")
 	s.cfg.Web = &edge.Web{}
+	var keyFile string
+	var zoneLines, outpostLines lineFlag
 	s.log, err = parseDaemon("edge", args, usageOut, func(fs *flag.FlagSet) {
 		fs.StringVar(&s.cfg.Address, "address", os.Getenv("TNL_ADDRESS"),
 			"the DNS name Outposts dial (TNL_ADDRESS, required); a name is better than an IP")
@@ -49,10 +53,33 @@ func parseEdgeFlags(args []string, usageOut io.Writer) (edgeSettings, error) {
 			"the contact email for the ACME account (TNL_ACME_EMAIL, optional)")
 		fs.StringVar(&s.cfg.Web.ACMECA, "acme-ca", os.Getenv("TNL_ACME_CA"),
 			"the ACME directory URL to get certificates from (TNL_ACME_CA); default Let's Encrypt production")
+		fs.StringVar(&keyFile, "key-file", os.Getenv("TNL_KEY_FILE"),
+			"a file holding the Edge's WireGuard private key, as `tnl keygen` prints it (TNL_KEY_FILE, or TNL_KEY holding the key); default: generated at first start")
+		fs.Var(&zoneLines, "zone",
+			"a Zone to declare: `\"<zone> [--wildcard PROVIDER (--token-file PATH | --token VALUE)]\"`, repeatable; or set TNL_ZONE_<LABEL> (not both). --token works in a variable only")
+		fs.Var(&outpostLines, "outpost",
+			"an Outpost to declare: `\"<name> <public-key>\"`, repeatable; or set TNL_OUTPOST_<LABEL> (not both)")
 		fs.BoolVar(&s.cfg.Web.AccessLog, "access-log", envAccess,
 			"also log successful requests and what the Service answered (TNL_ACCESS_LOG)")
 	}, func(fs *flag.FlagSet) error {
-		if err := settings.CheckEnv(os.Environ(), edgeEnvVars); err != nil {
+		if err := settings.RefuseRoutes(os.Environ()); err != nil {
+			return err
+		}
+		if err := settings.CheckEnv(os.Environ(), edgeEnvVars, settings.ZonePrefix, settings.OutpostPrefix); err != nil {
+			return err
+		}
+		keyName := "TNL_KEY_FILE"
+		if flagGiven(fs, "key-file") {
+			keyName = "--key-file"
+		}
+		var err error
+		if s.cfg.Key, s.cfg.KeySource, err = settings.EdgeKey(keyName, keyFile, os.Getenv("TNL_KEY")); err != nil {
+			return err
+		}
+		if s.cfg.Zones, err = settings.ParseZones(os.Environ(), zoneLines, dns.Names()); err != nil {
+			return err
+		}
+		if s.cfg.Outposts, err = settings.ParseOutposts(os.Environ(), outpostLines); err != nil {
 			return err
 		}
 		if envAccessErr != nil && !flagGiven(fs, "access-log") {
@@ -82,7 +109,12 @@ func runEdge(args []string) error {
 		s.cfg.Log = lg
 		s.cfg.Version, s.cfg.Revision = versionInfo()
 		s.cfg.Build = buildName
-		return edge.Run(ctx, s.cfg)
+		err := edge.Run(ctx, s.cfg)
+		var ce *edge.ConfigError
+		if errors.As(err, &ce) {
+			return configError{err}
+		}
+		return err
 	})
 }
 
