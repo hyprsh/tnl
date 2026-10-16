@@ -1,2 +1,4 @@
 dist/
 /build/
+/tnl
+/cmd/tnl/tnl
