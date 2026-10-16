@@ -13,11 +13,12 @@ type OutpostRmRequest struct {
 	WithRoutes bool   `json:"with_routes,omitempty"`
 }
 
-// OutpostRmResponse answers `outpost rm`: the Outpost and the Hostnames of the
+// OutpostRmReply answers `outpost rm`: the Outpost and the Hostnames of the
 // Routes that went with it.
-type OutpostRmResponse struct {
+type OutpostRmReply struct {
 	Name   string   `json:"name"`
 	Routes []string `json:"routes"`
+	Warnings
 }
 
 // OutpostRekeyRequest names the Outpost to rekey. TTL is the new token's

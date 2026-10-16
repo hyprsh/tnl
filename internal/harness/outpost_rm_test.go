@@ -10,12 +10,12 @@ import (
 	"github.com/hyprsh/tnl/internal/api"
 )
 
-func outpostRm(t *testing.T, re *RealEdge, name string, withRoutes bool) (api.OutpostRmResponse, error) {
-	return api.Call[api.OutpostRmResponse](ctx(t), re.API, http.MethodPost, api.PathOutpostRm, api.OutpostRmRequest{Name: name, WithRoutes: withRoutes})
+func outpostRm(t *testing.T, re *RealEdge, name string, withRoutes bool) (api.OutpostRmReply, error) {
+	return api.Call[api.OutpostRmReply](ctx(t), re.API, http.MethodPost, api.PathOutpostRm, api.OutpostRmRequest{Name: name, WithRoutes: withRoutes})
 }
 
-func outpostRekey(t *testing.T, re *RealEdge, name string) (api.OutpostAddResponse, error) {
-	return api.Call[api.OutpostAddResponse](ctx(t), re.API, http.MethodPost, api.PathOutpostRekey, api.OutpostRekeyRequest{Name: name})
+func outpostRekey(t *testing.T, re *RealEdge, name string) (api.OutpostAddReply, error) {
+	return api.Call[api.OutpostAddReply](ctx(t), re.API, http.MethodPost, api.PathOutpostRekey, api.OutpostRekeyRequest{Name: name})
 }
 
 func TestOutpostRmRefusesWhileRoutesPointAtItAndChangesNothing(t *testing.T) {
@@ -106,11 +106,11 @@ func TestAnOutpostCannotRemoveOrRekeyAnyone(t *testing.T) {
 	j := re.JoinOutpost(t, "laptop")
 	re.AddOutpost(t, "nas")
 	for _, name := range []string{"laptop", "nas"} {
-		_, err := api.Call[api.OutpostRmResponse](ctx(t), j.API, http.MethodPost, api.PathOutpostRm, api.OutpostRmRequest{Name: name, WithRoutes: true})
+		_, err := api.Call[api.OutpostRmReply](ctx(t), j.API, http.MethodPost, api.PathOutpostRm, api.OutpostRmRequest{Name: name, WithRoutes: true})
 		if e, ok := err.(*api.Error); !ok || e.Status != http.StatusForbidden {
 			t.Errorf("rm %s: %v", name, err)
 		}
-		_, err = api.Call[api.OutpostAddResponse](ctx(t), j.API, http.MethodPost, api.PathOutpostRekey, api.OutpostRekeyRequest{Name: name})
+		_, err = api.Call[api.OutpostAddReply](ctx(t), j.API, http.MethodPost, api.PathOutpostRekey, api.OutpostRekeyRequest{Name: name})
 		if e, ok := err.(*api.Error); !ok || e.Status != http.StatusForbidden {
 			t.Errorf("rekey %s: %v", name, err)
 		}

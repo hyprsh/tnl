@@ -45,11 +45,11 @@ func newDrainService(t *testing.T) *drainService {
 
 // drainEdge is a real Edge with Caddy, a Route app.test and an Outpost, with its
 // log captured and the drain shortened to timeout.
-func drainEdge(t *testing.T, timeout time.Duration) (*RealEdge, *drainService, *logCapture) {
+func drainEdge(t *testing.T, timeout time.Duration) (*RealEdge, *drainService, *lockedBuf) {
 	t.Helper()
 	svc := newDrainService(t)
-	logs := &logCapture{}
-	re := StartEdgeWith(t, EdgeOptions{Pebble: StartPebble(t, PebbleOptions{}), LogOut: logs, LogInfo: true, DrainTimeout: timeout})
+	logs := &lockedBuf{}
+	re := StartEdgeWith(t, EdgeOptions{Pebble: StartPebble(t, PebbleOptions{}), LogOut: logs, DrainTimeout: timeout})
 	re.AddZone(t, "test")
 	re.JoinOutpost(t, "nas")
 	re.AddRoute(t, "app.test", "http://"+svc.Addr(), "nas")

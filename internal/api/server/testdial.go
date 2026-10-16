@@ -36,8 +36,6 @@ func (s *Server) testDialWarnings(ctx context.Context, r state.Route) []string {
 		return []string{fmt.Sprintf("the certificate of %s fails verification (%s): if it is self-signed or private, pass --insecure-skip-verify", r.Service, f.Detail)}
 	case routes.DialTLS:
 		return []string{fmt.Sprintf("the TLS handshake with %s failed (%s): is it really an https:// Service?", r.Service, f.Detail)}
-	case routes.DialIncompatible:
-		return []string{fmt.Sprintf("Outpost %s (version %s) refused the test dial: its version doesn't work with this Edge's", r.Outpost, f.Detail)}
 	default:
 		return []string{fmt.Sprintf("%s doesn't answer through Outpost %s (%s): %s answers 502 until it does", svc.HostPort, r.Outpost, f.Detail, r.Hostname)}
 	}

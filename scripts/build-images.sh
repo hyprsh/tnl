@@ -25,15 +25,9 @@ case $mode in
   *) echo "mode must be push or load" >&2; exit 2 ;;
 esac
 
-# Pre-releases (1.2.3-rc.1) get their own tag only.
-tags=$version
-case $version in
-  *-*) ;;
-  *)
-    minor=${version%.*}
-    tags="$version $minor ${minor%.*} latest"
-    ;;
-esac
+# X.Y.Z, X.Y, X and latest (spec, Releases).
+minor=${version%.*}
+tags="$version $minor ${minor%.*} latest"
 
 for image in tnl tnl-outpost; do
   if [ "$image" = tnl ]; then dockerfile=Dockerfile.edge; else dockerfile=Dockerfile.outpost; fi

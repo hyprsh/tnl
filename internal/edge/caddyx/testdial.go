@@ -38,8 +38,6 @@ func (rt *Runtime) TestDial(ctx context.Context, r routes.Route) error {
 			return &routes.DialFailure{Kind: routes.DialAllowlist}
 		case errors.As(err, &re) && re.Reply.Status == wire.StatusDialError:
 			return &routes.DialFailure{Kind: routes.DialNoAnswer, Detail: re.Reply.Reason.String()}
-		case errors.As(err, &re):
-			return &routes.DialFailure{Kind: routes.DialIncompatible, Detail: re.Reply.Version}
 		case errors.Is(err, errTunnelWait):
 			return &routes.DialFailure{Kind: routes.DialNoAnswer, Detail: "the Tunnel to the Outpost did not come up"}
 		}

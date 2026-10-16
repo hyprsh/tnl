@@ -10,8 +10,8 @@ import (
 	"github.com/hyprsh/tnl/internal/api"
 )
 
-func rmRoute(c *api.Client, host string) (api.RouteInfo, error) {
-	return api.Call[api.RouteInfo](context.Background(), c, http.MethodPost, api.PathRouteRm, api.RouteRmRequest{Hostname: host})
+func rmRoute(c *api.Client, host string) (api.RouteRmReply, error) {
+	return api.Call[api.RouteRmReply](context.Background(), c, http.MethodPost, api.PathRouteRm, api.RouteRmRequest{Hostname: host})
 }
 
 func TestRouteRmRemovesOnlyThatRouteAndLogsItAsLocal(t *testing.T) {

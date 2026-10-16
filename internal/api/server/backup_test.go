@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/hyprsh/tnl/internal/api"
@@ -38,5 +39,8 @@ func TestBackupIsLocalOnly(t *testing.T) {
 	var ae *api.Error
 	if !errors.As(err, &ae) || ae.Status != http.StatusForbidden {
 		t.Fatalf("err = %v", err)
+	}
+	if !strings.Contains(f.log.String(), `msg="request refused"`) {
+		t.Errorf("a refused backup left no \"request refused\" line:\n%s", f.log.String())
 	}
 }

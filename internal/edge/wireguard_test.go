@@ -71,7 +71,7 @@ func joinWith(t *testing.T, tok token.Token, port int) {
 func addOutpost(t *testing.T, dir, name string) token.Token {
 	t.Helper()
 	c := &api.Client{StateDir: dir, Version: "v9.9.9"}
-	resp, err := api.Call[api.OutpostAddResponse](context.Background(), c, http.MethodPost, api.PathOutposts, api.OutpostAddRequest{Name: name})
+	resp, err := api.Call[api.OutpostAddReply](context.Background(), c, http.MethodPost, api.PathOutposts, api.OutpostAddRequest{Name: name})
 	if err != nil {
 		t.Fatal(err)
 	}

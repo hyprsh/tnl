@@ -4,27 +4,15 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"log/slog"
 	"net"
 	"net/http"
 	"reflect"
 	"strconv"
-	"sync"
 	"testing"
 
 	"github.com/hyprsh/tnl/internal/api"
 )
-
-type lockedBuf struct {
-	mu sync.Mutex
-	b  bytes.Buffer
-}
-
-func (l *lockedBuf) Write(p []byte) (int, error) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	return l.b.Write(p)
-}
-func (l *lockedBuf) String() string { l.mu.Lock(); defer l.mu.Unlock(); return l.b.String() }
 
 func TestOutpostReadsZonesAndRoutesThroughTheTunnelAsTheSocketAnswers(t *testing.T) {
 	re := StartEdge(t)
@@ -56,7 +44,7 @@ func TestOutpostReadsZonesAndRoutesThroughTheTunnelAsTheSocketAnswers(t *testing
 
 func TestOutpostIsRefusedZoneAddAndOutpostAddAndTheLogNamesIt(t *testing.T) {
 	logs := &lockedBuf{}
-	re := StartEdgeWith(t, EdgeOptions{LogOut: logs})
+	re := StartEdgeWith(t, EdgeOptions{LogOut: logs, LogLevel: slog.LevelWarn})
 	j := re.JoinOutpost(t, "laptop")
 	bg := context.Background()
 
@@ -65,7 +53,7 @@ func TestOutpostIsRefusedZoneAddAndOutpostAddAndTheLogNamesIt(t *testing.T) {
 	if !errors.As(err, &ae) || ae.Status != http.StatusForbidden || ae.Message == "" {
 		t.Errorf("zone add: %v", err)
 	}
-	_, err = api.Call[api.OutpostAddResponse](bg, j.API, http.MethodPost, api.PathOutposts, api.OutpostAddRequest{Name: "evil"})
+	_, err = api.Call[api.OutpostAddReply](bg, j.API, http.MethodPost, api.PathOutposts, api.OutpostAddRequest{Name: "evil"})
 	if !errors.As(err, &ae) || ae.Status != http.StatusForbidden {
 		t.Errorf("outpost add: %v", err)
 	}

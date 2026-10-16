@@ -33,7 +33,7 @@ type Runtime struct {
 	Table    routes.Table
 	Outposts routes.Outposts
 	Dialer   Dialer
-	// Log receives Caddy's entries through the log core. Nil means slog.Default().
+	// Log receives Caddy's entries through the log core. Nil discards.
 	Log *slog.Logger
 	// Conns tracks every connection the transport opens. Nil tracks none.
 	Conns *conntrack.Tracker

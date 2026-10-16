@@ -19,6 +19,8 @@ import (
 	"github.com/caddyserver/caddy/v2"
 	_ "github.com/caddyserver/caddy/v2/modules/standard"
 	"github.com/caddyserver/certmagic"
+
+	"github.com/hyprsh/tnl/internal/dnsname"
 )
 
 // Timeouts are Caddy's server timeouts. Read and write timeouts are always 0.
@@ -78,13 +80,6 @@ type Config struct {
 	// "*.zone" and "zone" whose DNS-01 challenge goes through the tnl DNS
 	// provider module. The config names the Zone, never a token (ADR 0005).
 	Wildcards []string
-	// Retired names certificates, by subject, that Caddy no longer manages and
-	// yet keeps serving: the config loads each one's newest unexpired
-	// certificate from storage, as one nobody renews. It is what lets a
-	// Hostname that changed from one mode to the other keep its certificate
-	// until the new one is in, and a dropped wildcard keep serving until it
-	// expires.
-	Retired []string
 	// Hostnames are the Route Hostnames the certificate manager hands to Caddy
 	// (Start fills them in): the config gives each a policy of its own that
 	// isn't on-demand and automates it, so a certificate is obtained for it even
@@ -100,25 +95,27 @@ type Config struct {
 	DNSResolvers []string
 }
 
-// retiredNames are the retired names that hold an unexpired certificate in
-// storage. A name whose Zone is a wildcard again is left out.
+// retiredNames are the names of the wildcard certificates in storage that
+// Caddy no longer manages, because their Zone is not a wildcard now (it was
+// switched to per-Hostname, or removed), and that have not expired. The config
+// loads them, as certificates nobody renews, so a dropped wildcard keeps
+// serving until it expires. Storage is the record, so a restart loses nothing.
 func (c Config) retiredNames() (out []any) {
 	managed := map[string]bool{}
 	for _, z := range c.Wildcards {
-		for _, n := range wildcardNames(z) {
-			managed[n] = true
-		}
+		managed[z] = true
 	}
-	for _, name := range c.Retired {
-		if managed[name] {
+	dirs, _ := filepath.Glob(filepath.Join(c.StateDir, "caddy", "certificates", "*", "wildcard_.*"))
+	seen := map[string]bool{}
+	for _, d := range dirs {
+		zone := strings.TrimPrefix(filepath.Base(d), "wildcard_.")
+		if managed[zone] || seen[zone] {
 			continue
 		}
-		dir := strings.ReplaceAll(name, "*", "wildcard_")
-		matches, _ := filepath.Glob(filepath.Join(c.StateDir, "caddy", "certificates", "*", dir, dir+".crt"))
-		for _, m := range matches {
-			if certExpiry(m).After(time.Now()) {
-				out = append(out, name)
-				break
+		if certExpiry(filepath.Join(d, filepath.Base(d)+".crt")).After(time.Now()) {
+			seen[zone] = true
+			for _, n := range dnsname.WildcardNames(zone) {
+				out = append(out, n)
 			}
 		}
 	}
@@ -143,9 +140,6 @@ func certExpiry(path string) time.Time {
 	return leaf.NotAfter
 }
 
-// wildcardNames are the names a wildcard Zone's certificate covers.
-func wildcardNames(zone string) []string { return []string{"*." + zone, zone} }
-
 // wildcardPolicy is the TLS automation policy of a wildcard Zone. It is not
 // on-demand, so certmagic renews its certificate in the background.
 func (c Config) wildcardPolicy(zone string) map[string]any {
@@ -160,7 +154,7 @@ func (c Config) wildcardPolicy(zone string) map[string]any {
 		}
 		iss["challenges"] = map[string]any{"dns": dns}
 	}
-	return map[string]any{"subjects": wildcardNames(zone), "issuers": []any{iss}}
+	return map[string]any{"subjects": dnsname.WildcardNames(zone), "issuers": []any{iss}}
 }
 
 // issuer is the issuer module every automation policy uses.
@@ -230,7 +224,7 @@ func (c Config) JSON() ([]byte, error) {
 	}
 	for _, z := range c.Wildcards {
 		policies = append(policies, c.wildcardPolicy(z))
-		for _, n := range wildcardNames(z) {
+		for _, n := range dnsname.WildcardNames(z) {
 			automate = append(automate, n)
 		}
 	}

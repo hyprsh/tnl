@@ -32,22 +32,76 @@ type Client struct {
 	verified bool
 }
 
-func (c *Client) socket() string {
+// link is how a Client reaches its peer: over tnl.sock, or through the Tunnel.
+// A Client picks one, here, and nothing else asks which.
+type link interface {
+	// address is where the peer is, for messages.
+	address() string
+	dial(ctx context.Context) (net.Conn, error)
+	// dialError says what a failed dial or request means to the operator.
+	dialError(err error) error
+	// mustMatchVersion is whether the peer must be exactly this client's
+	// version: the local process must; an Edge through the Tunnel may be any
+	// version it accepts.
+	mustMatchVersion() bool
+}
+
+func (c *Client) link() link {
 	if c.Dial != nil {
-		return net.JoinHostPort(addr.Edge.String(), strconv.Itoa(TunnelPort))
+		return tunnelLink{via: c.Dial}
 	}
-	return filepath.Join(c.StateDir, SocketName)
+	return socketLink{path: filepath.Join(c.StateDir, SocketName)}
+}
+
+// tunnelLink is the Edge's API at 100.64.0.1:TunnelPort inside the Tunnel.
+type tunnelLink struct {
+	via func(ctx context.Context, network, address string) (net.Conn, error)
+}
+
+func (l tunnelLink) address() string {
+	return net.JoinHostPort(addr.Edge.String(), strconv.Itoa(TunnelPort))
+}
+
+func (l tunnelLink) dial(ctx context.Context) (net.Conn, error) {
+	return l.via(ctx, "tcp", l.address())
+}
+
+func (l tunnelLink) mustMatchVersion() bool { return false }
+
+func (l tunnelLink) dialError(err error) error {
+	return fmt.Errorf("can't reach the Edge's API at %s inside the Tunnel: %w", l.address(), err)
+}
+
+// socketLink is a tnl.sock in a state directory.
+type socketLink struct{ path string }
+
+func (l socketLink) address() string { return l.path }
+
+func (l socketLink) dial(ctx context.Context) (net.Conn, error) {
+	return (&net.Dialer{}).DialContext(ctx, "unix", l.path)
+}
+
+func (l socketLink) mustMatchVersion() bool { return true }
+
+func (l socketLink) dialError(err error) error {
+	switch {
+	case errors.Is(err, syscall.EACCES), errors.Is(err, syscall.EPERM):
+		return fmt.Errorf("can't open %s: permission denied; run with sudo", l.path)
+	case errors.Is(err, syscall.ENOENT), errors.Is(err, syscall.ECONNREFUSED):
+		return fmt.Errorf("no Edge is running: nothing answers on %s (start it with `tnl edge`, or pass --state-dir or set TNL_STATE_DIR to the state directory of the one to talk to)", l.path)
+	}
+	var oe *net.OpError
+	if errors.As(err, &oe) && oe.Op == "dial" {
+		return fmt.Errorf("no Edge is running: can't connect to %s: %v", l.path, oe.Err)
+	}
+	return err
 }
 
 func (c *Client) http() *http.Client {
+	l := c.link()
 	return &http.Client{Transport: &http.Transport{
 		DisableKeepAlives: true,
-		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-			if c.Dial != nil {
-				return c.Dial(ctx, "tcp", c.socket())
-			}
-			return (&net.Dialer{}).DialContext(ctx, "unix", c.socket())
-		},
+		DialContext:       func(ctx context.Context, _, _ string) (net.Conn, error) { return l.dial(ctx) },
 	}}
 }
 
@@ -82,7 +136,7 @@ func Call[Resp any](ctx context.Context, c *Client, method, path string, req any
 	}
 	resp, err := c.http().Do(hreq)
 	if err != nil {
-		return out, c.dialError(err)
+		return out, c.link().dialError(err)
 	}
 	defer resp.Body.Close()
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
@@ -90,7 +144,7 @@ func Call[Resp any](ctx context.Context, c *Client, method, path string, req any
 		return out, err
 	}
 	if resp.Header.Get(VersionHeader) == "" {
-		return out, fmt.Errorf("%s answered without a %s header; it is not a tnl", c.socket(), VersionHeader)
+		return out, fmt.Errorf("%s answered without a %s header; it is not a tnl", c.link().address(), VersionHeader)
 	}
 	if resp.StatusCode >= 400 {
 		var eb errorBody
@@ -107,21 +161,21 @@ func Call[Resp any](ctx context.Context, c *Client, method, path string, req any
 }
 
 // Info asks the process on the socket for its role, version and build, and
-// refuses unless its version is exactly this client's. Over the Tunnel
-// (Dial set) it only asks.
+// refuses unless its version is exactly this client's, where the link requires
+// that. Over the Tunnel it only asks.
 func (c *Client) Info(ctx context.Context) (Info, error) {
 	info, err := Call[Info](ctx, c, http.MethodGet, PathInfo, nil)
 	if err != nil {
 		return info, err
 	}
-	if c.Dial == nil && info.Version != c.Version {
+	if c.link().mustMatchVersion() && info.Version != c.Version {
 		return info, versionMismatch(c.Version, info)
 	}
 	return info, nil
 }
 
 func (c *Client) checkLocal(ctx context.Context) error {
-	if c.Dial != nil {
+	if !c.link().mustMatchVersion() {
 		return nil
 	}
 	c.mu.Lock()
@@ -153,21 +207,4 @@ func strictDecoder(raw []byte) *json.Decoder {
 	d := json.NewDecoder(bytes.NewReader(raw))
 	d.DisallowUnknownFields()
 	return d
-}
-
-func (c *Client) dialError(err error) error {
-	if c.Dial != nil {
-		return fmt.Errorf("can't reach the Edge's API at %s inside the Tunnel: %w", c.socket(), err)
-	}
-	switch {
-	case errors.Is(err, syscall.EACCES), errors.Is(err, syscall.EPERM):
-		return fmt.Errorf("can't open %s: permission denied; run with sudo", c.socket())
-	case errors.Is(err, syscall.ENOENT), errors.Is(err, syscall.ECONNREFUSED):
-		return fmt.Errorf("no Edge is running: nothing answers on %s (start it with `tnl edge`, or pass --state-dir or set TNL_STATE_DIR to the state directory of the one to talk to)", c.socket())
-	}
-	var oe *net.OpError
-	if errors.As(err, &oe) && oe.Op == "dial" {
-		return fmt.Errorf("no Edge is running: can't connect to %s: %v", c.socket(), oe.Err)
-	}
-	return err
 }

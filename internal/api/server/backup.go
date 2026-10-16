@@ -13,8 +13,8 @@ import (
 // the archive is planned before the first byte is sent.
 func (s *Server) backup(w http.ResponseWriter, r *http.Request) {
 	actor, _ := r.Context().Value(actorKey{}).(api.Actor)
-	if !actor.Local() {
-		s.reply(w, nil, api.Errorf(http.StatusForbidden, "backup is for the Edge host only"))
+	if err := localOnly(actor, "take a backup", "backup"); err != nil {
+		s.reply(w, nil, s.logRefusal(r, actor, err))
 		return
 	}
 	state := s.cfg.Store.Raw()

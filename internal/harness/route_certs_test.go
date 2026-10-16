@@ -3,6 +3,7 @@ package harness
 import (
 	"crypto/tls"
 	"fmt"
+	"log/slog"
 	"net"
 	"strings"
 	"testing"
@@ -32,8 +33,8 @@ func TestRouteAddReturnsOnceTheCertificateIsIssued(t *testing.T) {
 	e.AddOutpost(t, "home")
 
 	r := e.AddRouteReply(t, "app.example.test", "http://localhost:3000", "home")
-	if r.Warnings.Warnings != nil {
-		t.Fatalf("warnings %q", r.Warnings.Warnings)
+	if ws := withoutNoTestDial(r.Warnings.Warnings); ws != nil {
+		t.Fatalf("warnings %q", ws)
 	}
 	st, ok := e.Certs.Status("app.example.test")
 	if !ok || st.NotAfter.IsZero() || st.Obtained != 1 {
@@ -62,7 +63,7 @@ func TestRouteAddWarnsWhenTheCARefusesAndALaterRetryObtainsIt(t *testing.T) {
 	pb := StartPebble(t, PebbleOptions{})
 	pb.Refuse(true)
 	log := new(lockedBuf)
-	opts := EdgeOptions{Pebble: pb, CertWait: 3 * time.Second, LogOut: log}
+	opts := EdgeOptions{Pebble: pb, CertWait: 3 * time.Second, LogOut: log, LogLevel: slog.LevelWarn}
 	e := StartEdgeWith(t, opts)
 	e.AddZone(t, "example.test")
 	e.AddOutpost(t, "home")
@@ -72,7 +73,7 @@ func TestRouteAddWarnsWhenTheCARefusesAndALaterRetryObtainsIt(t *testing.T) {
 	if time.Since(start) < 2*time.Second {
 		t.Errorf("route add returned after %v: it did not wait", time.Since(start))
 	}
-	if len(r.Warnings.Warnings) != 1 || !strings.Contains(r.Warnings.Warnings[0], "keeps retrying") {
+	if ws := withoutNoTestDial(r.Warnings.Warnings); len(ws) != 1 || !strings.Contains(ws[0], "keeps retrying") {
 		t.Fatalf("warnings %q", r.Warnings.Warnings)
 	}
 	if len(e.Store.Snapshot().Routes) != 1 {
@@ -93,4 +94,16 @@ func TestRouteAddWarnsWhenTheCARefusesAndALaterRetryObtainsIt(t *testing.T) {
 		st, _ := e2.Certs.Status("app.example.test")
 		return st.Obtained == 1 && !st.NotAfter.IsZero()
 	})
+}
+
+// withoutNoTestDial drops the warning that an Outpost which never joined was
+// not test-dialed, for tests about the certificate's warnings.
+func withoutNoTestDial(ws []string) []string {
+	var out []string
+	for _, w := range ws {
+		if !strings.Contains(w, "has not connected yet") {
+			out = append(out, w)
+		}
+	}
+	return out
 }

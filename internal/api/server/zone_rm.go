@@ -2,11 +2,13 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"slices"
 	"strings"
 
 	"github.com/hyprsh/tnl/internal/api"
+	"github.com/hyprsh/tnl/internal/dnsname"
 	"github.com/hyprsh/tnl/internal/state"
 )
 
@@ -15,9 +17,9 @@ import (
 // still contains stay, and belong to it from then on. The connections of the
 // Routes removed close after the store's lock is released, and the store's
 // change publishers stop the certificates of every Hostname that left.
-func (s *Server) zoneRm(_ context.Context, actor api.Actor, req api.ZoneRmRequest) (api.ZoneRmReply, error) {
-	if !actor.Local() {
-		return api.ZoneRmReply{}, api.Errorf(http.StatusForbidden, "%s may not remove Zones; run `tnl zone rm` on the Edge host", actor)
+func (s *Server) zoneRm(ctx context.Context, actor api.Actor, req api.ZoneRmRequest) (api.ZoneRmReply, error) {
+	if err := localOnly(actor, "remove Zones", "zone rm"); err != nil {
+		return api.ZoneRmReply{}, err
 	}
 	name, err := zoneName(req.Name)
 	if err != nil {
@@ -54,16 +56,26 @@ func (s *Server) zoneRm(_ context.Context, actor api.Actor, req api.ZoneRmReques
 			s.cfg.Conns.CloseRoute(h)
 		}
 	}
+	var warnings []string
 	if wasWildcard && s.cfg.Wildcards != nil {
 		// The Zone's policy and its token are gone from the state; Caddy stops
 		// managing its certificate with the reload.
 		if err := s.cfg.Wildcards.Reload(); err != nil {
 			s.cfg.Log.Error("could not reload Caddy after removing a wildcard Zone", "zone", name, "error", err)
+			warnings = append(warnings, fmt.Sprintf("couldn't reload Caddy after removing the wildcard Zone %s: %v", name, err))
+		} else {
+			// The moved Routes the parent's wildcard does not cover need
+			// certificates of their own.
+			now := s.cfg.Store.Snapshot()
+			warnings = s.ownCertificates(ctx, slices.DeleteFunc(slices.Clone(moved), func(h string) bool {
+				return dnsname.WildcardCovers(h, now.WildcardZones())
+			}))
 		}
 	}
+	s.warn(actor, warnings, "zone", name)
 	slices.Sort(removed)
 	slices.Sort(moved)
-	return api.ZoneRmReply{Name: name, Removed: nonNil(removed), Moved: nonNil(moved)}, nil
+	return api.ZoneRmReply{Name: name, Removed: nonNil(removed), Moved: nonNil(moved), Warnings: api.Warnings{Warnings: warnings}}, nil
 }
 
 func nonNil(s []string) []string {

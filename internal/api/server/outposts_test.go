@@ -12,8 +12,8 @@ import (
 	"github.com/hyprsh/tnl/internal/token"
 )
 
-func addOutpost(c *api.Client, name string) (api.OutpostAddResponse, error) {
-	return api.Call[api.OutpostAddResponse](context.Background(), c, http.MethodPost, api.PathOutposts, api.OutpostAddRequest{Name: name})
+func addOutpost(c *api.Client, name string) (api.OutpostAddReply, error) {
+	return api.Call[api.OutpostAddReply](context.Background(), c, http.MethodPost, api.PathOutposts, api.OutpostAddRequest{Name: name})
 }
 
 func TestOutpostAddReturnsATokenForTheNextAddress(t *testing.T) {

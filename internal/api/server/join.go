@@ -28,13 +28,13 @@ func afterReply(ctx context.Context, fn func()) {
 // join is the Edge's half of the join exchange. Under the lock it checks that
 // the Outpost hasn't joined and its token hasn't expired, swaps the peer's key
 // and forgets the one-time key.
-func (s *Server) join(ctx context.Context, actor api.Actor, req api.JoinRequest) (api.JoinResponse, error) {
+func (s *Server) join(ctx context.Context, actor api.Actor, req api.JoinRequest) (api.JoinReply, error) {
 	name, ok := actor.OutpostName()
 	if !ok {
-		return api.JoinResponse{}, api.Errorf(http.StatusForbidden, "%s may not join; only an Outpost that hasn't joined does", actor)
+		return api.JoinReply{}, api.Errorf(http.StatusForbidden, "%s may not join; only an Outpost that hasn't joined does", actor)
 	}
 	if req.PublicKey == (keys.Key{}) {
-		return api.JoinResponse{}, api.Errorf(http.StatusBadRequest, "the join request has no public key")
+		return api.JoinReply{}, api.Errorf(http.StatusBadRequest, "the join request has no public key")
 	}
 	var old keys.Key
 	var address netip.Addr
@@ -57,7 +57,7 @@ func (s *Server) join(ctx context.Context, actor api.Actor, req api.JoinRequest)
 		return api.Errorf(http.StatusForbidden, "no Outpost %s", name)
 	})
 	if err != nil {
-		return api.JoinResponse{}, err
+		return api.JoinReply{}, err
 	}
 	s.cfg.Log.Info("outpost joined", "actor", actor.String(), "outpost", name, "version", req.Version)
 	if s.cfg.SwapPeer != nil {
@@ -70,5 +70,5 @@ func (s *Server) join(ctx context.Context, actor api.Actor, req api.JoinRequest)
 		}
 		afterReply(ctx, func() { s.cfg.SwapPeer(old, req.PublicKey, address) })
 	}
-	return api.JoinResponse{Name: name, EdgeVersion: s.cfg.Version}, nil
+	return api.JoinReply{Name: name, EdgeVersion: s.cfg.Version}, nil
 }

@@ -3,11 +3,23 @@ package caddyx
 import (
 	"bytes"
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
 	"log/slog"
+	"math/big"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/caddyserver/caddy/v2"
+	"github.com/caddyserver/certmagic"
 )
 
 type testClock struct {
@@ -184,4 +196,37 @@ func TestWaitTimeoutNamesTheLastError(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "the CA said no") {
 		t.Fatalf("got %v", err)
 	}
+}
+
+// A certificate that expired while the Edge was down has no NotAfter in the
+// manager's memory, but it is in Caddy's storage, and the reminder reads it
+// there: once it has expired the reminder is an error.
+func TestAnExpiredCertificateFromBeforeARestartEscalatesToError(t *testing.T) {
+	c, clock, buf := certsFixture()
+	dir := t.TempDir()
+	old := caddy.DefaultStorage
+	caddy.DefaultStorage = &certmagic.FileStorage{Path: dir}
+	t.Cleanup(func() { caddy.DefaultStorage = old })
+
+	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	tmpl := &x509.Certificate{
+		SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "app.test"}, DNSNames: []string{"app.test"},
+		NotBefore: clock.Now().Add(-100 * 24 * time.Hour), NotAfter: clock.Now().Add(-10 * time.Hour),
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	crtDir := filepath.Join(dir, "certificates", "acme-v02.api.letsencrypt.org-directory", "app.test")
+	if err := os.MkdirAll(crtDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(crtDir, "app.test.crt"), pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	c.process(failed("app.test", "boom"))
+	clock.advance(24 * time.Hour)
+	c.Tick()
+	want(t, buf.lines(), "level=ERROR", `msg="certificate still failing"`, "expired_for=")
 }

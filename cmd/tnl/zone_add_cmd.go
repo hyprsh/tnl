@@ -47,18 +47,7 @@ func zoneAdd(args []string) error {
 	if err != nil {
 		return err
 	}
-	if z.DNSZone != "" {
-		fmt.Fprintf(stdout, "DNS zone %s\n", z.DNSZone)
-	}
-	if z.Provider != "" {
-		fmt.Fprintf(stdout, "added Zone %s (%s, %s)\n", z.Name, z.Mode, z.Provider)
-	} else {
-		fmt.Fprintf(stdout, "added Zone %s (%s)\n", z.Name, z.Mode)
-	}
-	if len(z.Covers) > 0 {
-		fmt.Fprintf(stdout, "the certificate covers %s\n", strings.Join(z.Covers, ", "))
-	}
-	printWarnings(z.Warnings)
+	printZoneResult(fmt.Sprintf("added Zone %s (%s)", z.Name, zoneMode(z.ZoneInfo)), z.WildcardInfo, z.Warnings)
 	return nil
 }
 

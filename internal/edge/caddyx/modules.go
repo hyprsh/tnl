@@ -164,7 +164,7 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 	addr, ok := t.rt.Outposts.Addr(route.Outpost)
 	if !ok {
-		return t.rt.fail(req, id, http.StatusBadGateway, "outpost offline")
+		return t.rt.fail(req, id, http.StatusServiceUnavailable, "outpost offline")
 	}
 	out := req.Clone(context.WithValue(ctx, requestIDKey, id))
 	out.URL.Scheme = "http"
@@ -179,7 +179,7 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	resp, err := t.rt.pool.transport(t.rt, route, addr).RoundTrip(out)
 	if err != nil {
 		if errors.Is(err, errTunnelWait) {
-			return t.rt.fail(req, id, http.StatusServiceUnavailable, "no tunnel")
+			return t.rt.fail(req, id, http.StatusServiceUnavailable, "outpost offline")
 		}
 		var re *ReplyError
 		if errors.As(err, &re) {

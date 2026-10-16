@@ -215,7 +215,7 @@ func joinExchange(ctx context.Context, cfg Config, edgeAPI *api.Client, tun *tun
 	}
 	jctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	resp, err := api.Call[api.JoinResponse](jctx, edgeAPI, http.MethodPost, api.PathJoin, api.JoinRequest{PublicKey: pub, Version: cfg.Version})
+	resp, err := api.Call[api.JoinReply](jctx, edgeAPI, http.MethodPost, api.PathJoin, api.JoinRequest{PublicKey: pub, Version: cfg.Version})
 	if err != nil {
 		var ae *api.Error
 		if errors.As(err, &ae) {
@@ -224,7 +224,7 @@ func joinExchange(ctx context.Context, cfg Config, edgeAPI *api.Client, tun *tun
 		if ctx.Err() != nil {
 			return "", ctx.Err()
 		}
-		return "", &ConfigError{fmt.Errorf("could not join through the Tunnel (waited up to %s; is the token already used or revoked, or the Edge unreachable?): %w", timeout, err)}
+		return "", fmt.Errorf("could not join through the Tunnel (waited up to %s; is the token already used or revoked, or the Edge unreachable?): %w", timeout, err)
 	}
 	st.Name, st.PrivateKey = resp.Name, priv
 	if err := saveState(cfg.StateDir, st); err != nil {

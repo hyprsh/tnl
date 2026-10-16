@@ -42,7 +42,7 @@ sudo tnl outpost add nas
 
 `zone add` says which DNS zone the Edge may serve Hostnames in. `outpost add` prints a join token. The token is shown once and is never stored. It holds the key the Outpost joins with, so send it over a channel you trust.
 
-### 5. Connect the Outpost
+### 4. Connect the Outpost
 
 On the Outpost host, with the token:
 
@@ -52,7 +52,7 @@ curl -fsSL https://github.com/hyprsh/tnl/releases/latest/download/install.sh | s
 
 This installs the Outpost-only build and a systemd unit, and starts it. The Outpost saves what it needs in its state directory, so a restart needs no token. Without root or systemd (macOS, say) the script installs only the binary, to `~/.local/bin`, and prints the `tnl connect --token …` line to run in a terminal or under your own supervisor.
 
-### 6. Add a Route
+### 5. Add a Route
 
 On the Edge host:
 
@@ -65,7 +65,7 @@ The Service URL is `http://`, a host and an optional port (default 80), with no 
 
 The Route is saved and swapped in at once. Caddy is not reloaded, so other Routes' connections are not touched.
 
-### 7. The first request
+### 6. The first request
 
 ```sh
 curl -v https://app.example.com/
