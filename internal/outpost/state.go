@@ -13,14 +13,16 @@ import (
 )
 
 // StateVersion is the schema version of the Outpost's state.json.
-const StateVersion = 1
+// Version 2 added the Outpost's name.
+const StateVersion = 2
 
 // FileName is the state file inside the state directory.
 const FileName = "state.json"
 
 // State is what an Outpost remembers: enough to reconnect without a token. It
-// holds no Routes. Its name arrives with the join exchange in slice 3.
+// holds no Routes.
 type State struct {
+	Name        string
 	PrivateKey  keys.Key
 	Address     netip.Addr // this Outpost's Tunnel address
 	EdgeAddress string     // the Edge's --address, resolved afresh at each start
@@ -31,6 +33,7 @@ type State struct {
 
 type diskState struct {
 	Version     int    `json:"version"`
+	Name        string `json:"name"`
 	PrivateKey  string `json:"private_key"`
 	Address     string `json:"address"`
 	EdgeAddress string `json:"edge_address"`
@@ -52,7 +55,7 @@ func loadState(dir string) (*State, error) {
 	if err := statefile.Decode(raw, FileName, StateVersion, &d); err != nil {
 		return nil, err
 	}
-	s := &State{EdgeAddress: d.EdgeAddress, EdgePort: d.EdgePort, TokenSHA256: d.TokenSHA256}
+	s := &State{Name: d.Name, EdgeAddress: d.EdgeAddress, EdgePort: d.EdgePort, TokenSHA256: d.TokenSHA256}
 	if err := s.PrivateKey.UnmarshalText([]byte(d.PrivateKey)); err != nil {
 		return nil, fmt.Errorf("%s: private_key: %v", FileName, err)
 	}
@@ -61,6 +64,9 @@ func loadState(dir string) (*State, error) {
 	}
 	if s.Address, err = netip.ParseAddr(d.Address); err != nil {
 		return nil, fmt.Errorf("%s: address: %v", FileName, err)
+	}
+	if s.Name == "" {
+		return nil, fmt.Errorf("%s: no name", FileName)
 	}
 	if s.EdgeAddress == "" || s.EdgePort < 1 || s.EdgePort > 65535 {
 		return nil, fmt.Errorf("%s: no usable Edge address and port", FileName)
@@ -80,7 +86,7 @@ func saveState(dir string, s *State) error {
 	priv, _ := s.PrivateKey.MarshalText()
 	edge, _ := s.EdgeKey.MarshalText()
 	b, err := json.MarshalIndent(diskState{
-		Version: StateVersion, PrivateKey: string(priv), Address: s.Address.String(),
+		Version: StateVersion, Name: s.Name, PrivateKey: string(priv), Address: s.Address.String(),
 		EdgeAddress: s.EdgeAddress, EdgePort: s.EdgePort, EdgeKey: string(edge), TokenSHA256: s.TokenSHA256,
 	}, "", "  ")
 	if err != nil {

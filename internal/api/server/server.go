@@ -13,12 +13,15 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/netip"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/hyprsh/tnl/internal/api"
+	"github.com/hyprsh/tnl/internal/keys"
 	"github.com/hyprsh/tnl/internal/state"
 )
 
@@ -42,6 +45,13 @@ type Config struct {
 
 	// Resolver does the DNS checks; nil uses net.DefaultResolver.
 	Resolver Resolver
+
+	// SwapPeer, if set, replaces an Outpost's WireGuard peer (old key out, new
+	// key in, same Tunnel address). The join calls it after its reply is out.
+	SwapPeer func(old, new keys.Key, address netip.Addr)
+	// PreparePeer, if set, adds the new key as a peer with no Tunnel address
+	// yet, before the join replies, so its handshake can complete early.
+	PreparePeer func(new keys.Key) error
 }
 
 // ConnCloser is the connection tracker as the handlers see it, in the
@@ -72,7 +82,12 @@ func (s *Server) routes() {
 	endpoint(s, http.MethodGet, api.PathRoutes, s.routeList)
 	endpoint(s, http.MethodPost, api.PathRoutes, s.routeAdd)
 	endpoint(s, http.MethodPost, api.PathRouteRm, s.routeRm)
+	endpoint(s, http.MethodPost, api.PathJoin, s.join)
 }
+
+// afterReplyGrace is how long after a reply is written the functions queued
+// with afterReply run.
+const afterReplyGrace = 150 * time.Millisecond
 
 type actorKey struct{}
 
@@ -80,7 +95,21 @@ type actorKey struct{}
 func (s *Server) Handler(actor api.Actor) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set(api.VersionHeader, s.cfg.Version)
-		s.mux.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), actorKey{}, actor)))
+		after := &afterList{}
+		ctx := context.WithValue(context.WithValue(r.Context(), actorKey{}, actor), afterKey{}, after)
+		s.mux.ServeHTTP(w, r.WithContext(ctx))
+		if len(after.fns) > 0 {
+			if f, ok := w.(http.Flusher); ok {
+				f.Flush()
+			}
+			// The reply is out; give it a moment to cross the Tunnel.
+			fns := after.fns
+			time.AfterFunc(afterReplyGrace, func() {
+				for _, fn := range fns {
+					fn()
+				}
+			})
+		}
 	})
 }
 
@@ -198,6 +227,16 @@ func (s *Server) decode(r *http.Request, v any) error {
 
 func (s *Server) reply(w http.ResponseWriter, resp any, err error) {
 	w.Header().Set("Content-Type", "application/json")
+	// A response with a Content-Length is complete once it is flushed.
+	send := func(status int, v any) {
+		b, merr := json.Marshal(v)
+		if merr != nil {
+			status, b = http.StatusInternalServerError, []byte(`{"error":"encoding the response failed"}`)
+		}
+		w.Header().Set("Content-Length", strconv.Itoa(len(b)+1))
+		w.WriteHeader(status)
+		w.Write(append(b, '\n'))
+	}
 	if err != nil {
 		var ae *api.Error
 		var inv *state.InvalidError
@@ -209,13 +248,12 @@ func (s *Server) reply(w http.ResponseWriter, resp any, err error) {
 			s.cfg.Log.Error("api request failed", "error", err)
 			ae = api.Errorf(http.StatusInternalServerError, "%v", err)
 		}
-		w.WriteHeader(ae.Status)
-		json.NewEncoder(w).Encode(struct {
+		send(ae.Status, struct {
 			Error string `json:"error"`
 		}{ae.Message})
 		return
 	}
-	json.NewEncoder(w).Encode(resp)
+	send(http.StatusOK, resp)
 }
 
 func (s *Server) info(_ context.Context, _ api.Actor, _ struct{}) (api.Info, error) {
