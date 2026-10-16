@@ -65,6 +65,12 @@ func Migrate(path, name string, current int, steps Steps) (from int, err error) 
 	return head.Version, nil
 }
 
+// unknownSchema is the refusal of a file whose schema this tnl doesn't read. It
+// names both versions and the side to upgrade: a newer file wants a newer tnl;
+// an older one that can't be migrated wants the tnl that wrote it.
 func unknownSchema(name string, have, known int) error {
-	return fmt.Errorf("%s has schema version %d; this tnl knows version %d", name, have, known)
+	if have > known {
+		return fmt.Errorf("%s has schema version %d; this tnl knows version %d: it was written by a newer tnl; upgrade this tnl", name, have, known)
+	}
+	return fmt.Errorf("%s has schema version %d; this tnl knows version %d: it was written by an older tnl and can't be migrated; start it with the tnl that wrote it", name, have, known)
 }
