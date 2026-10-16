@@ -26,6 +26,15 @@ func Attention(w io.Writer, items []api.AttentionItem) error {
 	return nil
 }
 
+// versionLine is "tnl 1.4.2 (release, abc123)"; the revision is left out when
+// there is none.
+func versionLine(version, build, revision string) string {
+	if revision != "" {
+		build += ", " + revision
+	}
+	return fmt.Sprintf("tnl %s (%s)", version, build)
+}
+
 // fields prints a block of "Name:  value" lines, the values aligned.
 func fields(w io.Writer, rows [][2]string) error {
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
@@ -38,11 +47,7 @@ func fields(w io.Writer, rows [][2]string) error {
 // EdgeStatus prints `tnl status` on the Edge: the summary, a blank line, and
 // what needs attention.
 func EdgeStatus(w io.Writer, s api.EdgeStatus) error {
-	version := fmt.Sprintf("tnl %s (%s", s.Version, s.Build)
-	if s.Revision != "" {
-		version += ", " + s.Revision
-	}
-	fmt.Fprintln(w, version+")")
+	fmt.Fprintln(w, versionLine(s.Version, s.Build, s.Revision))
 	onOff := map[bool]string{true: "on", false: "off"}
 	certs := fmt.Sprintf("%d", s.Certificates.Count)
 	if s.Certificates.SoonestExpiry != nil {

@@ -122,6 +122,13 @@ func TestAnOutpostRefusesAnEdgeOfAnOlderMajor(t *testing.T) {
 		t.Fatalf("%d errors, want 1:\n%s", n, log)
 	}
 
+	// `tnl status` needs attention for it, as its own fact, not as Incompatible.
+	if s, err := api.Call[api.OutpostStatus](ctx(t), again.CLI, http.MethodGet, api.PathStatus, nil); err != nil {
+		t.Fatal(err)
+	} else if !s.Edge.TooOld || s.Edge.Incompatible || len(s.Attention) != 1 || s.Attention[0].Kind != api.AttentionEdgeTooOld {
+		t.Errorf("status of an Outpost with an Edge too old: %+v", s)
+	}
+
 	// Rolled forward, the same Outpost process is Online again.
 	back.Stop()
 	fwd := StartEdgeWith(t, EdgeOptions{StateDir: re2.StateDir, Version: "2.0.0", WireGuardPort: re2.Port})

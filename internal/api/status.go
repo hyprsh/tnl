@@ -48,6 +48,20 @@ type OutpostCounts struct {
 	NotJoined    int `json:"not_joined"`
 }
 
+// Count adds one Outpost in the state to the counts.
+func (c *OutpostCounts) Count(s OutpostState) {
+	switch s {
+	case StateOnline:
+		c.Online++
+	case StateOffline:
+		c.Offline++
+	case StateIncompatible:
+		c.Incompatible++
+	case StateNotJoined:
+		c.NotJoined++
+	}
+}
+
 // CertSummary counts the certificates held and says when the first expires.
 type CertSummary struct {
 	Count int `json:"count"`
@@ -55,21 +69,24 @@ type CertSummary struct {
 	SoonestExpiry *time.Time `json:"soonest_expiry,omitempty"`
 }
 
-// The kinds of AttentionItem.
+// AttentionKind is the kind of an AttentionItem.
+type AttentionKind string
+
+// The kinds of AttentionItem on an Edge.
 const (
-	AttentionOutpostOffline      = "outpost offline"
-	AttentionOutpostIncompatible = "outpost incompatible"
-	AttentionCertificateFailing  = "certificate failing"
-	AttentionCertificateExpiring = "certificate expiring"
-	AttentionLineWaiting         = "line waiting"
+	AttentionOutpostOffline      AttentionKind = "outpost offline"
+	AttentionOutpostIncompatible AttentionKind = "outpost incompatible"
+	AttentionCertificateFailing  AttentionKind = "certificate failing"
+	AttentionCertificateExpiring AttentionKind = "certificate expiring"
+	AttentionLineWaiting         AttentionKind = "line waiting"
 )
 
 // AttentionItem is one problem. Subject names the Outpost, the certificate's
 // name or the waiting line's Hostname; Message is the line the table prints.
 type AttentionItem struct {
-	Kind    string `json:"kind"` // an Attention* constant
-	Subject string `json:"subject"`
-	Message string `json:"message"`
+	Kind    AttentionKind `json:"kind"`
+	Subject string        `json:"subject"`
+	Message string        `json:"message"`
 	// Outpost, for a waiting line, is the Outpost that declares it.
 	Outpost string `json:"outpost,omitempty"`
 }

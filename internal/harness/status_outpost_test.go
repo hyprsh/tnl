@@ -115,7 +115,7 @@ func TestStatusOfAnIncompatibleOutpostNeedsAttention(t *testing.T) {
 		s, _ = outpostStatus(t, nas)
 		return s.Edge.Incompatible
 	})
-	if len(s.Attention) != 1 || s.Attention[0].Kind != api.AttentionEdgeIncompat || !strings.Contains(s.Edge.Message, "doesn't accept this Outpost") {
+	if len(s.Attention) != 1 || s.Attention[0].Kind != api.AttentionEdgeIncompatible || !strings.Contains(s.Edge.Message, "doesn't accept this Outpost") {
 		t.Errorf("status: %+v", s)
 	}
 }

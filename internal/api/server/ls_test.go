@@ -106,7 +106,7 @@ func TestOutpostLsStatesAndWhatEachRowKnows(t *testing.T) {
 	clock = clock.Add(30 * time.Second) // gone is silent for 80 s, old and heard for 30 s; restarted was seeded 80 s ago
 
 	got := lsOutposts(t, f)
-	check := func(name, state string, ago *int64) {
+	check := func(name string, state api.OutpostState, ago *int64) {
 		t.Helper()
 		o := got[name]
 		if o.State != state {
@@ -235,7 +235,7 @@ func TestRouteLsStatusFollowsTheSpecsOrderOfProblems(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := map[string]string{
+	want := map[string]api.RouteStatus{
 		"ok.example.com":      api.StatusOK,
 		"none.example.com":    api.StatusNoCertificate,
 		"expired.example.com": api.StatusCertExpired,
@@ -243,7 +243,7 @@ func TestRouteLsStatusFollowsTheSpecsOrderOfProblems(t *testing.T) {
 		"both.example.com":    api.StatusCertExpired, // expired comes before failing
 		"wild.example.com":    api.StatusOK,
 		"off.example.com":     api.StatusOutpostOffline,
-		"inc.example.com":     api.StatusOutpostIncompat,
+		"inc.example.com":     api.StatusOutpostIncompatible,
 		"nj.example.com":      api.StatusOutpostNotJoined,
 	}
 	rows := lsRoutes(t, f)

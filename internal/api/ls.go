@@ -16,12 +16,14 @@ import (
 // The tables are rendered from the same values (internal/render), so a table
 // never needs a clock of its own.
 
-// The states of an Outpost, in the words every surface uses.
+// OutpostState is the state of an Outpost, in the words every surface uses.
+type OutpostState string
+
 const (
-	StateOnline       = "online"
-	StateOffline      = "offline"
-	StateIncompatible = "incompatible"
-	StateNotJoined    = "not joined"
+	StateOnline       OutpostState = "online"
+	StateOffline      OutpostState = "offline"
+	StateIncompatible OutpostState = "incompatible"
+	StateNotJoined    OutpostState = "not joined"
 )
 
 // OutpostList answers GET PathOutposts, sorted by name.
@@ -31,8 +33,8 @@ type OutpostList struct {
 
 // OutpostInfo is one row of `outpost ls`.
 type OutpostInfo struct {
-	Name  string `json:"name"`
-	State string `json:"state"` // a State* constant
+	Name  string       `json:"name"`
+	State OutpostState `json:"state"`
 	// LastSeen is when the Edge last heard from the Outpost. It is left out
 	// for a `not joined` Outpost and for one not yet heard from since the
 	// Edge started; LastSeenAgoSeconds goes with it.
@@ -62,7 +64,7 @@ type RouteRow struct {
 	RouteInfo
 	// Status is the first problem with the Route, or "ok": see StatusOK and
 	// the Status* constants. A waiting row's is "waiting: <reason>".
-	Status string `json:"status,omitempty"`
+	Status RouteStatus `json:"status,omitempty"`
 	// Waiting is why a declared line is not a Route; empty on a Route.
 	Waiting string `json:"waiting,omitempty"`
 	// Extra holds fields this build does not know, sent by a newer Edge. The
@@ -71,16 +73,25 @@ type RouteRow struct {
 	Extra map[string]json.RawMessage `json:"-"`
 }
 
+// RouteStatus is the STATUS of a Route row.
+type RouteStatus string
+
 // Route statuses, in the order `route ls` looks for them.
 const (
-	StatusOK                = "ok"
-	StatusOutpostNotJoined  = "outpost not joined"
-	StatusOutpostOffline    = "outpost offline"
-	StatusOutpostIncompat   = "outpost incompatible"
-	StatusNoCertificate     = "no certificate"
-	StatusCertExpired       = "certificate expired"
-	StatusRenewalFailing    = "renewal failing"
-	StatusWaitingPrefix     = "waiting: "
+	StatusOK                  RouteStatus = "ok"
+	StatusOutpostNotJoined    RouteStatus = "outpost not joined"
+	StatusOutpostOffline      RouteStatus = "outpost offline"
+	StatusOutpostIncompatible RouteStatus = "outpost incompatible"
+	StatusNoCertificate       RouteStatus = "no certificate"
+	StatusCertExpired         RouteStatus = "certificate expired"
+	StatusRenewalFailing      RouteStatus = "renewal failing"
+)
+
+// StatusWaiting is the status of a row that waits for the reason.
+func StatusWaiting(reason string) RouteStatus { return RouteStatus("waiting: " + reason) }
+
+// The reasons a declared line waits, in the words of `ls` and `status`.
+const (
 	WaitingOutsideEveryZone = "outside every Zone"
 	WaitingNotAppliedYet    = "not applied yet"
 )
@@ -169,21 +180,23 @@ type ZoneRow struct {
 	Certificates []CertInfo `json:"certificates,omitempty"`
 }
 
-// The states of a certificate.
+// CertificateState is the state of a certificate.
+type CertificateState string
+
 const (
-	CertValid          = "valid"
-	CertObtaining      = "obtaining"
-	CertRenewalFailing = "renewal failing"
-	CertFailed         = "failed" // failing, and never obtained
-	CertExpired        = "expired"
+	CertValid          CertificateState = "valid"
+	CertObtaining      CertificateState = "obtaining"
+	CertRenewalFailing CertificateState = "renewal failing"
+	CertFailed         CertificateState = "failed" // failing, and never obtained
+	CertExpired        CertificateState = "expired"
 )
 
 // CertInfo is one certificate as the Edge's certificate manager knows it, in
 // memory: a restart starts it afresh and it is filled in as Caddy loads the
 // certificates it keeps.
 type CertInfo struct {
-	Name  string `json:"name"`
-	State string `json:"state"` // a Cert* constant
+	Name  string           `json:"name"`
+	State CertificateState `json:"state"`
 	// Expires is when the certificate held stops being valid; left out when
 	// none is held.
 	Expires *time.Time `json:"expires,omitempty"`

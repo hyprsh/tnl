@@ -12,7 +12,7 @@ import (
 
 // relayAnswering serves a fake Outpost relay that answers status with s, and
 // points the CLI at it. It runs in both builds.
-func relayAnswering(t *testing.T, s api.OutpostStatus) {
+func relayAnswering(t *testing.T, s any) {
 	t.Helper()
 	dir, err := os.MkdirTemp("", "tnl")
 	if err != nil {
@@ -87,5 +87,23 @@ func TestStatusOfAnOutpostJSONIsTheReplyAsItCame(t *testing.T) {
 	var s api.OutpostStatus
 	if err := json.Unmarshal([]byte(out), &s); err != nil || s.Role != api.RoleOutpost || s.Attention == nil || s.Routes == nil {
 		t.Fatalf("%v %+v\n%s", err, s, out)
+	}
+}
+
+// A newer Outpost's status may carry fields this tnl doesn't know; the text
+// and the exit code don't need them and --json passes them on.
+func TestStatusKeepsFieldsAnOlderTnlDoesNotKnow(t *testing.T) {
+	b, _ := json.Marshal(healthyOutpost())
+	var m map[string]any
+	json.Unmarshal(b, &m)
+	m["from_the_future"] = "x"
+	m["edge"].(map[string]any)["also_new"] = 1
+	relayAnswering(t, m)
+	if out, code, err := tnl("status"); err != nil || code != 0 || !strings.Contains(out, "Outpost nas") {
+		t.Fatalf("%q %v %d", out, err, code)
+	}
+	out, _, err := tnl("status", "--json")
+	if err != nil || !strings.Contains(out, `"from_the_future": "x"`) || !strings.Contains(out, `"also_new": 1`) {
+		t.Fatalf("%v\n%s", err, out)
 	}
 }

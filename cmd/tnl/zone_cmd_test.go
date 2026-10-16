@@ -134,8 +134,8 @@ func TestZoneAddThenLs(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := "ZONE           MODE          PROVIDER  CERTIFICATE\n" +
-		"b.example.com  per-hostname  -         0 certificates\n" +
-		"example.com    per-hostname  -         0 certificates\n"
+		"b.example.com  per-hostname  –         0 certificates\n" +
+		"example.com    per-hostname  –         0 certificates\n"
 	if out != want {
 		t.Fatalf("got\n%s\nwant\n%s", out, want)
 	}
