@@ -60,7 +60,7 @@ func startWeb(w *Web, stateDir string, wgPort int, store *state.Store, tun *tunn
 	}
 	edgeID := hex.EncodeToString(id[:])
 	unregister := caddyx.Register(edgeID, &caddyx.Runtime{
-		Table: table, Outposts: outposts,
+		Table: table, Outposts: outposts, Log: log,
 		Dialer: func(ctx context.Context, a netip.AddrPort) (net.Conn, error) {
 			return tun.Net.DialContextTCPAddrPort(ctx, a)
 		},
