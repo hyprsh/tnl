@@ -28,30 +28,30 @@ func (s *Server) afterRouteChange(before *state.Route, after state.Route) {
 
 // routeEdit changes the Route's Service, Outpost or options and closes its
 // connections.
-func (s *Server) routeEdit(_ context.Context, actor api.Actor, req api.RouteEditRequest) (api.RouteInfo, error) {
+func (s *Server) routeEdit(ctx context.Context, actor api.Actor, req api.RouteEditRequest) (api.RouteEditReply, error) {
 	own, isOutpost := actor.OutpostName()
 	if !actor.Local() && !isOutpost {
-		return api.RouteInfo{}, api.Errorf(http.StatusForbidden, "%s may not edit Routes", actor)
+		return api.RouteEditReply{}, api.Errorf(http.StatusForbidden, "%s may not edit Routes", actor)
 	}
 	if isOutpost && req.Outpost != nil && *req.Outpost != own {
-		return api.RouteInfo{}, api.Errorf(http.StatusForbidden, "Outpost %s may not move a Route onto Outpost %s", own, *req.Outpost)
+		return api.RouteEditReply{}, api.Errorf(http.StatusForbidden, "Outpost %s may not move a Route onto Outpost %s", own, *req.Outpost)
 	}
 	host, err := dnsName("Hostname", req.Hostname, "a Route holds one exact Hostname")
 	if err != nil {
-		return api.RouteInfo{}, err
+		return api.RouteEditReply{}, err
 	}
 	if req.Service == nil && req.Outpost == nil && req.HostHeader == nil && req.InsecureSkipVerify == nil {
-		return api.RouteInfo{}, api.Errorf(http.StatusBadRequest, "nothing to change: pass --service, --outpost, --host-header or --insecure-skip-verify")
+		return api.RouteEditReply{}, api.Errorf(http.StatusBadRequest, "nothing to change: pass --service, --outpost, --host-header or --insecure-skip-verify")
 	}
 	var service state.Service
 	if req.Service != nil {
 		if service, err = state.ParseService(*req.Service); err != nil {
-			return api.RouteInfo{}, api.Errorf(http.StatusBadRequest, "%v", err)
+			return api.RouteEditReply{}, api.Errorf(http.StatusBadRequest, "%v", err)
 		}
 	}
 	if req.HostHeader != nil {
 		if err := state.CheckHostHeader(*req.HostHeader); err != nil {
-			return api.RouteInfo{}, api.Errorf(http.StatusBadRequest, "%v", err)
+			return api.RouteEditReply{}, api.Errorf(http.StatusBadRequest, "%v", err)
 		}
 	}
 	var before, after state.Route
@@ -86,12 +86,19 @@ func (s *Server) routeEdit(_ context.Context, actor api.Actor, req api.RouteEdit
 		return api.Errorf(http.StatusNotFound, "no Route for %s", host)
 	})
 	if err != nil {
-		return api.RouteInfo{}, err
+		return api.RouteEditReply{}, err
 	}
 	s.cfg.Log.Info("route edited", "actor", actor.String(), "hostname", after.Hostname, "outpost", after.Outpost, "service", after.Service,
 		"host_header", after.HostHeader, "insecure_skip_verify", after.InsecureSkipVerify)
 	s.afterRouteChange(&before, after)
-	return routeInfo(after), nil
+	// After the lock. Only a changed Service is test-dialed: an option can't
+	// change whether the Service answers.
+	var warnings []string
+	if after.Service != before.Service {
+		warnings = s.testDialWarnings(ctx, after)
+	}
+	s.warn(actor, warnings, "route", after.Hostname)
+	return api.RouteEditReply{RouteInfo: routeInfo(after), Warnings: api.Warnings{Warnings: warnings}}, nil
 }
 
 // notYours refuses an Outpost's change to a Route another Outpost holds, naming the holder.
@@ -168,7 +175,10 @@ func (s *Server) routeAdd(ctx context.Context, actor api.Actor, req api.RouteAdd
 	// After the lock, like every warning: the checks wait on DNS and on the CA.
 	var warnings []string
 	if s.cfg.Liveness != nil && s.cfg.Liveness.State(r.Outpost) == liveness.Offline {
+		// An Offline Outpost can't be test-dialed; the warning says why.
 		warnings = append(warnings, fmt.Sprintf("Outpost %s is Offline: %s answers 503 until it is back", r.Outpost, r.Hostname))
+	} else {
+		warnings = append(warnings, s.testDialWarnings(ctx, r)...)
 	}
 	warnings = append(warnings, s.hostnameDNSWarnings(ctx, host)...)
 	warnings = append(warnings, s.certificateWarnings(ctx, host)...)

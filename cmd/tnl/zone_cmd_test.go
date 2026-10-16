@@ -15,12 +15,17 @@ import (
 
 	"github.com/hyprsh/tnl/internal/api"
 	"github.com/hyprsh/tnl/internal/api/server"
+	"github.com/hyprsh/tnl/internal/edge/routes"
 	"github.com/hyprsh/tnl/internal/logx"
 	"github.com/hyprsh/tnl/internal/state"
 )
 
 // runningEdge serves the API in a fresh state directory and points the CLI at
 // it through TNL_STATE_DIR.
+// edgeTestDialer is the test dialer runningEdge gives the Edge; a test sets it
+// before starting one.
+var edgeTestDialer routes.TestDialer
+
 func runningEdge(t *testing.T) {
 	runningEdgeWith(t, fakeDNS{"zone.test": true, "example.com": true, "b.example.com": true})
 }
@@ -59,7 +64,7 @@ func runningEdgeWith(t *testing.T, res server.Resolver) {
 		t.Fatal(err)
 	}
 	v, rev := versionInfo()
-	srv := server.New(server.Config{Store: store, Log: lg, Version: v, Build: buildName, Revision: rev, Role: "edge", Address: "tnl.example.com", WireGuardPort: 51820, Resolver: res, StateDir: dir})
+	srv := server.New(server.Config{Store: store, Log: lg, Version: v, Build: buildName, Revision: rev, Role: "edge", Address: "tnl.example.com", WireGuardPort: 51820, Resolver: res, StateDir: dir, TestDialer: edgeTestDialer})
 	ln, err := server.ListenSocket(dir)
 	if err != nil {
 		t.Fatal(err)

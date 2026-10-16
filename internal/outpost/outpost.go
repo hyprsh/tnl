@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/hyprsh/tnl/internal/addr"
+	"github.com/hyprsh/tnl/internal/allow"
 	"github.com/hyprsh/tnl/internal/api"
 	"github.com/hyprsh/tnl/internal/forwarder"
 	"github.com/hyprsh/tnl/internal/keys"
@@ -62,6 +63,8 @@ type Config struct {
 	// remind.Standard. Clock is the watcher's clock; nil is the wall clock.
 	Reminders remind.Schedule
 	Clock     remind.Clock
+	// Allow limits the Services the Edge may name; nil allows every one.
+	Allow *allow.List
 }
 
 // Running is what a started Outpost exposes.
@@ -155,7 +158,7 @@ func Run(ctx context.Context, cfg Config) error {
 	if err != nil {
 		return fmt.Errorf("listen on the Tunnel address: %w", err)
 	}
-	fw := &forwarder.Forwarder{Version: cfg.Version}
+	fw := &forwarder.Forwarder{Version: cfg.Version, Allow: cfg.Allow, Log: cfg.Log}
 	served := make(chan struct{})
 	go func() { defer close(served); fw.Serve(ln) }()
 	defer func() { ln.Close(); <-served }()
@@ -184,6 +187,7 @@ func Run(ctx context.Context, cfg Config) error {
 		"edge_port", st.EdgePort,
 		"state_dir", cfg.StateDir,
 		"joined", joining,
+		"allow", cfg.Allow.String(),
 	}
 	if joining {
 		fields = append(fields, "edge_version", edgeVersion)
