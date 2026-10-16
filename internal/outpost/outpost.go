@@ -220,8 +220,7 @@ func connect(ctx context.Context, cfg Config, st *State, joining bool) error {
 	defer stopPinging()
 	w := newWatcher(cfg, tun, st, edgeIP, func(ctx context.Context, host string) (netip.Addr, error) { return resolve(ctx, cfg, host) })
 	go w.run(pingCtx)
-	refused := make(chan error, 1)
-	judge := &edgeJudge{cfg: cfg, refused: refused}
+	judge := &edgeJudge{cfg: cfg}
 	dec := newDeclarer(edgeAPI, cfg.Log, cfg.Declaration)
 	digest := dec.digest()
 	answered := func(p wire.Pong) {
@@ -258,37 +257,26 @@ func connect(ctx context.Context, cfg Config, st *State, joining bool) error {
 	if cfg.Started != nil {
 		cfg.Started(&Running{Tunnel: tun, Address: st.Address, Name: st.Name, API: edgeAPI})
 	}
-	select {
-	case <-ctx.Done():
-		return nil
-	case err := <-refused:
-		cfg.Log.Error("refusing the Edge", "edge_version", judge.edgeVersion(), "version", cfg.Version, "error", err.Error())
-		return &ConfigError{err}
-	}
+	<-ctx.Done()
+	return nil
 }
 
-// edgeJudge applies what an Outpost may refuse of an Edge it is already
-// talking to: an Edge of an older major. Whether the Edge accepts this Outpost
-// is the Edge's call; when it says no, the Outpost only says so, once per
-// Edge version.
+// edgeJudge applies what an Outpost may say of an Edge it is already talking
+// to. An Edge of an older major is logged as an error, once per Edge version;
+// the Outpost keeps running and pinging, so it recovers when the Edge is
+// upgraded or rolled forward. Whether the Edge accepts this Outpost is the
+// Edge's call; when it says no, the Outpost only says so, once per Edge
+// version.
 type edgeJudge struct {
-	cfg     Config
-	refused chan error
+	cfg Config
 
 	mu       sync.Mutex
-	version  string
-	reported string
-}
-
-func (j *edgeJudge) edgeVersion() string {
-	j.mu.Lock()
-	defer j.mu.Unlock()
-	return j.version
+	reported string // the Edge version the Incompatible warning was logged for
+	tooOld   string // the Edge version the older-major error was logged for
 }
 
 func (j *edgeJudge) judge(p wire.Pong) {
 	j.mu.Lock()
-	j.version = p.Version
 	tell := !p.Inside && j.reported != p.Version
 	if tell {
 		j.reported = p.Version
@@ -296,11 +284,18 @@ func (j *edgeJudge) judge(p wire.Pong) {
 	if p.Inside {
 		j.reported = ""
 	}
+	old := !version.OutpostAcceptsEdge(j.cfg.Version, p.Version)
+	tellOld := old && j.tooOld != p.Version
+	if old {
+		j.tooOld = p.Version
+	} else {
+		j.tooOld = ""
+	}
 	j.mu.Unlock()
-	if !version.OutpostAcceptsEdge(j.cfg.Version, p.Version) {
-		select {
-		case j.refused <- errors.New(version.EdgeTooOld(j.cfg.Version, p.Version)):
-		default:
+	if old {
+		if tellOld {
+			j.cfg.Log.Error("refusing the Edge", "edge_version", p.Version, "version", j.cfg.Version,
+				"error", version.EdgeTooOld(j.cfg.Version, p.Version))
 		}
 		return
 	}

@@ -86,8 +86,9 @@ func TestAnOutpostOutsideTheVersionWindowIsIncompatible(t *testing.T) {
 	})
 }
 
-// An Outpost refuses an Edge of an older major, naming both versions, whether
-// the Edge is met in a join token or in a ping.
+// An Outpost refuses an Edge of an older major in a join token, naming both
+// versions. Met in a ping it never exits: it logs the error once per Edge
+// version, keeps pinging and recovers when the Edge is rolled forward.
 func TestAnOutpostRefusesAnEdgeOfAnOlderMajor(t *testing.T) {
 	re := StartEdgeWith(t, EdgeOptions{Version: "1.4.2"})
 	tok := re.AddOutpost(t, "nas")
@@ -107,17 +108,28 @@ func TestAnOutpostRefusesAnEdgeOfAnOlderMajor(t *testing.T) {
 	re2.Stop()
 	back := StartEdgeWith(t, EdgeOptions{StateDir: re2.StateDir, Version: "1.4.2", WireGuardPort: re2.Port})
 	log := new(lockedBuf)
-	// The Outpost starts, hears the Edge's version in the first answer and exits.
 	again, err := back.TryConnectWith(t, "nas", "", dir, ConnectOptions{Version: "2.0.0", LogOut: log})
-	if err == nil {
-		waitFor(t, "the refusal", 10*time.Second, func() bool { return strings.Contains(log.String(), "refusing the Edge") })
-		err = again.Stop()
+	if err != nil {
+		t.Fatal(err)
 	}
-	if err == nil || !strings.Contains(err.Error(), "1.4.2") || !strings.Contains(err.Error(), "2.0.0") {
-		t.Fatalf("exit: %v", err)
+	waitFor(t, "the error", 10*time.Second, func() bool { return strings.Contains(log.String(), "refusing the Edge") })
+	if line := lineWith(log.String(), "refusing the Edge"); !strings.Contains(line, "level=error") || !strings.Contains(line, "1.4.2") || !strings.Contains(line, "2.0.0") {
+		t.Fatalf("error line: %q", line)
 	}
-	if line := lineWith(log.String(), "refusing the Edge"); !strings.Contains(line, "level=error") || !strings.Contains(line, "1.4.2") {
-		t.Fatalf("refusal line: %q", line)
+	// It does not exit, and says it once.
+	time.Sleep(time.Second)
+	if n := strings.Count(log.String(), "refusing the Edge"); n != 1 {
+		t.Fatalf("%d errors, want 1:\n%s", n, log)
+	}
+
+	// Rolled forward, the same Outpost process is Online again.
+	back.Stop()
+	fwd := StartEdgeWith(t, EdgeOptions{StateDir: re2.StateDir, Version: "2.0.0", WireGuardPort: re2.Port})
+	waitFor(t, "the Outpost to be online again", 15*time.Second, func() bool {
+		return fwd.Liveness.State("nas") == liveness.Online && fwd.Liveness.Info("nas").Version == "2.0.0"
+	})
+	if err := again.Stop(); err != nil {
+		t.Fatalf("the Outpost exited with %v", err)
 	}
 }
 
