@@ -74,6 +74,9 @@ func (c *clientCommand) parse(args []string) (positional []string, err error) {
 		}
 		if c.fs.NArg() == 0 {
 			c.stateDir, err = discoverStateDir(c.stateDir)
+			if err != nil {
+				err = discoverError{err}
+			}
 			return positional, err
 		}
 		positional = append(positional, c.fs.Arg(0))

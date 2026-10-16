@@ -1,0 +1,25 @@
+{
+  "role": "edge",
+  "version": "1.2.0",
+  "build": "full",
+  "started": "2026-10-16T12:00:00Z",
+  "uptime_seconds": 0,
+  "address": "edge.example.com",
+  "wireguard_port": 51820,
+  "key_fingerprint": "SHA256:abcdefgh",
+  "state_dir": "/var/lib/tnl",
+  "log_level": "info",
+  "access_log": false,
+  "outposts": {
+    "online": 0,
+    "offline": 0,
+    "incompatible": 0,
+    "not_joined": 0
+  },
+  "routes": 0,
+  "zones": 0,
+  "certificates": {
+    "count": 0
+  },
+  "attention": []
+}

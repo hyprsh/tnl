@@ -49,6 +49,8 @@ type Config struct {
 	// OfflineAfter is the silence after which an Outpost is Offline (60 s), and
 	// LivenessPoll how often the Edge checks (1 s). The harness shrinks them.
 	OfflineAfter, LivenessPoll time.Duration
+	// LogLevel is the level the logger runs at, for `status` to report.
+	LogLevel string
 	// CertWait bounds the certificate wait at `route add`; zero is 60 s.
 	CertWait time.Duration
 	// DNSResolvers are the DNS servers ("host:port") the SOA lookup and the
@@ -165,6 +167,7 @@ func Run(ctx context.Context, cfg Config) error {
 		Conns: conns, Liveness: live, Certs: certs, CertReader: certs, TestDialer: testDial, Wildcards: wild,
 		Store: store, Log: cfg.Log, Version: cfg.Version, Build: cfg.Build, Revision: cfg.Revision, Role: api.RoleEdge,
 		Address: cfg.Address, WireGuardPort: wgPort, Resolver: cfg.Resolver, StateDir: cfg.StateDir, CertWait: cfg.CertWait,
+		StartedAt: time.Now(), LogLevel: cfg.LogLevel, AccessLog: cfg.Web != nil && cfg.Web.AccessLog,
 		ZonesDeclared: len(cfg.Zones) > 0, OutpostsDeclared: len(cfg.Outposts) > 0,
 		PreparePeer: peers.prepare,
 		SwapPeer:    func(old, new keys.Key, a netip.Addr) { peers.swap(old, new, a, cfg.Log) },
