@@ -2,6 +2,27 @@
 
 Upgrade the Edge first, then each Outpost whenever you reach its machine. The Edge judges every Outpost by its version, and an Outpost outside the Edge's window is **Incompatible**.
 
+## How to upgrade
+
+There is no `tnl upgrade` and no self-updater. On a host with systemd, run the install line again (see [Installing](install.md#upgrading)); with Docker, change the image tag and recreate the container.
+
+The order is the **Edge first, then each Outpost** whenever you reach its machine. Within a 0.x minor, or within a major, either order works, because the window takes both sides. **At a major, the order is required:** the new Edge still takes the previous major's Outposts, but an Outpost of a new major refuses an Edge of an older one.
+
+## Which tags are safe for Outposts
+
+Images are tagged `X.Y.Z`, `X.Y`, `X` and `latest`. For an Outpost, which a later Edge upgrade must not strand:
+
+- **Safe:** an exact `X.Y.Z`, and the `1` tag (before 1.0, the `0.3` tag). They move only inside the Edge's window.
+- **Not safe:** `latest`, and a bare `0`. They jump to the next 0.x minor, which the Edge may not accept yet; `latest` also jumps to the next major.
+
+Pin an exact `X.Y.Z` wherever you want to choose the moment of an upgrade.
+
+## What the release notes say
+
+- They open with the compatibility line, the same one `tnl version` prints.
+- A major's notes lead with an **Upgrading from 1.x** section (for 2.0, from 1.x), which says what changes and in what order to do it.
+- Any release that migrates a state file says so; see [The Outpost's state file](#the-outposts-state-file).
+
 ## Which versions work together
 
 - **Before 1.0,** two versions work together only when they share the minor: `0.3.1` works with `0.3.4`, never with `0.4.0`. Upgrading to a new 0.x minor therefore means upgrading the Edge and every Outpost to it.
