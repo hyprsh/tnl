@@ -17,6 +17,7 @@ import (
 	"github.com/hyprsh/tnl/internal/allow"
 	"github.com/hyprsh/tnl/internal/api"
 	"github.com/hyprsh/tnl/internal/api/server"
+	"github.com/hyprsh/tnl/internal/declare"
 	"github.com/hyprsh/tnl/internal/edge"
 	"github.com/hyprsh/tnl/internal/edge/caddyx"
 	"github.com/hyprsh/tnl/internal/edge/liveness"
@@ -283,6 +284,18 @@ type ConnectOptions struct {
 	// Version is the version this Outpost reports and judges by; empty is the
 	// harness's own.
 	Version string
+	// Declaration is the Routes the Outpost declares, as the TNL_ROUTE_* lines
+	// would give them.
+	Declaration []outpost.DeclaredRoute
+}
+
+// DeclaredLine makes a line of an Outpost's Declaration, labelled as the
+// variable TNL_ROUTE_<label> would be.
+func DeclaredLine(label, hostname, service string) outpost.DeclaredRoute {
+	return outpost.DeclaredRoute{
+		Line:  declare.Line{Hostname: hostname, Service: service},
+		Label: "TNL_ROUTE_" + label,
+	}
 }
 
 // ConnectWith is Connect with options, for an Outpost that joins by token.
@@ -322,6 +335,7 @@ func (e *RealEdge) TryConnectWith(t testing.TB, name, tok, stateDir string, opts
 			Started:      func(r *outpost.Running) { up <- r },
 			PingInterval: e.pingInterval,
 			Resolve:      opts.Resolve, NoAnswerAfter: opts.NoAnswerAfter, Reminders: opts.Reminders,
+			Declaration: opts.Declaration,
 		})
 	}()
 	stop := func() error { cancel(); return <-done }

@@ -81,6 +81,7 @@ func (s *Server) outpostRm(_ context.Context, actor api.Actor, req api.OutpostRm
 			return api.Errorf(http.StatusConflict, "Routes still point at Outpost %s: %s; remove them first, or pass --with-routes", req.Name, strings.Join(via, ", "))
 		}
 		hosts = st.RemoveRoutesVia(req.Name)
+		st.RemoveDeclaration(req.Name)
 		gone = st.Outposts[i]
 		st.Outposts = slices.Delete(slices.Clone(st.Outposts), i, i+1)
 		return nil

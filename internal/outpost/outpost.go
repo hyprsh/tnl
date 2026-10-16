@@ -67,6 +67,10 @@ type Config struct {
 	Clock     remind.Clock
 	// Allow limits the Services the Edge may name; nil allows every one.
 	Allow *allow.List
+	// Declaration is the Routes this Outpost declares, checked at start. The
+	// pinger sends it when the Edge's copy differs; nil or empty is the empty
+	// Declaration, which is sent only to an Edge that holds a different one.
+	Declaration []DeclaredRoute
 }
 
 // Running is what a started Outpost exposes.
@@ -183,11 +187,14 @@ func Run(ctx context.Context, cfg Config) error {
 	go w.run(pingCtx)
 	refused := make(chan error, 1)
 	judge := &edgeJudge{cfg: cfg, refused: refused}
+	dec := newDeclarer(edgeAPI, cfg.Log, cfg.Declaration)
+	digest := dec.digest()
 	answered := func(p wire.Pong) {
 		w.answered(p.Version)
 		judge.judge(p)
+		dec.answered(pingCtx, p)
 	}
-	if err := runPinger(pingCtx, tun, st.Address, cfg.Version, cmp.Or(cfg.PingInterval, DefaultPingInterval), answered, cfg.Log); err != nil {
+	if err := runPinger(pingCtx, tun, st.Address, cfg.Version, &digest, cmp.Or(cfg.PingInterval, DefaultPingInterval), answered, cfg.Log); err != nil {
 		return fmt.Errorf("start pinging the Edge: %w", err)
 	}
 	stopRelay, err := startRelay(cfg, tun)

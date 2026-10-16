@@ -27,6 +27,9 @@ func (s *Server) routeRm(_ context.Context, actor api.Actor, req api.RouteRmRequ
 				if isOutpost && have.Outpost != own {
 					return notYours(own, "remove", have)
 				}
+				if st.Declares(have.Outpost) {
+					return declaringRefusal(have.Outpost)
+				}
 				gone = have
 				st.Routes = append(st.Routes[:i:i], st.Routes[i+1:]...)
 				return nil

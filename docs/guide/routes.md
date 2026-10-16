@@ -85,4 +85,10 @@ tnl connect --route "media.example.com http://localhost:8096"
 - `<LABEL>` is letters, digits and `_`. It names the line in messages and never reaches the Edge.
 - Words are split on whitespace, with no quoting. The Hostname and Service URL come first, then the options.
 - The lines are checked when `tnl connect` starts. A syntax error, an unknown option, a Service URL with a path or a scheme other than `http` or `https`, an invalid Hostname, one Hostname on two lines, or `--route` together with `TNL_ROUTE_*` makes it exit with status 78. The message names the variable: `TNL_ROUTE_MEDIA: unknown option --host-heder`.
+- The Outpost sends its lines to the Edge, and sends them again only when they differ from the Edge's copy. Restart it after changing a line: a changed line edits its Route, a line you removed removes its Route, and a line that didn't change keeps its Route and its open connections.
+- While an Outpost declares, it is the only source of its Routes. `tnl route add`, `edit` and `rm` are refused for them, on the Edge host and on the Outpost: `nas declares its Routes; change TNL_ROUTE_* on nas and restart it`. That includes moving a Route onto or off it.
+- An Outpost that had Routes made with `tnl route add` loses them when it starts declaring, and each removal is logged at `warn` on both sides. Starting it with no lines hands it back: its declared Routes go, and `tnl route add` works for it again.
+- A line whose Hostname another Outpost holds, or that is outside every Zone, waits while every other line applies. The Outpost logs a `warn` for it, naming its variable.
+- The Edge test-dials new lines and lines whose Service changed. A Service that refuses connections doesn't stop the line: the Route is made, and the Outpost logs a `warn`.
+- `tnl outpost rm` removes the Declaration with the Outpost, and `tnl outpost rekey` keeps it.
 - `tnl connect` and `tnl edge` also refuse any other `TNL_*` variable they don't know, with a "did you mean" (`unknown variable TNL_ADRESS: did you mean TNL_ADDRESS?`) that echoes names, never values.
