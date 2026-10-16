@@ -103,6 +103,7 @@ func runEdge(args []string) error {
 		return s.log, err
 	}, func(ctx context.Context, lg *slog.Logger) error {
 		s.cfg.Log = lg
+		s.cfg.LogLevel = s.log.Level
 		s.cfg.Version, s.cfg.Revision = versionInfo()
 		s.cfg.Build = buildName
 		err := edge.Run(ctx, s.cfg)

@@ -21,9 +21,12 @@ func (e configError) Unwrap() error { return e.error }
 
 func exitCode(err error) int {
 	var ce configError
+	var ee exitError
 	switch {
 	case err == nil:
 		return 0
+	case errors.As(err, &ee):
+		return ee.code
 	case errors.As(err, &ce):
 		return exitConfig
 	default:
@@ -49,7 +52,7 @@ func main() {
 	}
 	if err := run(os.Args[2:]); err != nil {
 		var logged *logx.LoggedError
-		if !errors.As(err, &logged) { // already logged at error
+		if !errors.As(err, &logged) && !silent(err) { // already logged at error
 			fmt.Fprintf(os.Stderr, "tnl: %v\n", err)
 		}
 		os.Exit(exitCode(err))

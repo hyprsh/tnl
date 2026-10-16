@@ -70,6 +70,12 @@ type Config struct {
 	// Now is the clock of the `ls` replies; nil is time.Now.
 	Now func() time.Time
 
+	// StartedAt, LogLevel and AccessLog are what `status` reports of the Edge's
+	// own settings; the Edge sets them.
+	StartedAt time.Time
+	LogLevel  string
+	AccessLog bool
+
 	// Certs obtains Route Hostnames' certificates; nil waits for none.
 	Certs Certificates
 	// CertWait bounds how long `route add` waits for a certificate; zero is
@@ -152,6 +158,7 @@ func (s *Server) routes() {
 	endpoint(s, http.MethodPost, api.PathZoneEdit, s.zoneEdit)
 	endpoint(s, http.MethodPost, api.PathZoneRm, s.zoneRm)
 	endpoint(s, http.MethodGet, api.PathOutposts, s.outpostList)
+	endpoint(s, http.MethodGet, api.PathStatus, s.status)
 	endpoint(s, http.MethodPost, api.PathOutposts, s.outpostAdd)
 	endpoint(s, http.MethodPost, api.PathOutpostRm, s.outpostRm)
 	endpoint(s, http.MethodPost, api.PathOutpostRekey, s.outpostRekey)

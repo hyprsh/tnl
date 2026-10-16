@@ -1,0 +1,44 @@
+{
+  "role": "edge",
+  "version": "1.2.0",
+  "build": "full",
+  "revision": "abc1234",
+  "started": "2026-10-15T10:00:00Z",
+  "uptime_seconds": 93600,
+  "address": "edge.example.com",
+  "wireguard_port": 51820,
+  "key_fingerprint": "SHA256:abcdefgh",
+  "state_dir": "/var/lib/tnl",
+  "log_level": "info",
+  "access_log": true,
+  "outposts": {
+    "online": 2,
+    "offline": 1,
+    "incompatible": 1,
+    "not_joined": 1
+  },
+  "routes": 5,
+  "zones": 2,
+  "certificates": {
+    "count": 4,
+    "soonest_expiry": "2026-10-19T12:00:00Z"
+  },
+  "attention": [
+    {
+      "kind": "outpost offline",
+      "subject": "pi",
+      "message": "Outpost pi is offline, last seen 1h ago, 1 Route"
+    },
+    {
+      "kind": "certificate expiring",
+      "subject": "a.home.lan",
+      "message": "certificate a.home.lan expires in 3d"
+    },
+    {
+      "kind": "line waiting",
+      "subject": "photos.example.com",
+      "message": "newbox declares photos.example.com, which nas holds",
+      "outpost": "newbox"
+    }
+  ]
+}
