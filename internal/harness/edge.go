@@ -43,6 +43,10 @@ type CaddyOptions struct {
 	Log *slog.Logger
 	// RenewCheckInterval shortens Caddy's scan for certificates to renew.
 	RenewCheckInterval time.Duration
+	// AccessLog logs successful requests too, as --access-log does.
+	AccessLog bool
+	// InZone says whether a Hostname lies inside a Zone; nil says yes.
+	InZone func(host string) bool
 }
 
 // CaddyEdge is the running Caddy side of the Edge. Caddy is a process singleton,
@@ -70,7 +74,7 @@ func (e *Edge) StartCaddy(t testing.TB, opts CaddyOptions) *CaddyEdge {
 	var id [8]byte
 	rand.Read(id[:])
 	edgeID := hex.EncodeToString(id[:])
-	rt := &caddyx.Runtime{Table: e.Routes, Outposts: e.Outposts, Log: opts.Log, Dialer: func(ctx context.Context, a netip.AddrPort) (net.Conn, error) {
+	rt := &caddyx.Runtime{Table: e.Routes, Outposts: e.Outposts, Log: opts.Log, AccessLog: opts.AccessLog, InZone: opts.InZone, Dialer: func(ctx context.Context, a netip.AddrPort) (net.Conn, error) {
 		return e.Net.DialContextTCPAddrPort(ctx, a)
 	}}
 	unregister := caddyx.Register(edgeID, rt)

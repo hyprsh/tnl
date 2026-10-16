@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/netip"
 	"sync/atomic"
+	"time"
 
 	"github.com/hyprsh/tnl/internal/edge/caddyx"
 	"github.com/hyprsh/tnl/internal/edge/conntrack"
@@ -37,6 +38,12 @@ type Web struct {
 	// ServiceRoots are the roots an https:// Service is verified against; nil
 	// means the system's. Only the harness sets it.
 	ServiceRoots *x509.CertPool
+	// AccessLog adds request lines for successful requests and for what the
+	// Service answered (--access-log, TNL_ACCESS_LOG).
+	AccessLog bool
+	// DrainTimeout is how long stopping lets in-flight requests finish; zero
+	// is the spec's 10 s. The harness shrinks it.
+	DrainTimeout time.Duration
 }
 
 // certsRef gives the API server the certificate manager, which only exists
@@ -52,6 +59,10 @@ func (r *certsRef) Obtain(ctx context.Context, hostname string) error {
 	return nil
 }
 
+// drainTimeout is how long the Edge lets requests finish on SIGTERM (spec
+// section 6).
+const drainTimeout = 10 * time.Second
+
 // startWeb builds Caddy's config from the state and the flags, loads it, and
 // keeps the router's table in step with the state. It returns the func that
 // stops Caddy.
@@ -62,6 +73,7 @@ func startWeb(w *Web, stateDir string, wgPort int, store *state.Store, tun *tunn
 	table := new(routes.Mem)
 	outposts := new(routes.MemOutposts)
 	rt := &caddyx.Runtime{
+		AccessLog: w.AccessLog, InZone: func(host string) bool { return store.Snapshot().InZone(host) },
 		Table: table, Outposts: outposts, Log: log, Conns: conns, ServiceRoots: w.ServiceRoots, Liveness: live,
 		Dialer: func(ctx context.Context, a netip.AddrPort) (net.Conn, error) {
 			return tun.Net.DialContextTCPAddrPort(ctx, a)
@@ -122,9 +134,14 @@ func startWeb(w *Web, stateDir string, wgPort int, store *state.Store, tun *tunn
 		return nil, fmt.Errorf("start the web side (Caddy): %w", err)
 	}
 	return func() {
+		// Caddy's own Stop waits for nothing, so the drain is ours: it closes the
+		// listeners and starts Caddy's shutdown, then Drain ends the streams, waits
+		// for the other requests and closes what remains.
 		if err := caddyx.Stop(); err != nil {
 			log.Warn("stopping Caddy", "error", err)
 		}
+		res := rt.Drain(cmp.Or(w.DrainTimeout, drainTimeout))
+		log.Info("web side stopped", "drained", res.Drained, "streams_cut", res.StreamsCut, "closed", res.Closed)
 		unregister()
 	}, nil
 }

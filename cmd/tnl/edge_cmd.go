@@ -29,6 +29,7 @@ func parseEdgeFlags(args []string, usageOut io.Writer) (edgeSettings, error) {
 	var s edgeSettings
 	var err error
 	envPort, envPortErr := envInt("TNL_WIREGUARD_PORT", 51820)
+	envAccess, envAccessErr := envBool("TNL_ACCESS_LOG")
 	s.cfg.Web = &edge.Web{}
 	s.log, err = parseDaemon("edge", args, usageOut, func(fs *flag.FlagSet) {
 		fs.StringVar(&s.cfg.Address, "address", os.Getenv("TNL_ADDRESS"),
@@ -41,7 +42,12 @@ func parseEdgeFlags(args []string, usageOut io.Writer) (edgeSettings, error) {
 			"the contact email for the ACME account (TNL_ACME_EMAIL, optional)")
 		fs.StringVar(&s.cfg.Web.ACMECA, "acme-ca", os.Getenv("TNL_ACME_CA"),
 			"the ACME directory URL to get certificates from (TNL_ACME_CA); default Let's Encrypt production")
+		fs.BoolVar(&s.cfg.Web.AccessLog, "access-log", envAccess,
+			"also log successful requests and what the Service answered (TNL_ACCESS_LOG)")
 	}, func(fs *flag.FlagSet) error {
+		if envAccessErr != nil && !flagGiven(fs, "access-log") {
+			return envAccessErr
+		}
 		if s.cfg.Address == "" {
 			return fmt.Errorf("--address (TNL_ADDRESS) is required: the DNS name Outposts dial")
 		}
@@ -82,4 +88,17 @@ func envInt(name string, def int) (int, error) {
 		return def, fmt.Errorf("%s must be an integer, got %q", name, v)
 	}
 	return n, nil
+}
+
+// envBool reads a boolean variable, false if it is unset.
+func envBool(name string) (bool, error) {
+	v := os.Getenv(name)
+	if v == "" {
+		return false, nil
+	}
+	b, err := strconv.ParseBool(v)
+	if err != nil {
+		return false, fmt.Errorf("%s must be true or false, got %q", name, v)
+	}
+	return b, nil
 }
