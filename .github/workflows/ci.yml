@@ -1,6 +1,8 @@
 name: ci
+# Pushes to main, and pull requests: a push to a PR's branch runs once, as the PR.
 on:
-  push: {}
+  push:
+    branches: [main]
   pull_request: {}
 permissions:
   contents: read
