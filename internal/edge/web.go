@@ -72,6 +72,14 @@ func (r *certsRef) Wait(ctx context.Context, name string) error {
 	return nil
 }
 
+// WaitOwn implements the own-certificate wait of server.Wildcards.
+func (r *certsRef) WaitOwn(ctx context.Context, name string) error {
+	if c := r.p.Load(); c != nil {
+		return c.WaitOwn(ctx, name)
+	}
+	return nil
+}
+
 // drainTimeout is how long the Edge lets requests finish on SIGTERM (spec
 // section 6).
 const drainTimeout = 10 * time.Second
@@ -169,6 +177,7 @@ func startWeb(w *Web, stateDir string, wgPort int, store *state.Store, tun *tunn
 		defer reloadMu.Unlock()
 		c := base
 		c.Wildcards = wildcardZones(store.Snapshot())
+		c.Retired = wild.retiredNames()
 		return caddyx.Start(c)
 	}
 	err = reload()

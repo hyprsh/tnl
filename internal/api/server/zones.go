@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/hyprsh/tnl/internal/api"
 	"github.com/hyprsh/tnl/internal/dnsname"
@@ -35,12 +36,17 @@ func (s *Server) zoneAdd(ctx context.Context, actor api.Actor, req api.ZoneAddRe
 	}
 	z := state.Zone{Name: name, Mode: state.PerHostname}
 	var dnsZone string
+	var covered []string
 	wildcard := req.Provider != "" || req.Token != ""
 	if wildcard {
 		if dnsZone, err = s.checkWildcard(ctx, name, req); err != nil {
 			return api.ZoneAddReply{}, err
 		}
 		z = state.Zone{Name: name, Mode: state.Wildcard, Provider: req.Provider, Token: req.Token}
+		// The Routes the new Zone takes over keep their certificates serving
+		// until the wildcard's is in.
+		covered = coveredRoutes(withZone(s.cfg.Store.Snapshot(), z), name)
+		s.cfg.Wildcards.Retire(covered...)
 	}
 	err = s.cfg.Store.Update(actor, func(st *state.State) error {
 		for _, have := range st.Zones {
@@ -60,7 +66,11 @@ func (s *Server) zoneAdd(ctx context.Context, actor api.Actor, req api.ZoneAddRe
 	reply := api.ZoneAddReply{ZoneInfo: zoneInfo(z), DNSZone: dnsZone}
 	if wildcard {
 		reply.Covers = []string{"*." + z.Name, z.Name}
-		warnings = append(warnings, s.wildcardCertificate(ctx, z.Name)...)
+		w := s.wildcardCertificate(ctx, z.Name)
+		warnings = append(warnings, w...)
+		if len(w) == 0 {
+			s.cfg.Wildcards.Release(covered...)
+		}
 	}
 	warnings = append(warnings, s.zoneDNSWarnings(ctx, z.Name)...)
 	s.warn(actor, warnings, "zone", z.Name)
@@ -84,11 +94,37 @@ func (s *Server) checkWildcard(ctx context.Context, name string, req api.ZoneAdd
 			return "", api.Errorf(http.StatusConflict, "Zone %s already exists", name)
 		}
 	}
-	dnsZone, err = s.cfg.Wildcards.Check(ctx, req.Provider, req.Token, name)
+	return s.checkToken(ctx, req.Provider, req.Token, name)
+}
+
+// checkToken is the one hard gate of a wildcard Zone: the token must be able to
+// read the DNS zone that holds it. It returns that DNS zone.
+func (s *Server) checkToken(ctx context.Context, provider, token, zone string) (string, error) {
+	dnsZone, err := s.cfg.Wildcards.Check(ctx, provider, token, zone)
 	if err != nil {
-		return "", api.Errorf(http.StatusBadRequest, "refusing Zone %s: %s", name, redact(err.Error(), req.Token))
+		return "", api.Errorf(http.StatusBadRequest, "refusing Zone %s: %s", zone, redact(err.Error(), token))
 	}
 	return dnsZone, nil
+}
+
+// withZone is the state with the Zone added, for working out which Zone would
+// hold a Hostname.
+func withZone(st *state.State, z state.Zone) *state.State {
+	c := st.Clone()
+	c.Zones = append(c.Zones, z)
+	return c
+}
+
+// coveredRoutes lists the Hostnames of the Routes that the Zone holds and its
+// wildcard certificate covers, in a state where the Zone is a wildcard.
+func coveredRoutes(st *state.State, zone string) []string {
+	var out []string
+	for _, r := range st.Routes {
+		if z, in := st.ZoneOf(r.Hostname); in && z.Name == zone && dnsname.WildcardCovers(r.Hostname, []string{zone}) {
+			out = append(out, r.Hostname)
+		}
+	}
+	return out
 }
 
 // redact is the last line of defence: whatever produced msg, the token is not
@@ -107,11 +143,7 @@ func (s *Server) wildcardCertificate(ctx context.Context, zone string) []string 
 	if err := s.cfg.Wildcards.Reload(); err != nil {
 		return []string{fmt.Sprintf("couldn't reload Caddy for the wildcard certificate of %s: %v", zone, err)}
 	}
-	wait := s.cfg.CertWait
-	if wait <= 0 {
-		wait = DefaultCertWait
-	}
-	ctx, cancel := context.WithTimeout(ctx, wait)
+	ctx, cancel := context.WithTimeout(ctx, s.certWait())
 	defer cancel()
 	// Caddy obtains one certificate per name, the wildcard's and the apex's.
 	for _, name := range []string{"*." + zone, zone} {
@@ -120,6 +152,13 @@ func (s *Server) wildcardCertificate(ctx context.Context, zone string) []string 
 		}
 	}
 	return nil
+}
+
+func (s *Server) certWait() time.Duration {
+	if s.cfg.CertWait > 0 {
+		return s.cfg.CertWait
+	}
+	return DefaultCertWait
 }
 
 // zoneName normalises a Zone name (lower case, no trailing dot) and refuses

@@ -35,6 +35,10 @@ type FakeDNS struct {
 	failChallenges    bool
 }
 
+// SetToken changes the only token that can read the zone, as rotating it at the
+// provider does.
+func (f *FakeDNS) SetToken(token string) { f.mu.Lock(); defer f.mu.Unlock(); f.token = token }
+
 // FailChallenges makes the provider refuse to present challenge records, with
 // an error that echoes the token.
 func (f *FakeDNS) FailChallenges() { f.mu.Lock(); defer f.mu.Unlock(); f.failChallenges = true }
@@ -118,7 +122,10 @@ func (p *fakeProvider) zone(zone string) (*FakeDNS, error) {
 	if f == nil {
 		return nil, fmt.Errorf("fake DNS: no zone %s (token %s)", zone, p.Token)
 	}
-	if p.Token != f.token {
+	f.mu.Lock()
+	want := f.token
+	f.mu.Unlock()
+	if p.Token != want {
 		return nil, fmt.Errorf("fake DNS: 403 forbidden: token %s cannot access zone %s", p.Token, zone)
 	}
 	return f, nil

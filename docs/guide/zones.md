@@ -40,3 +40,40 @@ sudo tnl zone rm example.com --with-routes
 A Route's Hostname stops renewing whenever its Route goes, by `route rm`, `outpost rm --with-routes` or `zone rm --with-routes`. The certificate it holds keeps answering until it expires, and the Edge asks the CA for no new one.
 
 `zone rm` runs on the Edge host only. An Outpost, and the Outpost-only build, refuse it.
+
+## Switching a Zone's mode
+
+```
+sudo tnl zone edit example.com --wildcard cloudflare
+sudo tnl zone edit example.com --per-hostname
+sudo tnl zone edit example.com --token
+```
+
+`--wildcard` and `--token` read the token as `zone add` does: a hidden prompt on a terminal, stdin otherwise. Give exactly one of the three options. `zone edit` runs on the Edge host only.
+
+Switching never shows a Visitor a certificate error. The old certificates keep serving until the new ones replace them.
+
+- **To wildcard.** The Edge checks the token as `zone add` does and refuses it, changing nothing, if it can't read the DNS zone. Then it reloads Caddy and obtains `*.example.com` and `example.com`. The certificate each Route already has keeps answering, and is no longer renewed: the wildcard takes over when it expires. Routes added afterwards are served by the wildcard.
+- **To per-Hostname.** The token is deleted from `state.json`. After the reload, each Route's Hostname gets a certificate of its own, and the command waits up to about 60 s for them. Until a Hostname has one, the dropped wildcard serves it, and it keeps doing so until it expires. If a certificate isn't there in time, the command warns and Caddy keeps trying.
+- **`--token`** replaces the token of a wildcard Zone after the same check, and reloads nothing: open WebSockets stay open. A refused token leaves the old one in place.
+- Switching to wildcard or back reloads Caddy, so SSE streams survive and WebSockets close.
+- **Adding a nested wildcard Zone** moves the Routes it contains under the same rule. With `example.com` per-Hostname, `zone add lab.example.com --wildcard cloudflare` moves `app.lab.example.com` under the new wildcard without a certificate error.
+
+## The Cloudflare token
+
+Create it in the Cloudflare dashboard under My Profile, API Tokens, Create Token. It needs two permissions, limited to the DNS zone that holds the Zone (the one `zone add` prints):
+
+- Zone, Zone, Read
+- Zone, DNS, Edit
+
+## Log lines that look stray
+
+Two lines in the logs are not Edge messages and are expected:
+
+- One `redirected default logger` line from Caddy at each start.
+- certmagic's stale-lock messages, which go to raw stderr rather than the log. They appear only after a crash, while the lock files it left are cleared.
+
+## What a Hostname costs in public
+
+- A name that gets its own certificate appears in Certificate Transparency logs. A wildcard Zone keeps its Hostnames out, except for names two labels or more below it, which `route add` warns about.
+- The DNS checks at `zone add` and `route add` only warn. They never refuse.

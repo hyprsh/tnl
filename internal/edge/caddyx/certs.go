@@ -8,6 +8,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -68,10 +70,12 @@ type Certs struct {
 	names   map[string]struct{} // every Hostname handed over
 	wild    []string            // the wildcard Zones, whose certificates cover their Hostnames
 	applied map[string]struct{} // those given a policy in app
-	app     *caddytls.TLS
-	status  map[string]*CertStatus
-	changed chan struct{}
-	failing *remind.Tracker
+	// configured are the names the last config handed to Caddy itself.
+	configured map[string]struct{}
+	app        *caddytls.TLS
+	status     map[string]*CertStatus
+	changed    chan struct{}
+	failing    *remind.Tracker
 
 	// queue holds events from the handler, which only records and returns.
 	qmu      sync.Mutex
@@ -285,6 +289,52 @@ func (c *Certs) Wait(ctx context.Context, name string) error {
 		case <-time.After(100 * time.Millisecond):
 		}
 	}
+}
+
+// WaitOwn waits until a certificate that names the Hostname itself is held, or
+// ctx ends: a wildcard that covers the name doesn't count.
+func (c *Certs) WaitOwn(ctx context.Context, name string) error {
+	name = normalize(name)
+	for {
+		c.mu.Lock()
+		ch := c.changed
+		c.mu.Unlock()
+		if holdsOwn(name, c.clock.Now()) {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			st, _ := c.Status(name)
+			if st.LastError != "" {
+				return fmt.Errorf("%w (last error: %s)", ctx.Err(), st.LastError)
+			}
+			return ctx.Err()
+		case <-ch:
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
+}
+
+// holdsOwn says whether Caddy's cache holds an unexpired certificate that
+// lists the name among its own.
+func holdsOwn(name string, now time.Time) (found bool) {
+	if activeTLS() == nil {
+		return false
+	}
+	defer func() {
+		if recover() != nil {
+			found = false
+		}
+	}()
+	for _, cert := range caddytls.AllMatchingCertificates(name) {
+		if cert.Leaf == nil || cert.Expired() || !now.Before(cert.Leaf.NotAfter) {
+			continue
+		}
+		if slices.Contains(cert.Leaf.DNSNames, name) {
+			return true
+		}
+	}
+	return false
 }
 
 // holds says whether an unexpired certificate for the name is held: one the
@@ -536,10 +586,32 @@ func (c *Certs) setIssuer(raw json.RawMessage) {
 	c.issuer = raw
 }
 
-// loaded runs after every Caddy load: the new TLS app knows none of the names.
+// configure returns the Hostnames the next Caddy config manages itself, which
+// are all it holds now, and remembers them so that loaded doesn't hand them
+// over a second time.
+func (c *Certs) configure() []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.configured = make(map[string]struct{}, len(c.names))
+	for n := range c.names {
+		c.configured[n] = struct{}{}
+	}
+	return slices.Sorted(maps.Keys(c.configured))
+}
+
+// loaded runs after every Caddy load. The new TLS app manages the names its
+// config held and knows no others.
 func (c *Certs) loaded() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if app := activeTLS(); app != nil && app != c.app {
+		c.app, c.applied = app, map[string]struct{}{}
+		for n := range c.configured {
+			if _, ok := c.names[n]; ok {
+				c.applied[n] = struct{}{}
+			}
+		}
+	}
 	return c.apply()
 }
 
