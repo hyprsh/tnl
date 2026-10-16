@@ -69,7 +69,7 @@ const drainTimeout = 10 * time.Second
 //
 // The Routes are never Caddy config (ADR 0002): a change in the state swaps
 // the table the router reads, and Caddy is loaded once, here.
-func startWeb(w *Web, stateDir string, wgPort int, store *state.Store, tun *tunnel.Tunnel, conns *conntrack.Tracker, live *liveness.Liveness, certs *certsRef, log *slog.Logger) (stop func(), err error) {
+func startWeb(w *Web, stateDir string, wgPort int, store *state.Store, tun *tunnel.Tunnel, conns *conntrack.Tracker, live *liveness.Liveness, certs *certsRef, testDial *lateTestDialer, log *slog.Logger) (stop func(), err error) {
 	table := new(routes.Mem)
 	outposts := new(routes.MemOutposts)
 	rt := &caddyx.Runtime{
@@ -115,6 +115,7 @@ func startWeb(w *Web, stateDir string, wgPort int, store *state.Store, tun *tunn
 	edgeID := hex.EncodeToString(id[:])
 	unregister := caddyx.Register(edgeID, rt)
 	certs.p.Store(manager)
+	testDial.set(rt)
 	// WireGuard's UDP port and HTTP/3's are the same port when WireGuard is on
 	// the HTTPS port, so HTTP/3 gives way (spec section 5, --wireguard-port).
 	httpsPort := cmp.Or(w.HTTPSPort, 443)

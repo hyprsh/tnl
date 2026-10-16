@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hyprsh/tnl/internal/allow"
 	"github.com/hyprsh/tnl/internal/api"
 	"github.com/hyprsh/tnl/internal/api/server"
 	"github.com/hyprsh/tnl/internal/edge"
@@ -275,6 +276,21 @@ type ConnectOptions struct {
 	// schedule; zero keeps the spec's.
 	NoAnswerAfter time.Duration
 	Reminders     remind.Schedule
+	// Allow is the Outpost's --allow list; nil allows every Service.
+	Allow *allow.List
+}
+
+// ConnectWith is Connect with options, for an Outpost that joins by token.
+func (e *RealEdge) ConnectWith(t testing.TB, name, tok string, opts ConnectOptions) *JoinedOutpost {
+	t.Helper()
+	if opts.JoinTimeout == 0 {
+		opts.JoinTimeout = 3 * time.Second
+	}
+	j, err := e.TryConnectWith(t, name, tok, mustTempDir(t), opts)
+	if err != nil {
+		t.Fatalf("outpost.Run: %v", err)
+	}
+	return j
 }
 
 // TryConnect is Connect that returns the error `tnl connect` would exit on.
@@ -297,7 +313,7 @@ func (e *RealEdge) TryConnectWith(t testing.TB, name, tok, stateDir string, opts
 		done <- outpost.Run(ctx, outpost.Config{
 			Token: tok, StateDir: stateDir, Version: harnessVersion, Build: "outpost", Revision: "test",
 			Log:         logx.New(logx.Options{Level: slog.LevelInfo, Out: out}),
-			JoinTimeout: opts.JoinTimeout, RelayDialTimeout: 2 * time.Second,
+			JoinTimeout: opts.JoinTimeout, RelayDialTimeout: 2 * time.Second, Allow: opts.Allow,
 			Started:      func(r *outpost.Running) { up <- r },
 			PingInterval: e.pingInterval,
 			Resolve:      opts.Resolve, NoAnswerAfter: opts.NoAnswerAfter, Reminders: opts.Reminders,
@@ -325,6 +341,11 @@ func (e *RealEdge) TryConnectWith(t testing.TB, name, tok, stateDir string, opts
 	defer hcancel()
 	if err := e.waitHandshake(hctx, r.Address); err != nil {
 		t.Fatal(err)
+	}
+	// The Edge's liveness hears of the Outpost a poll later; a test dial of a
+	// Route added right after joining must find it online.
+	for deadline := time.Now().Add(3 * time.Second); e.Liveness != nil && e.Liveness.State(name) != liveness.Online && time.Now().Before(deadline); {
+		time.Sleep(10 * time.Millisecond)
 	}
 	o := &Outpost{Name: name, Addr: r.Address, Tunnel: r.Tunnel, Net: r.Tunnel.Net}
 	e.Outposts.Set(name, o.DataAddr())

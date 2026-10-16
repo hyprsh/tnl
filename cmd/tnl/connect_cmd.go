@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/hyprsh/tnl/internal/allow"
 	"github.com/hyprsh/tnl/internal/logx"
 	"github.com/hyprsh/tnl/internal/outpost"
 )
@@ -39,12 +40,18 @@ func outpostStateDir() string {
 func parseConnectFlags(args []string, usageOut io.Writer) (connectSettings, error) {
 	var s connectSettings
 	var err error
+	var allowSpec string
 	s.log, err = parseDaemon("connect", args, usageOut, func(fs *flag.FlagSet) {
 		fs.StringVar(&s.cfg.Token, "token", os.Getenv("TNL_TOKEN"),
 			"the join token from `tnl outpost add` (TNL_TOKEN); needed only to join")
 		fs.StringVar(&s.cfg.StateDir, "state-dir", envOr("TNL_STATE_DIR", outpostStateDir()),
 			"the state directory (TNL_STATE_DIR)")
-	}, nil)
+		fs.StringVar(&allowSpec, "allow", os.Getenv("TNL_ALLOW"),
+			"the Services the Edge may name: CIDRs and host:port, comma-separated (TNL_ALLOW); default none, so any")
+	}, func(*flag.FlagSet) (err error) {
+		s.cfg.Allow, err = allow.Parse(allowSpec)
+		return err
+	})
 	return s, err
 }
 

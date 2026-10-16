@@ -103,8 +103,9 @@ func Run(ctx context.Context, cfg Config) error {
 		CloseOutpost: conns.CloseOutpost,
 	}
 	live := newLiveness(hooks, store.Snapshot())
+	testDial := new(lateTestDialer)
 	srv := server.New(server.Config{
-		Conns: conns, Liveness: live, Certs: certs,
+		Conns: conns, Liveness: live, Certs: certs, TestDialer: testDial,
 		Store: store, Log: cfg.Log, Version: cfg.Version, Build: cfg.Build, Revision: cfg.Revision, Role: api.RoleEdge,
 		Address: cfg.Address, WireGuardPort: wgPort, Resolver: cfg.Resolver, StateDir: cfg.StateDir, CertWait: cfg.CertWait,
 		PreparePeer: peers.prepare,
@@ -124,7 +125,7 @@ func Run(ctx context.Context, cfg Config) error {
 	}
 
 	if cfg.Web != nil {
-		stopWeb, err := startWeb(cfg.Web, cfg.StateDir, wgPort, store, tun, conns, live, certs, cfg.Log)
+		stopWeb, err := startWeb(cfg.Web, cfg.StateDir, wgPort, store, tun, conns, live, certs, testDial, cfg.Log)
 		if err != nil {
 			return refuse(err)
 		}
