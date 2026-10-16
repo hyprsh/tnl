@@ -24,6 +24,7 @@ import (
 	"github.com/hyprsh/tnl/internal/forwarder"
 	"github.com/hyprsh/tnl/internal/keys"
 	"github.com/hyprsh/tnl/internal/logx"
+	"github.com/hyprsh/tnl/internal/remind"
 	"github.com/hyprsh/tnl/internal/token"
 	"github.com/hyprsh/tnl/internal/tunnel"
 	"github.com/hyprsh/tnl/internal/wire"
@@ -54,6 +55,13 @@ type Config struct {
 	// RelayDialTimeout bounds each attempt of the relay to reach the Edge's
 	// API; zero is 5 s.
 	RelayDialTimeout time.Duration
+	// NoAnswerAfter is the silence after which the Edge is said not to answer and
+	// its address is resolved again, and the interval after that; zero is 30 s.
+	NoAnswerAfter time.Duration
+	// Reminders is the schedule of the "no answer" reminders; the zero value is
+	// remind.Standard. Clock is the watcher's clock; nil is the wall clock.
+	Reminders remind.Schedule
+	Clock     remind.Clock
 }
 
 // Running is what a started Outpost exposes.
@@ -154,7 +162,9 @@ func Run(ctx context.Context, cfg Config) error {
 
 	pingCtx, stopPinging := context.WithCancel(ctx)
 	defer stopPinging()
-	if err := runPinger(pingCtx, tun, st.Address, cfg.Version, cmp.Or(cfg.PingInterval, DefaultPingInterval), cfg.Log); err != nil {
+	w := newWatcher(cfg, tun, st, edgeIP, func(ctx context.Context, host string) (netip.Addr, error) { return resolve(ctx, cfg, host) })
+	go w.run(pingCtx)
+	if err := runPinger(pingCtx, tun, st.Address, cfg.Version, cmp.Or(cfg.PingInterval, DefaultPingInterval), w.answered, cfg.Log); err != nil {
 		return fmt.Errorf("start pinging the Edge: %w", err)
 	}
 	stopRelay, err := startRelay(cfg, tun)

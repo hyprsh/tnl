@@ -4,11 +4,16 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/netip"
+	"slices"
 	"strings"
 	"time"
 
+	"gvisor.dev/gvisor/pkg/tcpip/adapters/gonet"
+
 	"github.com/hyprsh/tnl/internal/addr"
+	"github.com/hyprsh/tnl/internal/api"
 	"github.com/hyprsh/tnl/internal/edge/liveness"
 	"github.com/hyprsh/tnl/internal/state"
 	"github.com/hyprsh/tnl/internal/tunnel"
@@ -61,6 +66,7 @@ func serveLiveness(ctx context.Context, l *liveness.Liveness, h livenessHooks, t
 		<-ctx.Done()
 		conn.Close()
 	}()
+	pingRemembered(conn, h.Version, store.Snapshot(), h.Log)
 	go func() {
 		buf := make([]byte, 512)
 		for {
@@ -95,6 +101,7 @@ func serveLiveness(ctx context.Context, l *liveness.Liveness, h livenessHooks, t
 	}
 	go func() {
 		rx := map[string]uint64{}
+		tried := map[string]netip.AddrPort{}
 		t := time.NewTicker(poll)
 		defer t.Stop()
 		for {
@@ -103,7 +110,8 @@ func serveLiveness(ctx context.Context, l *liveness.Liveness, h livenessHooks, t
 				return
 			case <-t.C:
 			}
-			pollWireGuard(l, tun, store.Snapshot(), rx)
+			seen := pollWireGuard(l, tun, store.Snapshot(), rx)
+			rememberEndpoints(store, seen, tried)
 			l.Check()
 		}
 	}()
@@ -111,12 +119,14 @@ func serveLiveness(ctx context.Context, l *liveness.Liveness, h livenessHooks, t
 }
 
 // pollWireGuard counts bytes arriving from a peer as hearing from its Outpost,
-// and takes the peer's endpoint as the Outpost's. rx remembers the last count.
-func pollWireGuard(l *liveness.Liveness, tun *tunnel.Tunnel, st *state.State, rx map[string]uint64) {
+// and takes the peer's endpoint as the Outpost's, returning the endpoints seen.
+// rx remembers the last byte count.
+func pollWireGuard(l *liveness.Liveness, tun *tunnel.Tunnel, st *state.State, rx map[string]uint64) (endpoints map[string]netip.AddrPort) {
 	out, err := tun.Dev.IpcGet()
 	if err != nil {
-		return
+		return nil
 	}
+	endpoints = map[string]netip.AddrPort{}
 	names := map[string]string{} // public key hex -> Outpost name
 	for _, o := range st.Outposts {
 		names[o.PublicKey.Hex()] = o.Name
@@ -142,6 +152,55 @@ func pollWireGuard(l *liveness.Liveness, tun *tunnel.Tunnel, st *state.State, rx
 		rx[name] = bytes
 		if ep, err := netip.ParseAddrPort(endpoint); err == nil {
 			l.SetEndpoint(name, ep)
+			endpoints[name] = ep
+		}
+	}
+	return endpoints
+}
+
+// rememberEndpoints saves an Outpost's endpoint in the state when it differs
+// from the saved one, so a restarted Edge can ping it at once. A save is tried
+// once per change: tried holds the last endpoint attempted for each Outpost.
+func rememberEndpoints(store *state.Store, seen map[string]netip.AddrPort, tried map[string]netip.AddrPort) {
+	var changed []string
+	for _, o := range store.Snapshot().Outposts {
+		if ep, ok := seen[o.Name]; ok && ep != o.Endpoint && tried[o.Name] != ep {
+			changed = append(changed, o.Name)
+		}
+	}
+	if len(changed) == 0 {
+		return
+	}
+	for _, name := range changed {
+		tried[name] = seen[name]
+	}
+	// A refused save is warned about by the store.
+	store.Update(api.ActorLocal, func(st *state.State) error {
+		for i := range st.Outposts {
+			if ep, ok := seen[st.Outposts[i].Name]; ok && slices.Contains(changed, st.Outposts[i].Name) {
+				st.Outposts[i].Endpoint = ep
+			}
+		}
+		return nil
+	})
+}
+
+// pingRemembered pings every Outpost with a remembered endpoint from the ping
+// socket. The ping reaches the Outpost's ping port through WireGuard, which
+// handshakes with the saved endpoint to send it, so it is also the Edge's first
+// handshake. The Outpost answers with a ping of its own, which tells the Edge
+// its version.
+func pingRemembered(conn *gonet.UDPConn, version string, st *state.State, log *slog.Logger) {
+	ping, err := wire.AppendPing(nil, wire.Ping{Version: version})
+	if err != nil {
+		return
+	}
+	for _, o := range st.Outposts {
+		if o.OneTimeKey != nil || !o.Endpoint.IsValid() {
+			continue
+		}
+		if _, err := conn.WriteTo(ping, net.UDPAddrFromAddrPort(netip.AddrPortFrom(o.Address, wire.PingPort))); err != nil {
+			log.Debug("could not ping a remembered endpoint", "outpost", o.Name, "error", err)
 		}
 	}
 }

@@ -3,8 +3,9 @@
  * Copyright (C) 2017-2025 WireGuard LLC. All Rights Reserved.
  *
  * Modified by tnl: copied from wireguard-go tun/netstack, with the DNS
- * resolver and ICMP ping code removed, Nagle switched off explicitly and no
- * idle timeout on connections. The WireGuard licence is in LICENSE.wireguard-go.
+ * resolver and ICMP ping code removed, Nagle switched off explicitly and TCP
+ * keepalive on every connection (keepalive.go, from gVisor, Apache-2.0). The
+ * WireGuard licence is in LICENSE.wireguard-go.
  */
 
 package netstack
@@ -63,7 +64,7 @@ func CreateNetTUN(localAddresses []netip.Addr, mtu int) (tun.Device, *Net, error
 		return nil, nil, fmt.Errorf("could not enable TCP SACK: %v", tcpipErr)
 	}
 	// Nagle off, set explicitly so a gVisor default change cannot flip it.
-	// Keepalive is never enabled, so netstack never times out an idle connection.
+	// Keepalive is set on each connection (keepalive.go), not stack-wide.
 	nodelay := tcpip.TCPDelayEnabled(false)
 	if tcpipErr := dev.stack.SetTransportProtocolOption(tcp.ProtocolNumber, &nodelay); tcpipErr != nil {
 		return nil, nil, fmt.Errorf("could not disable Nagle: %v", tcpipErr)
@@ -202,12 +203,12 @@ func convertToFullAddr(endpoint netip.AddrPort) (tcpip.FullAddress, tcpip.Networ
 	}, protoNumber
 }
 
-func (net *Net) DialContextTCPAddrPort(ctx context.Context, addr netip.AddrPort) (*gonet.TCPConn, error) {
+func (net *Net) DialContextTCPAddrPort(ctx context.Context, addr netip.AddrPort) (*Conn, error) {
 	fa, pn := convertToFullAddr(addr)
-	return gonet.DialContextTCP(ctx, net.stack, fa, pn)
+	return dialTCP(ctx, net.stack, fa, pn)
 }
 
-func (net *Net) DialContextTCP(ctx context.Context, addr *net.TCPAddr) (*gonet.TCPConn, error) {
+func (net *Net) DialContextTCP(ctx context.Context, addr *net.TCPAddr) (*Conn, error) {
 	if addr == nil {
 		return net.DialContextTCPAddrPort(ctx, netip.AddrPort{})
 	}
@@ -215,12 +216,11 @@ func (net *Net) DialContextTCP(ctx context.Context, addr *net.TCPAddr) (*gonet.T
 	return net.DialContextTCPAddrPort(ctx, netip.AddrPortFrom(ip, uint16(addr.Port)))
 }
 
-func (net *Net) DialTCPAddrPort(addr netip.AddrPort) (*gonet.TCPConn, error) {
-	fa, pn := convertToFullAddr(addr)
-	return gonet.DialTCP(net.stack, fa, pn)
+func (net *Net) DialTCPAddrPort(addr netip.AddrPort) (*Conn, error) {
+	return net.DialContextTCPAddrPort(context.Background(), addr)
 }
 
-func (net *Net) DialTCP(addr *net.TCPAddr) (*gonet.TCPConn, error) {
+func (net *Net) DialTCP(addr *net.TCPAddr) (*Conn, error) {
 	if addr == nil {
 		return net.DialTCPAddrPort(netip.AddrPort{})
 	}
@@ -228,12 +228,12 @@ func (net *Net) DialTCP(addr *net.TCPAddr) (*gonet.TCPConn, error) {
 	return net.DialTCPAddrPort(netip.AddrPortFrom(ip, uint16(addr.Port)))
 }
 
-func (net *Net) ListenTCPAddrPort(addr netip.AddrPort) (*gonet.TCPListener, error) {
+func (net *Net) ListenTCPAddrPort(addr netip.AddrPort) (*Listener, error) {
 	fa, pn := convertToFullAddr(addr)
-	return gonet.ListenTCP(net.stack, fa, pn)
+	return listenTCP(net.stack, fa, pn)
 }
 
-func (net *Net) ListenTCP(addr *net.TCPAddr) (*gonet.TCPListener, error) {
+func (net *Net) ListenTCP(addr *net.TCPAddr) (*Listener, error) {
 	if addr == nil {
 		return net.ListenTCPAddrPort(netip.AddrPort{})
 	}

@@ -6,3 +6,7 @@ This product includes software from wireguard-go
 licensed under the MIT licence: internal/tunnel/netstack/tun.go is copied from
 its tun/netstack package and modified. The licence text is in
 internal/tunnel/netstack/LICENSE.wireguard-go.
+
+internal/tunnel/netstack/keepalive.go is derived from gVisor's
+tcpip/adapters/gonet (https://gvisor.dev), Copyright The gVisor Authors,
+licensed under the Apache License 2.0.

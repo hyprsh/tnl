@@ -22,6 +22,7 @@ import (
 	"github.com/hyprsh/tnl/internal/edge/routes"
 	"github.com/hyprsh/tnl/internal/logx"
 	"github.com/hyprsh/tnl/internal/outpost"
+	"github.com/hyprsh/tnl/internal/remind"
 	"github.com/hyprsh/tnl/internal/state"
 )
 
@@ -81,6 +82,9 @@ type EdgeOptions struct {
 	OfflineAfter, LivenessPoll, PingInterval time.Duration
 	// CertWait shortens the certificate wait at `route add`; zero keeps 60 s.
 	CertWait time.Duration
+	// Address is the Edge's --address, a name or an IP the Outposts resolve; empty
+	// is 127.0.0.1.
+	Address string
 }
 
 // atEdge answers every name with the Edge's address.
@@ -110,7 +114,7 @@ func StartEdgeWith(t testing.TB, opts EdgeOptions) *RealEdge {
 	}
 
 	cfg := edge.Config{
-		Address: "127.0.0.1", StateDir: dir, Version: harnessVersion, Build: "full", Revision: "test",
+		Address: cmp.Or(opts.Address, "127.0.0.1"), StateDir: dir, Version: harnessVersion, Build: "full", Revision: "test",
 		Log:      logx.New(logx.Options{Level: slog.LevelWarn, Out: testWriter{t}}),
 		Resolver: opts.Resolver, WireGuardPort: opts.WireGuardPort, CertWait: opts.CertWait,
 	}
@@ -265,6 +269,12 @@ type ConnectOptions struct {
 	LogOut io.Writer
 	// JoinTimeout bounds the join exchange; zero uses the Outpost's default.
 	JoinTimeout time.Duration
+	// Resolve is the Outpost's resolver for the Edge's address; nil is the system's.
+	Resolve func(ctx context.Context, host string) (netip.Addr, error)
+	// NoAnswerAfter and Reminders shorten the 30 s of silence and the reminder
+	// schedule; zero keeps the spec's.
+	NoAnswerAfter time.Duration
+	Reminders     remind.Schedule
 }
 
 // TryConnect is Connect that returns the error `tnl connect` would exit on.
@@ -290,6 +300,7 @@ func (e *RealEdge) TryConnectWith(t testing.TB, name, tok, stateDir string, opts
 			JoinTimeout: opts.JoinTimeout, RelayDialTimeout: 2 * time.Second,
 			Started:      func(r *outpost.Running) { up <- r },
 			PingInterval: e.pingInterval,
+			Resolve:      opts.Resolve, NoAnswerAfter: opts.NoAnswerAfter, Reminders: opts.Reminders,
 		})
 	}()
 	stop := func() error { cancel(); return <-done }
