@@ -69,7 +69,7 @@ func TestZoneErrorsNameTheVariableAndEchoNoValue(t *testing.T) {
 		{"no token", []string{"TNL_ZONE_MAIN=example.com --wildcard cloudflare"}, nil, "TNL_ZONE_MAIN: a wildcard Zone needs exactly one of --token-file and --token"},
 		{"both tokens", []string{"TNL_ZONE_MAIN=example.com --wildcard cloudflare --token a --token-file b"}, nil, "TNL_ZONE_MAIN: a wildcard Zone needs exactly one"},
 		{"unknown provider", []string{"TNL_ZONE_MAIN=example.com --wildcard nope --token a"}, nil, "TNL_ZONE_MAIN: unknown DNS provider; this build has cloudflare"},
-		{"missing file", []string{"TNL_ZONE_MAIN=example.com --wildcard cloudflare --token-file /no/such/file"}, nil, "TNL_ZONE_MAIN: token file /no/such/file is missing"},
+		{"missing file", []string{"TNL_ZONE_MAIN=example.com --wildcard cloudflare --token-file /no/such/file"}, nil, "TNL_ZONE_MAIN: --token-file: /no/such/file is missing"},
 		{"empty file", []string{"TNL_ZONE_MAIN=example.com --wildcard cloudflare --token-file " + empty}, nil, "is empty"},
 		{"bad label", []string{"TNL_ZONE_A-B=example.com"}, nil, "TNL_ZONE_A-B: the label"},
 		{"no label", []string{"TNL_ZONE_=example.com"}, nil, "TNL_ZONE_: the variable needs a label after TNL_ZONE_"},

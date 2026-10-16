@@ -79,38 +79,6 @@ func EdgeKey(fileName, filePath, value string) (key *keys.Key, source string, er
 	return &k, source, nil
 }
 
-type declaredLine struct{ name, text string }
-
-// collect gathers the lines of one kind: the variables with the prefix, sorted
-// by name, then the repeated flag's lines. Setting both forms is refused.
-func collect(environ, flagLines []string, prefix, flagName string) ([]declaredLine, error) {
-	var lines []declaredLine
-	for _, kv := range environ {
-		name, value, _ := strings.Cut(kv, "=")
-		if !strings.HasPrefix(name, prefix) {
-			continue
-		}
-		if len(flagLines) > 0 {
-			return nil, fmt.Errorf("%s and %s are both set: declare them one way", flagName, name)
-		}
-		if err := checkLabel(prefix, strings.TrimPrefix(name, prefix)); err != nil {
-			return nil, fmt.Errorf("%s: %w", name, err)
-		}
-		lines = append(lines, declaredLine{name, value})
-	}
-	sort.Slice(lines, func(i, j int) bool { return lines[i].name < lines[j].name })
-	for i, f := range flagLines {
-		// A flag line is named by its first word, unless that is an option; the
-		// text itself is never echoed, since it may hold a value.
-		name := fmt.Sprintf("%s #%d", flagName, i+1)
-		if first := strings.Fields(f); len(first) > 0 && len(first[0]) <= 63 && dnsname.CheckName(dnsname.Normalize(first[0])) == nil {
-			name = flagName + " " + first[0]
-		}
-		lines = append(lines, declaredLine{name, f})
-	}
-	return lines, nil
-}
-
 // ParseZones parses the TNL_ZONE_* variables in environ and the arguments of
 // the repeated --zone flag. A wildcard line names one of providers (nil accepts
 // any), and one of --token-file and --token (the latter in variables only).
@@ -202,22 +170,9 @@ func parseZone(l declaredLine, fromVar bool, providers []string) (state.Declared
 		return z, fmt.Errorf("unknown DNS provider; this build has %s", strings.Join(providers, ", "))
 	}
 	z.Provider = provider
-	if gotToken {
-		z.Token = token
-		return z, nil
-	}
-	b, err := os.ReadFile(tokenFile)
-	switch {
-	case errors.Is(err, fs.ErrNotExist):
-		return z, fmt.Errorf("token file %s is missing", tokenFile)
-	case err != nil:
-		return z, fmt.Errorf("token file %s cannot be read", tokenFile)
-	}
-	z.Token = strings.TrimSpace(string(b))
-	if z.Token == "" {
-		return z, fmt.Errorf("token file %s is empty", tokenFile)
-	}
-	return z, nil
+	var err error
+	z.Token, _, err = ReadSecret("--token-file", tokenFile, "--token", token)
+	return z, err
 }
 
 // ParseOutposts parses the TNL_OUTPOST_* variables in environ and the
