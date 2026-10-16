@@ -26,7 +26,7 @@ func getStatus(t *testing.T, f *fixture) api.EdgeStatus {
 func attention(s api.EdgeStatus) string {
 	var lines []string
 	for _, a := range s.Attention {
-		lines = append(lines, a.Kind+": "+a.Message)
+		lines = append(lines, string(a.Kind)+": "+a.Message)
 	}
 	return strings.Join(lines, "\n")
 }

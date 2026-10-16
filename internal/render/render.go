@@ -1,13 +1,17 @@
-// Package render prints the replies of tnl's `ls` commands, as tables or as
-// the JSON that is the stable surface. It imports only api, so the Outpost
-// build links it and the harness can print what a real Edge answered.
+// Package render prints the replies of tnl's `ls` and `status` commands, as
+// tables and text or as the JSON that is the stable surface. It imports only
+// api, so the Outpost build links it and the harness can print what a real
+// Edge answered.
 //
 // A table is made from a reply alone: it never reads a clock, because the
-// reply carries its durations in seconds. Tables may change in any release;
-// the JSON may only grow (docs/spec/v1.md, Status).
+// reply carries its durations in seconds. The one exception is OutpostStatus,
+// whose "last answer" is a time, so it is given the time to count from.
+// Tables may change in any release; the JSON may only grow (docs/spec/v1.md,
+// Status).
 package render
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -19,7 +23,7 @@ import (
 )
 
 // Dash is an empty cell: a value that is not known.
-const Dash = "-"
+const Dash = "–"
 
 // JSON writes v as `--json` prints it: indented, with a final newline.
 func JSON(w io.Writer, v any) error {
@@ -28,6 +32,17 @@ func JSON(w io.Writer, v any) error {
 		return err
 	}
 	_, err = w.Write(append(b, '\n'))
+	return err
+}
+
+// RawJSON writes a reply as it came, indented, with a final newline.
+func RawJSON(w io.Writer, raw []byte) error {
+	var buf bytes.Buffer
+	if err := json.Indent(&buf, raw, "", "  "); err != nil {
+		return err
+	}
+	buf.WriteByte('\n')
+	_, err := w.Write(buf.Bytes())
 	return err
 }
 
@@ -53,6 +68,14 @@ func OneLine(s string) string {
 		s = s[:most-3] + "..."
 	}
 	return s
+}
+
+// Count is "1 Route" or "3 Routes": n and the noun in its number.
+func Count(n int, one, many string) string {
+	if n == 1 {
+		return fmt.Sprintf("%d %s", n, one)
+	}
+	return fmt.Sprintf("%d %s", n, many)
 }
 
 func orDash(s string) string {
@@ -96,7 +119,7 @@ func Outposts(w io.Writer, l api.OutpostList) error {
 		if o.DeclaredLines > 0 {
 			routes = fmt.Sprintf("%d declared", o.DeclaredLines)
 		}
-		rows = append(rows, []string{name, o.State, seen, orDash(o.Endpoint), orDash(o.Version), o.TunnelAddress, routes})
+		rows = append(rows, []string{name, string(o.State), seen, orDash(o.Endpoint), orDash(o.Version), o.TunnelAddress, routes})
 	}
 	return table(w, []string{"NAME", "STATE", "LAST SEEN", "ENDPOINT", "VERSION", "TUNNEL ADDRESS", "ROUTES"}, rows)
 }
@@ -108,7 +131,7 @@ func Routes(w io.Writer, l api.RouteList) error {
 	extra := false
 	var rows [][]string
 	for _, r := range l.Routes {
-		row := []string{r.Hostname, r.Outpost, r.Service, orDash(strings.Join(r.Options, " ")), orDash(r.Status)}
+		row := []string{r.Hostname, r.Outpost, r.Service, orDash(strings.Join(r.Options, " ")), orDash(string(r.Status))}
 		if len(r.Extra) > 0 {
 			extra = true
 		}
@@ -167,11 +190,7 @@ func ZoneCertificate(z api.ZoneRow) string {
 			failing++
 		}
 	}
-	noun := "certificates"
-	if len(z.Certificates) == 1 {
-		noun = "certificate"
-	}
-	s := fmt.Sprintf("%d %s", len(z.Certificates), noun)
+	s := Count(len(z.Certificates), "certificate", "certificates")
 	if failing > 0 {
 		s += fmt.Sprintf(", %d failing", failing)
 	}
@@ -200,5 +219,5 @@ func certificate(c api.CertInfo) string {
 		}
 		return "failed"
 	}
-	return c.State // obtaining, expired
+	return string(c.State) // obtaining, expired
 }

@@ -115,6 +115,39 @@ func (c *Client) http() *http.Client {
 // through the Tunnel may be any version the Edge accepts.)
 func Call[Resp any](ctx context.Context, c *Client, method, path string, req any) (Resp, error) {
 	var out Resp
+	raw, err := c.roundTrip(ctx, method, path, req)
+	if err != nil {
+		return out, err
+	}
+	if err := strictDecoder(raw).Decode(&out); err != nil {
+		return out, c.notUnderstood(err)
+	}
+	return out, nil
+}
+
+// Fetch is Call for a reply the client prints as it came: a GET of an `ls` or
+// status reply. It reads the reply leniently, since JSON only grows within a
+// major and an older client must still show what it knows of a newer peer's
+// reply, and returns the bytes too, for `--json`.
+func Fetch[Resp any](ctx context.Context, c *Client, path string) (Resp, []byte, error) {
+	var out Resp
+	raw, err := c.roundTrip(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return out, nil, err
+	}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return out, nil, c.notUnderstood(err)
+	}
+	return out, raw, nil
+}
+
+func (c *Client) notUnderstood(err error) error {
+	return fmt.Errorf("the running process (%s) sent a reply this tnl doesn't understand: %w", c.Version, err)
+}
+
+// roundTrip sends one request and returns the body of a successful response.
+func (c *Client) roundTrip(ctx context.Context, method, path string, req any) ([]byte, error) {
+	var out []byte
 	if path != PathInfo {
 		if err := c.checkLocal(ctx); err != nil {
 			return out, err
@@ -160,10 +193,7 @@ func Call[Resp any](ctx context.Context, c *Client, method, path string, req any
 		}
 		return out, ae
 	}
-	if err := strictDecoder(raw).Decode(&out); err != nil {
-		return out, fmt.Errorf("the running process (%s) sent a reply this tnl doesn't understand: %w", c.Version, err)
-	}
-	return out, nil
+	return raw, nil
 }
 
 // Info asks the process at the other end of the link, the socket or the Tunnel, for its role, version and build, and

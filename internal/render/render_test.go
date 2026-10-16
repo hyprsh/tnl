@@ -49,10 +49,10 @@ func TestOutpostTableShowsEachStateInTheSpecsForms(t *testing.T) {
 		t.Fatalf("rows:\n%s", got)
 	}
 	// fresh: heard from no one since the restart, so LAST SEEN, ENDPOINT and VERSION are dashes.
-	if f := strings.Fields(rows[1]); strings.Join(f, " ") != "fresh online - - - 100.64.0.2 0" {
+	if f := strings.Fields(rows[1]); strings.Join(f, " ") != "fresh online – – – 100.64.0.2 0" {
 		t.Errorf("fresh row: %q", rows[1])
 	}
-	if f := strings.Fields(rows[5]); strings.Join(f, " ") != "pi (declared) offline 1h ago - 1.2.0 100.64.0.6 3 declared" {
+	if f := strings.Fields(rows[5]); strings.Join(f, " ") != "pi (declared) offline 1h ago – 1.2.0 100.64.0.6 3 declared" {
 		t.Errorf("pi row: %q", rows[5])
 	}
 }
@@ -71,8 +71,8 @@ func TestRouteTableShowsStatusWaitingRowsAndUnknownFields(t *testing.T) {
 	for i, want := range []string{
 		"HOSTNAME OUTPOST SERVICE OPTIONS STATUS",
 		"app.example.com nas http://localhost:3000 host-header=app.lan insecure-skip-verify=true ok",
-		"photos.example.com nas http://localhost:2283 - renewal failing",
-		"photos.example.com newbox http://localhost:9000 - waiting: taken by nas",
+		"photos.example.com nas http://localhost:2283 – renewal failing",
+		"photos.example.com newbox http://localhost:9000 – waiting: taken by nas",
 	} {
 		if g := strings.Join(strings.Fields(rows[i]), " "); g != want {
 			t.Errorf("row %d: %q, want %q", i, g, want)

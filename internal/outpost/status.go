@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/hyprsh/tnl/internal/api"
@@ -39,7 +38,7 @@ func (s *statusSource) status(ctx context.Context) api.OutpostStatus {
 		Edge: api.OutpostEdge{
 			Address: s.st.EdgeAddress, IP: snap.IP.String(), State: api.TunnelUp,
 			SilentSeconds: int64(snap.Silent / time.Second), Version: snap.Version,
-			Incompatible: incompat || tooOld, Message: message,
+			Incompatible: incompat, TooOld: tooOld, Message: message,
 		},
 		Attention: []api.AttentionItem{},
 	}
@@ -59,7 +58,7 @@ func (s *statusSource) status(ctx context.Context) api.OutpostStatus {
 	}
 	switch {
 	case incompat:
-		out.Attention = append(out.Attention, api.AttentionItem{Kind: api.AttentionEdgeIncompat, Subject: s.st.EdgeAddress, Message: message})
+		out.Attention = append(out.Attention, api.AttentionItem{Kind: api.AttentionEdgeIncompatible, Subject: s.st.EdgeAddress, Message: message})
 	case tooOld:
 		out.Attention = append(out.Attention, api.AttentionItem{Kind: api.AttentionEdgeTooOld, Subject: s.st.EdgeAddress, Message: message})
 	}
@@ -95,10 +94,11 @@ func (s *statusSource) status(ctx context.Context) api.OutpostStatus {
 	for _, l := range s.dec.lines {
 		d := api.DeclaredLineStatus{Hostname: l.Hostname, Service: l.Service, Variable: s.dec.labels[l.Hostname]}
 		if r, ok := waiting[l.Hostname]; ok {
+			// The Edge's reason is its log wording ("held by Outpost nas");
+			// the surfaces say "taken by nas".
 			reason := r.Reason
-			// The Edge's log wording is "held by Outpost nas"; the surfaces say "taken by nas".
-			if holder, ok := strings.CutPrefix(reason, "held by Outpost "); ok {
-				reason = api.WaitingTakenBy(holder)
+			if r.Holder != "" {
+				reason = api.WaitingTakenBy(r.Holder)
 			}
 			d.Waiting, d.Reason = true, reason
 			out.Attention = append(out.Attention, api.AttentionItem{

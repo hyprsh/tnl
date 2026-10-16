@@ -148,7 +148,8 @@ func (s *Server) myRoutes(_ context.Context, actor api.Actor, _ struct{}) (api.M
 	for _, e := range st.Entries(own) {
 		r := api.MyRoute{Line: e.Line, Waiting: e.Waiting}
 		if e.Waiting {
-			r.Reason = st.WaitingReason(own, e.Hostname)
+			w := st.Waiting(own, e.Hostname)
+			r.Reason, r.Holder = w.String(), w.Holder
 		}
 		out.Routes = append(out.Routes, r)
 	}
