@@ -103,6 +103,7 @@ Things to know:
 - **Stopping:** `stop_grace_period: 20s` gives the Edge time to drain.
 - **The Outpost reaches Services by container name** on a shared network, such as `http://immich:2283`. Inside the Outpost's container, `localhost` is the container, not the host.
 - **The token** goes in `TNL_TOKEN`. It works once, and the volume keeps what the Outpost saves.
+- **Routes** can be declared in `TNL_ROUTE_*` variables, as the example does; see [Declaring Routes on the Outpost](declaring-routes.md).
 
 ## Uninstalling
 

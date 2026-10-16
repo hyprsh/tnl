@@ -25,9 +25,9 @@ func (s *Server) zoneRm(ctx context.Context, actor api.Actor, req api.ZoneRmRequ
 	if err != nil {
 		return api.ZoneRmReply{}, err
 	}
-	var removed, moved []string
+	var removed, moved, waiting []string
 	var wasWildcard bool
-	err = s.cfg.Store.Update(actor, func(st *state.State) error {
+	handed, err := s.cfg.Store.UpdateReport(actor, func(st *state.State) error {
 		i := slices.IndexFunc(st.Zones, func(z state.Zone) bool { return z.Name == name })
 		if i < 0 {
 			return api.Errorf(http.StatusNotFound, "no Zone %s", name)
@@ -42,6 +42,11 @@ func (s *Server) zoneRm(ctx context.Context, actor api.Actor, req api.ZoneRmRequ
 				moved = append(moved, r.Hostname)
 			}
 		}
+		for _, r := range st.Routes {
+			if slices.Contains(stranded, r.Hostname) && st.Declares(r.Outpost) {
+				waiting = append(waiting, r.Hostname)
+			}
+		}
 		wasWildcard = st.Zones[i].Mode == state.Wildcard
 		removed = st.RemoveRoutes(func(r state.Route) bool { return slices.Contains(stranded, r.Hostname) })
 		st.Zones = slices.Delete(slices.Clone(st.Zones), i, i+1)
@@ -50,7 +55,7 @@ func (s *Server) zoneRm(ctx context.Context, actor api.Actor, req api.ZoneRmRequ
 	if err != nil {
 		return api.ZoneRmReply{}, err
 	}
-	s.cfg.Log.Info("zone removed", "actor", actor.String(), "zone", name, "routes_removed", len(removed), "routes_moved", len(moved))
+	s.cfg.Log.Info("zone removed", "actor", actor.String(), "zone", name, "routes_removed", len(removed), "routes_moved", len(moved), "routes_waiting", len(waiting))
 	if s.cfg.Conns != nil {
 		for _, h := range removed {
 			s.cfg.Conns.CloseRoute(h)
@@ -75,7 +80,7 @@ func (s *Server) zoneRm(ctx context.Context, actor api.Actor, req api.ZoneRmRequ
 	s.warn(actor, warnings, "zone", name)
 	slices.Sort(removed)
 	slices.Sort(moved)
-	return api.ZoneRmReply{Name: name, Removed: nonNil(removed), Moved: nonNil(moved), Warnings: api.Warnings{Warnings: warnings}}, nil
+	return api.ZoneRmReply{Name: name, Removed: nonNil(removed), Moved: nonNil(moved), Waiting: waiting, Handovers: served(handed), Warnings: api.Warnings{Warnings: warnings}}, nil
 }
 
 func nonNil(s []string) []string {

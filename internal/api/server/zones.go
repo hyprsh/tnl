@@ -43,7 +43,7 @@ func (s *Server) zoneAdd(ctx context.Context, actor api.Actor, req api.ZoneAddRe
 		}
 		z = state.Zone{Name: name, Mode: state.Wildcard, Provider: req.Provider, Token: req.Token}
 	}
-	err = s.cfg.Store.Update(actor, func(st *state.State) error {
+	handed, err := s.cfg.Store.UpdateReport(actor, func(st *state.State) error {
 		if _, have := st.Zone(name); have {
 			return api.Errorf(http.StatusConflict, "Zone %s already exists", name)
 		}
@@ -56,7 +56,7 @@ func (s *Server) zoneAdd(ctx context.Context, actor api.Actor, req api.ZoneAddRe
 	s.cfg.Log.Info("zone added", "actor", actor.String(), "zone", z.Name, "mode", z.Mode, "provider", z.Provider) // never the token
 	// After the lock: a slow resolver must not delay another change.
 	var warnings []string
-	reply := api.ZoneAddReply{ZoneInfo: zoneInfo(z)}
+	reply := api.ZoneAddReply{ZoneInfo: zoneInfo(z), Handovers: served(handed)}
 	if wildcard {
 		reply.WildcardInfo = wildcardInfo(dnsZone, z.Name)
 		w := s.wildcardCertificate(ctx, z.Name)

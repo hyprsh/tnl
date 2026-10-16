@@ -48,6 +48,7 @@ func zoneAdd(args []string) error {
 		return err
 	}
 	printZoneResult(fmt.Sprintf("added Zone %s (%s)", z.Name, zoneMode(z.ZoneInfo)), z.WildcardInfo, z.Warnings)
+	printHandovers(z.Handovers)
 	return nil
 }
 

@@ -167,6 +167,14 @@ func (d *declarer) baseline(ctx context.Context, want *wire.Digest) {
 	}
 	d.mu.Unlock()
 	if before == nil {
+		// The first look after a start (a send already logged its waiting lines).
+		if want != nil {
+			for _, r := range got.Routes {
+				if r.Waiting {
+					d.log.Warn("Route waiting", "variable", d.labels[r.Hostname], "hostname", r.Hostname, "reason", r.Reason)
+				}
+			}
+		}
 		return
 	}
 	hosts := make([]string, 0, len(now))

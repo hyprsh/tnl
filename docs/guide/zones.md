@@ -36,6 +36,7 @@ sudo tnl zone rm example.com --with-routes
 - Routes that a parent Zone still contains move to it. They keep serving, with the same certificate and no certificate error, and Caddy isn't reloaded.
 - If removing the Zone would leave Routes outside every Zone, `zone rm` refuses, lists them and changes nothing. Remove those Routes first, or pass `--with-routes`.
 - `--with-routes` removes those Routes, closes their open connections and stops renewing their certificates.
+- A Route that an Outpost declares goes back to waiting instead of being lost: its line stays in the Outpost's Declaration, and it becomes a Route again when a Zone contains its Hostname. `zone add` does that for every waiting line it now contains, and says which; see [Declaring Routes](declaring-routes.md#lines-that-wait).
 
 A Route's Hostname stops renewing whenever its Route goes, by `route rm`, `outpost rm --with-routes` or `zone rm --with-routes`. The certificate it holds keeps answering until it expires, and the Edge asks the CA for no new one.
 

@@ -101,8 +101,8 @@ func (s *State) RemoveRoutesVia(outpost string) []string {
 }
 
 // RemoveRoutes removes the Routes for which gone is true and returns their
-// Hostnames. Zone and Outpost removal share it, and slice 8 sends a declared
-// Route back to waiting from here.
+// Hostnames. Zone and Outpost removal share it. A declared Route removed here is
+// waiting again, since its line stays in the Declaration.
 func (s *State) RemoveRoutes(gone func(Route) bool) []string {
 	var hosts []string
 	kept := make([]Route, 0, len(s.Routes))

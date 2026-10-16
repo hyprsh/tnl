@@ -18,6 +18,7 @@ type OutpostRmRequest struct {
 type OutpostRmReply struct {
 	Name   string   `json:"name"`
 	Routes []string `json:"routes"`
+	Handovers
 	Warnings
 }
 

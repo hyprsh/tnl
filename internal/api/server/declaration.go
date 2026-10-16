@@ -63,7 +63,7 @@ func (s *Server) declare(ctx context.Context, actor api.Actor, req api.Declarati
 		return api.DeclarationReply{}, err
 	}
 	var res state.DeclarationResult
-	err := s.cfg.Store.Update(actor, func(st *state.State) error {
+	handed, err := s.cfg.Store.UpdateReport(actor, func(st *state.State) error {
 		if !hasOutpost(st, own) {
 			return api.Errorf(http.StatusNotFound, "no Outpost %s", own)
 		}
@@ -84,9 +84,6 @@ func (s *Server) declare(ctx context.Context, actor api.Actor, req api.Declarati
 	for _, h := range res.Removed {
 		log.Info("declared line removed", "actor", actor.String(), "outpost", own, "hostname", h)
 	}
-	for _, w := range res.Waiting {
-		log.Info("declared line waits", "actor", actor.String(), "outpost", own, "hostname", w.Hostname, "reason", w.Reason)
-	}
 	log.Info("declaration applied", "actor", actor.String(), "outpost", own, "lines", len(req.Routes),
 		"added", len(res.Added), "changed", len(res.Changed), "removed", len(res.Removed), "waiting", len(res.Waiting))
 
@@ -102,7 +99,7 @@ func (s *Server) declare(ctx context.Context, actor api.Actor, req api.Declarati
 	warnings = append(warnings, s.testDialAll(ctx, res.Dial)...)
 	s.warn(actor, warnings, "outpost", own)
 
-	reply := api.DeclarationReply{Lines: []api.DeclaredLine{}, Removed: res.Removed, Switched: res.Switched, Warnings: api.Warnings{Warnings: warnings}}
+	reply := api.DeclarationReply{Lines: []api.DeclaredLine{}, Removed: res.Removed, Switched: res.Switched, Handovers: served(handed), Warnings: api.Warnings{Warnings: warnings}}
 	for _, h := range res.Added {
 		reply.Lines = append(reply.Lines, api.DeclaredLine{Hostname: h, Outcome: api.LineAdded})
 	}
@@ -156,4 +153,13 @@ func (s *Server) myRoutes(_ context.Context, actor api.Actor, _ struct{}) (api.M
 		out.Routes = append(out.Routes, r)
 	}
 	return out, nil
+}
+
+// served is the reply's account of the waiting lines a change turned into Routes.
+func served(handed []state.Handed) api.Handovers {
+	var h api.Handovers
+	for _, x := range handed {
+		h.Served = append(h.Served, api.Served{Outpost: x.Outpost, Hostname: x.Route.Hostname})
+	}
+	return h
 }
