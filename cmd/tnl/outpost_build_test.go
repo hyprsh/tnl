@@ -8,7 +8,7 @@ import (
 )
 
 func TestOutpostBuildRefusesEveryEdgeCommand(t *testing.T) {
-	for _, args := range [][]string{{"edge"}, {"backup", "-"}, {"outpost", "add", "x"}, {"zone", "add", "example.com"}, {"zone", "edit", "example.com", "--per-hostname"}, {"zone", "rm", "example.com"}} {
+	for _, args := range [][]string{{"edge"}, {"keygen"}, {"credential", "nas", "--address", "a"}, {"backup", "-"}, {"outpost", "add", "x"}, {"zone", "add", "example.com"}, {"zone", "edit", "example.com", "--per-hostname"}, {"zone", "rm", "example.com"}} {
 		out, code, err := tnl(args...)
 		if code != 1 || err == nil || out != "" {
 			t.Errorf("%v: exit %d, %v, printed %q", args, code, err, out)

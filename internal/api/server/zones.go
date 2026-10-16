@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"net/http"
 	"sort"
-	"sync"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/hyprsh/tnl/internal/api"

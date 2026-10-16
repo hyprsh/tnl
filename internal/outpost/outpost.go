@@ -37,14 +37,14 @@ import (
 
 // Config is what `tnl connect` passes in.
 type Config struct {
-	Token    string // empty to reconnect from the state
+	Token string // empty to reconnect from the state
 	// Credential is an Outpost credential (tnlc1.…), for a declared Outpost: it
 	// connects from the first packet with no join exchange and writes no state.
 	Credential string
-	StateDir string
-	Version  string
-	Build    string // "full" or "outpost"
-	Log      *slog.Logger
+	StateDir   string
+	Version    string
+	Build      string // "full" or "outpost"
+	Log        *slog.Logger
 
 	// Resolve turns the Edge's address into an IP, because wireguard-go takes
 	// only IPs. Nil uses the system resolver.

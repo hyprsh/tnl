@@ -14,7 +14,9 @@ const buildName = "outpost"
 // A ticket that adds an Edge-only command adds one line here.
 var edgeOnlyCommands = []string{
 	"backup",
+	"credential",
 	"edge",
+	"keygen",
 	"outpost",
 	"zone add",
 	"zone edit",
