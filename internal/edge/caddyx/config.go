@@ -5,14 +5,11 @@
 package caddyx
 
 import (
-	"crypto/x509"
 	"encoding/json"
-	"encoding/pem"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync/atomic"
 	"time"
 
@@ -105,39 +102,20 @@ func (c Config) retiredNames() (out []any) {
 	for _, z := range c.Wildcards {
 		managed[z] = true
 	}
-	dirs, _ := filepath.Glob(filepath.Join(c.StateDir, "caddy", "certificates", "*", "wildcard_.*"))
-	seen := map[string]bool{}
-	for _, d := range dirs {
-		zone := strings.TrimPrefix(filepath.Base(d), "wildcard_.")
-		if managed[zone] || seen[zone] {
+	st := &certmagic.FileStorage{Path: filepath.Join(c.StateDir, "caddy")}
+	now := time.Now()
+	for _, zone := range storedWildcardZones(st) {
+		if managed[zone] {
 			continue
 		}
-		if certExpiry(filepath.Join(d, filepath.Base(d)+".crt")).After(time.Now()) {
-			seen[zone] = true
-			for _, n := range dnsname.WildcardNames(zone) {
+		// Each name has a certificate of its own, with its own expiry.
+		for _, n := range dnsname.WildcardNames(zone) {
+			if storedNotAfter(st, n).After(now) {
 				out = append(out, n)
 			}
 		}
 	}
 	return out
-}
-
-// certExpiry is when the PEM certificate file expires; the zero time if it
-// can't be read.
-func certExpiry(path string) time.Time {
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return time.Time{}
-	}
-	block, _ := pem.Decode(b)
-	if block == nil {
-		return time.Time{}
-	}
-	leaf, err := x509.ParseCertificate(block.Bytes)
-	if err != nil {
-		return time.Time{}
-	}
-	return leaf.NotAfter
 }
 
 // wildcardPolicy is the TLS automation policy of a wildcard Zone. It is not
@@ -362,6 +340,7 @@ func Start(c Config) error {
 	}
 	certs := rt.Certs()
 	certs.setIssuer(raw)
+	certs.SetStateDir(c.StateDir)
 	c.Hostnames = certs.configure()
 	b, err := c.JSON()
 	if err != nil {

@@ -2,8 +2,10 @@ package caddyx
 
 import (
 	"encoding/json"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func wildcardConfig(t *testing.T) (raw string, tls map[string]any) {
@@ -89,5 +91,22 @@ func TestWithoutWildcardZonesTheConfigHasNoAutomateList(t *testing.T) {
 	}
 	if strings.Contains(string(b), "automate") {
 		t.Errorf("%s", b)
+	}
+}
+
+// Each name of a dropped wildcard is loaded only while its own certificate is
+// unexpired: the wildcard's can outlive the apex's.
+func TestRetiredNamesChecksEachCertificatesOwnExpiry(t *testing.T) {
+	dir := t.TempDir()
+	root := filepath.Join(dir, "caddy")
+	writeCert(t, root, "*.old.test", time.Now().Add(30*24*time.Hour))
+	writeCert(t, root, "old.test", time.Now().Add(-time.Hour))
+	got := Config{StateDir: dir}.retiredNames()
+	if len(got) != 1 || got[0] != "*.old.test" {
+		t.Fatalf("got %v", got)
+	}
+	// A Zone that is a wildcard still is not retired.
+	if got := (Config{StateDir: dir, Wildcards: []string{"old.test"}}).retiredNames(); len(got) != 0 {
+		t.Fatalf("got %v", got)
 	}
 }

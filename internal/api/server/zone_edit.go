@@ -13,7 +13,7 @@ import (
 // zoneEdit switches a Zone between per-Hostname and wildcard, or replaces a
 // wildcard Zone's token. A Visitor never sees a certificate error while it
 // does: the certificates that served before are kept serving across the Caddy
-// reload (Retire), and the new ones are waited for after it.
+// reload (certificates Caddy loads from storage), and the new ones are waited for after it.
 func (s *Server) zoneEdit(ctx context.Context, actor api.Actor, req api.ZoneEditRequest) (api.ZoneEditReply, error) {
 	if err := localOnly(actor, "edit Zones", "zone edit"); err != nil {
 		return api.ZoneEditReply{}, err

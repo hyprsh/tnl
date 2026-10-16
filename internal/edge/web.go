@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/netip"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/hyprsh/tnl/internal/edge/caddyx"
@@ -50,42 +51,41 @@ type Web struct {
 	DNSPropagationTimeout time.Duration
 }
 
-// certifier is the certificate manager as the API server uses it.
-type certifier interface {
-	Obtain(ctx context.Context, hostname string) error
-	Wait(ctx context.Context, name string) error
-	WaitOwn(ctx context.Context, name string) error
-	Settle()
-}
-
-// noCerts is the certificate manager of an Edge without a web side: it waits
-// for nothing.
-type noCerts struct{}
-
-func (noCerts) Obtain(context.Context, string) error  { return nil }
-func (noCerts) Wait(context.Context, string) error    { return nil }
-func (noCerts) WaitOwn(context.Context, string) error { return nil }
-func (noCerts) Settle()                               {}
-
 // certsRef gives the API server the certificate manager, which only exists
-// once Caddy's side is built, after the server is.
-type certsRef struct{ late[certifier] }
+// once Caddy's side is built, after the server is. Without one (no web side)
+// it waits for nothing.
+type certsRef struct{ p atomic.Pointer[caddyx.Certs] }
 
-func (r *certsRef) Obtain(ctx context.Context, hostname string) error {
-	return r.get(noCerts{}).Obtain(ctx, hostname)
-}
-func (r *certsRef) Wait(ctx context.Context, name string) error {
-	return r.get(noCerts{}).Wait(ctx, name)
-}
-func (r *certsRef) WaitOwn(ctx context.Context, name string) error {
-	return r.get(noCerts{}).WaitOwn(ctx, name)
-}
-func (r *certsRef) Settle() { r.get(noCerts{}).Settle() }
+func (r *certsRef) set(m *caddyx.Certs) { r.p.Store(m) }
 
 // manager is the Caddy certificate manager, nil without a web side.
-func (r *certsRef) manager() *caddyx.Certs {
-	m, _ := r.get(noCerts{}).(*caddyx.Certs)
-	return m
+func (r *certsRef) manager() *caddyx.Certs { return r.p.Load() }
+
+func (r *certsRef) Obtain(ctx context.Context, hostname string) error {
+	if m := r.manager(); m != nil {
+		return m.Obtain(ctx, hostname)
+	}
+	return nil
+}
+
+func (r *certsRef) Wait(ctx context.Context, name string) error {
+	if m := r.manager(); m != nil {
+		return m.Wait(ctx, name)
+	}
+	return nil
+}
+
+func (r *certsRef) WaitOwn(ctx context.Context, name string) error {
+	if m := r.manager(); m != nil {
+		return m.WaitOwn(ctx, name)
+	}
+	return nil
+}
+
+func (r *certsRef) Settle() {
+	if m := r.manager(); m != nil {
+		m.Settle()
+	}
 }
 
 // drainTimeout is how long the Edge lets requests finish on SIGTERM (spec
@@ -130,6 +130,7 @@ func startWeb(w *Web, d webDeps) (stop func(), err error) {
 		},
 	}
 	manager := rt.Certs()
+	manager.SetStateDir(d.StateDir)
 	publish := func(st *state.State) {
 		known := make(map[string]netip.AddrPort, len(st.Outposts))
 		for _, o := range st.Outposts {

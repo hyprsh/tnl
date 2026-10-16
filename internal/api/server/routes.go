@@ -174,11 +174,11 @@ func (s *Server) routeAdd(ctx context.Context, actor api.Actor, req api.RouteAdd
 	s.afterRouteChange(nil, r)
 	// After the lock, like every warning: the checks wait on DNS and on the CA.
 	var warnings []string
-	state := liveness.Online
+	live := liveness.Online
 	if s.cfg.Liveness != nil {
-		state = s.cfg.Liveness.State(r.Outpost)
+		live = s.cfg.Liveness.State(r.Outpost)
 	}
-	switch state {
+	switch live {
 	case liveness.Offline:
 		// An Offline Outpost can't be test-dialed; the warning says why.
 		warnings = append(warnings, fmt.Sprintf("Outpost %s is Offline: %s answers 503 until it is back", r.Outpost, r.Hostname))
