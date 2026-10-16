@@ -89,6 +89,25 @@ func TestADeclarationThatGetsAServerErrorIsSentAgainAtTheNextPing(t *testing.T) 
 	}
 }
 
+func TestAnErrorWithNoHTTPStatusIsNotARefusalOfTheDeclaration(t *testing.T) {
+	var dials atomic.Int32
+	c := &api.Client{Version: "v1", Dial: func(context.Context, string, string) (net.Conn, error) {
+		dials.Add(1)
+		return nil, &api.Error{Message: "no answer"}
+	}}
+	d := newDeclarer(c, slog.New(slog.NewTextHandler(io.Discard, nil)), nil)
+	idle := func() bool { d.mu.Lock(); defer d.mu.Unlock(); return !d.busy }
+	for i := int32(1); i <= 2; i++ {
+		d.answered(context.Background(), wire.Pong{Version: "v1", Declaration: &wire.DeclarationAnswer{Matches: false}})
+		waitUntil(t, "a send", func() bool { return dials.Load() >= i && idle() })
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.didRefuse {
+		t.Fatal("an error with no HTTP status stopped the Declaration being sent again")
+	}
+}
+
 func TestAMatchingAnswerSendsNothing(t *testing.T) {
 	var posts atomic.Int32
 	d := newTestDeclarer(t, func(w http.ResponseWriter, r *http.Request) {
