@@ -8,6 +8,7 @@ import (
 	"net/netip"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"gvisor.dev/gvisor/pkg/tcpip/adapters/gonet"
@@ -49,8 +50,9 @@ func newLiveness(h livenessHooks, st *state.State) *liveness.Liveness {
 
 // serveLiveness listens for pings on 100.64.0.1:wire.PingPort inside the Tunnel,
 // and watches WireGuard for any other traffic from an Outpost and for its
-// endpoint. Both stop when ctx ends.
-func serveLiveness(ctx context.Context, l *liveness.Liveness, h livenessHooks, tun *tunnel.Tunnel, store *state.Store) error {
+// endpoint. Both stop when ctx ends; bg tracks their goroutines, so the caller
+// can wait until none is left that could still write the state.
+func serveLiveness(ctx context.Context, bg *sync.WaitGroup, l *liveness.Liveness, h livenessHooks, tun *tunnel.Tunnel, store *state.Store) error {
 	conn, err := tun.Net.ListenUDPAddrPort(netip.AddrPortFrom(addr.Edge, wire.PingPort))
 	if err != nil {
 		return fmt.Errorf("listen on the Tunnel for pings: %w", err)
@@ -63,12 +65,12 @@ func serveLiveness(ctx context.Context, l *liveness.Liveness, h livenessHooks, t
 		}
 		return "", false
 	}
-	go func() {
+	bg.Go(func() {
 		<-ctx.Done()
 		conn.Close()
-	}()
+	})
 	pingRemembered(conn, h.Version, store.Snapshot(), h.Log)
-	go func() {
+	bg.Go(func() {
 		buf := make([]byte, 512)
 		for {
 			n, from, err := conn.ReadFrom(buf)
@@ -95,13 +97,13 @@ func serveLiveness(ctx context.Context, l *liveness.Liveness, h livenessHooks, t
 				conn.WriteTo(pong, from)
 			}
 		}
-	}()
+	})
 
 	poll := h.Poll
 	if poll == 0 {
 		poll = defaultLivenessPoll
 	}
-	go func() {
+	bg.Go(func() {
 		rx := map[string]uint64{}
 		tried := map[string]netip.AddrPort{}
 		t := time.NewTicker(poll)
@@ -116,7 +118,7 @@ func serveLiveness(ctx context.Context, l *liveness.Liveness, h livenessHooks, t
 			rememberEndpoints(store, seen, tried)
 			l.Check()
 		}
-	}()
+	})
 	return nil
 }
 

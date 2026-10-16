@@ -138,6 +138,12 @@ func Run(ctx context.Context, cfg Config) error {
 	if sched.Every == 0 && len(sched.After) == 0 {
 		sched = remind.Standard
 	}
+	// Whatever Run starts that writes the state ends before Run returns, so a
+	// restart on the same state directory never meets a writer of this run.
+	ctx, stopBackground := context.WithCancel(ctx)
+	var bg sync.WaitGroup
+	defer bg.Wait()
+	defer stopBackground()
 	waits := newWaitingWatch(cfg.Log, sched, cfg.Clock)
 	waits.sync(store.Snapshot())
 	store.OnChange(waits.sync)
@@ -145,7 +151,7 @@ func Run(ctx context.Context, cfg Config) error {
 	if sched.Every > 0 && sched.Every < 4*time.Second {
 		tickEvery = sched.Every / 4
 	}
-	go waits.run(ctx, store, tickEvery)
+	bg.Go(func() { waits.run(ctx, store, tickEvery) })
 	conns := conntrack.New()
 	certs := new(certsRef)
 	wild := &wildcards{resolvers: cfg.DNSResolvers, certs: certs}
@@ -172,7 +178,7 @@ func Run(ctx context.Context, cfg Config) error {
 		return refuse(err)
 	}
 
-	if err := serveLiveness(ctx, live, hooks, tun, store); err != nil {
+	if err := serveLiveness(ctx, &bg, live, hooks, tun, store); err != nil {
 		return refuse(err)
 	}
 
