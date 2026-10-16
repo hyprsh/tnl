@@ -10,12 +10,12 @@ import (
 	"github.com/hyprsh/tnl/internal/state"
 )
 
-// waitingWatch logs the declared lines that wait: a warn when one starts to
-// wait and a reminder on the shared schedule until it applies or is dropped.
-// The applying is logged where it happens, in the store's change path.
 // waitingLine is a declared line that waits.
 type waitingLine struct{ outpost, hostname string }
 
+// waitingWatch logs the declared lines that wait: a warn when one starts to
+// wait and a reminder on the shared schedule until it applies or is dropped.
+// The applying is logged where it happens, in the store's change path.
 type waitingWatch struct {
 	log   *slog.Logger
 	clock remind.Clock
