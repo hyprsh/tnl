@@ -13,6 +13,7 @@ import (
 	"net/netip"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
@@ -40,6 +41,8 @@ type CaddyOptions struct {
 	Pebble *Pebble
 	// Log receives Caddy's entries through tnl's log core. Nil means slog.Default().
 	Log *slog.Logger
+	// RenewCheckInterval shortens Caddy's scan for certificates to renew.
+	RenewCheckInterval time.Duration
 }
 
 // CaddyEdge is the running Caddy side of the Edge. Caddy is a process singleton,
@@ -54,7 +57,11 @@ type CaddyEdge struct {
 	Roots *x509.CertPool
 
 	cfg caddyx.Config
+	rt  *caddyx.Runtime
 }
+
+// Certs is the Edge's certificate manager.
+func (ce *CaddyEdge) Certs() *caddyx.Certs { return ce.rt.Certs() }
 
 // StartCaddy starts Caddy in front of the Edge's Route table and Tunnel, with
 // Certificates from Caddy's internal CA. It stops when the test ends.
@@ -63,9 +70,10 @@ func (e *Edge) StartCaddy(t testing.TB, opts CaddyOptions) *CaddyEdge {
 	var id [8]byte
 	rand.Read(id[:])
 	edgeID := hex.EncodeToString(id[:])
-	unregister := caddyx.Register(edgeID, &caddyx.Runtime{Table: e.Routes, Outposts: e.Outposts, Log: opts.Log, Dialer: func(ctx context.Context, a netip.AddrPort) (net.Conn, error) {
+	rt := &caddyx.Runtime{Table: e.Routes, Outposts: e.Outposts, Log: opts.Log, Dialer: func(ctx context.Context, a netip.AddrPort) (net.Conn, error) {
 		return e.Net.DialContextTCPAddrPort(ctx, a)
-	}})
+	}}
+	unregister := caddyx.Register(edgeID, rt)
 
 	httpsPort := freePort(t, true)
 	httpPort := freePort(t, false)
@@ -73,7 +81,7 @@ func (e *Edge) StartCaddy(t testing.TB, opts CaddyOptions) *CaddyEdge {
 		// Pebble's HTTP-01 validation connects to this port.
 		httpPort = opts.Pebble.ValidationPort
 	}
-	ce := &CaddyEdge{HTTPPort: httpPort, HTTPSPort: httpsPort, StateDir: t.TempDir()}
+	ce := &CaddyEdge{HTTPPort: httpPort, HTTPSPort: httpsPort, StateDir: t.TempDir(), rt: rt}
 	// Caddy's data directory comes from the environment; put it back afterwards.
 	if old, ok := os.LookupEnv("XDG_DATA_HOME"); ok {
 		t.Cleanup(func() { os.Setenv("XDG_DATA_HOME", old) })
@@ -88,12 +96,20 @@ func (e *Edge) StartCaddy(t testing.TB, opts CaddyOptions) *CaddyEdge {
 		HTTPPort:    httpPort,
 		HTTPSPort:   httpsPort,
 		Timeouts:    opts.Timeouts,
+
+		RenewCheckInterval: opts.RenewCheckInterval,
 	}
 	if p := opts.Pebble; p != nil {
 		ce.cfg.ACME = &caddyx.ACME{CA: p.DirectoryURL, Email: "ops@example.com", TrustedRoots: []string{p.certFile}}
 	}
 	t.Cleanup(func() {
 		caddyx.Stop()
+		if rt.Certs().Managing() > 0 {
+			// certmagic's jobs finish their storage writes, such as releasing a lock
+			// file, a moment after the event and after Stop, and would race the
+			// removal of the temp directory.
+			time.Sleep(time.Second)
+		}
 		unregister()
 	})
 	if err := caddyx.Start(ce.cfg); err != nil {

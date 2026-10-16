@@ -10,8 +10,8 @@ import (
 	"github.com/hyprsh/tnl/internal/api"
 )
 
-func addRoute(c *api.Client, host, service, outpost string) (api.RouteInfo, error) {
-	return api.Call[api.RouteInfo](context.Background(), c, http.MethodPost, api.PathRoutes,
+func addRoute(c *api.Client, host, service, outpost string) (api.RouteAddReply, error) {
+	return api.Call[api.RouteAddReply](context.Background(), c, http.MethodPost, api.PathRoutes,
 		api.RouteAddRequest{Hostname: host, Service: service, Outpost: outpost})
 }
 

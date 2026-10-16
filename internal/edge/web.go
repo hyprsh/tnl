@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net"
 	"net/netip"
+	"sync/atomic"
 
 	"github.com/hyprsh/tnl/internal/edge/caddyx"
 	"github.com/hyprsh/tnl/internal/edge/conntrack"
@@ -38,15 +39,35 @@ type Web struct {
 	ServiceRoots *x509.CertPool
 }
 
+// certsRef gives the API server the certificate manager, which only exists
+// once Caddy's side is built, after the server is. Without Caddy it waits for
+// nothing.
+type certsRef struct{ p atomic.Pointer[caddyx.Certs] }
+
+// Obtain implements server.Certificates.
+func (r *certsRef) Obtain(ctx context.Context, hostname string) error {
+	if c := r.p.Load(); c != nil {
+		return c.Obtain(ctx, hostname)
+	}
+	return nil
+}
+
 // startWeb builds Caddy's config from the state and the flags, loads it, and
 // keeps the router's table in step with the state. It returns the func that
 // stops Caddy.
 //
 // The Routes are never Caddy config (ADR 0002): a change in the state swaps
 // the table the router reads, and Caddy is loaded once, here.
-func startWeb(w *Web, stateDir string, wgPort int, store *state.Store, tun *tunnel.Tunnel, conns *conntrack.Tracker, live *liveness.Liveness, log *slog.Logger) (stop func(), err error) {
+func startWeb(w *Web, stateDir string, wgPort int, store *state.Store, tun *tunnel.Tunnel, conns *conntrack.Tracker, live *liveness.Liveness, certs *certsRef, log *slog.Logger) (stop func(), err error) {
 	table := new(routes.Mem)
 	outposts := new(routes.MemOutposts)
+	rt := &caddyx.Runtime{
+		Table: table, Outposts: outposts, Log: log, Conns: conns, ServiceRoots: w.ServiceRoots, Liveness: live,
+		Dialer: func(ctx context.Context, a netip.AddrPort) (net.Conn, error) {
+			return tun.Net.DialContextTCPAddrPort(ctx, a)
+		},
+	}
+	manager := rt.Certs()
 	publish := func(st *state.State) {
 		known := make(map[string]netip.AddrPort, len(st.Outposts))
 		for _, o := range st.Outposts {
@@ -62,6 +83,15 @@ func startWeb(w *Web, stateDir string, wgPort int, store *state.Store, tun *tunn
 			})
 		}
 		table.Swap(rs)
+		// Every Route Hostname goes to Caddy's TLS app, now and for every new
+		// Route. Manage only queues work, so it is safe under the store's lock.
+		names := make([]string, 0, len(rs))
+		for _, r := range rs {
+			names = append(names, r.Hostname)
+		}
+		if err := manager.Manage(names...); err != nil {
+			log.Error("could not hand Hostnames to Caddy for certificates", "error", err)
+		}
 	}
 	publish(store.Snapshot())
 	store.OnChange(publish)
@@ -71,12 +101,8 @@ func startWeb(w *Web, stateDir string, wgPort int, store *state.Store, tun *tunn
 		return nil, err
 	}
 	edgeID := hex.EncodeToString(id[:])
-	unregister := caddyx.Register(edgeID, &caddyx.Runtime{
-		Table: table, Outposts: outposts, Log: log, Conns: conns, ServiceRoots: w.ServiceRoots, Liveness: live,
-		Dialer: func(ctx context.Context, a netip.AddrPort) (net.Conn, error) {
-			return tun.Net.DialContextTCPAddrPort(ctx, a)
-		},
-	})
+	unregister := caddyx.Register(edgeID, rt)
+	certs.p.Store(manager)
 	// WireGuard's UDP port and HTTP/3's are the same port when WireGuard is on
 	// the HTTPS port, so HTTP/3 gives way (spec section 5, --wireguard-port).
 	httpsPort := cmp.Or(w.HTTPSPort, 443)

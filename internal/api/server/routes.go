@@ -119,7 +119,7 @@ func (s *Server) routeList(_ context.Context, _ api.Actor, _ struct{}) (api.Rout
 
 // routeAdd saves the Route. The store's change publishers swap it into the
 // router's table, so the next request is served with no Caddy reload.
-func (s *Server) routeAdd(_ context.Context, actor api.Actor, req api.RouteAddRequest) (api.RouteAddReply, error) {
+func (s *Server) routeAdd(ctx context.Context, actor api.Actor, req api.RouteAddRequest) (api.RouteAddReply, error) {
 	// An Outpost's Routes go through itself: the Edge fills in the caller.
 	if own, ok := actor.OutpostName(); ok {
 		if req.Outpost != "" && req.Outpost != own {
@@ -165,11 +165,13 @@ func (s *Server) routeAdd(_ context.Context, actor api.Actor, req api.RouteAddRe
 	}
 	s.cfg.Log.Info("route added", "actor", actor.String(), "hostname", r.Hostname, "outpost", r.Outpost, "service", r.Service)
 	s.afterRouteChange(nil, r)
-	// After the lock, like every warning.
+	// After the lock, like every warning: the checks wait on DNS and on the CA.
 	var warnings []string
 	if s.cfg.Liveness != nil && s.cfg.Liveness.State(r.Outpost) == liveness.Offline {
 		warnings = append(warnings, fmt.Sprintf("Outpost %s is Offline: %s answers 503 until it is back", r.Outpost, r.Hostname))
 	}
+	warnings = append(warnings, s.hostnameDNSWarnings(ctx, host)...)
+	warnings = append(warnings, s.certificateWarnings(ctx, host)...)
 	s.warn(actor, warnings, "route", r.Hostname)
 	return api.RouteAddReply{RouteInfo: routeInfo(r), Warnings: api.Warnings{Warnings: warnings}}, nil
 }
