@@ -84,7 +84,7 @@ func EdgeKey(fileName, filePath, value string) (key *keys.Key, source string, er
 // any), and one of --token-file and --token (the latter in variables only).
 // Every error names the variable, or the --zone line, and none echoes a value.
 func ParseZones(environ, flagLines []string, providers []string) ([]state.DeclaredZone, error) {
-	lines, err := collect(environ, flagLines, ZonePrefix, "--zone")
+	lines, err := collect(environ, flagLines, ZonePrefix, "--zone", false)
 	if err != nil {
 		return nil, err
 	}
@@ -179,7 +179,7 @@ func parseZone(l declaredLine, fromVar bool, providers []string) (state.Declared
 // arguments of the repeated --outpost flag. It refuses a name or key on two
 // lines, and two names whose derived Tunnel addresses collide, naming both.
 func ParseOutposts(environ, flagLines []string) ([]state.DeclaredOutpost, error) {
-	lines, err := collect(environ, flagLines, OutpostPrefix, "--outpost")
+	lines, err := collect(environ, flagLines, OutpostPrefix, "--outpost", false)
 	if err != nil {
 		return nil, err
 	}
