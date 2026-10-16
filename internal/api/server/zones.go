@@ -11,6 +11,7 @@ import (
 
 	"github.com/hyprsh/tnl/internal/api"
 	"github.com/hyprsh/tnl/internal/dnsname"
+	"github.com/hyprsh/tnl/internal/remind"
 	"github.com/hyprsh/tnl/internal/state"
 )
 
@@ -174,10 +175,12 @@ func dnsName(kind, in, noWildcard string) (string, error) {
 
 // CheckDeclaredZones runs the checks of `zone add` for Zones the Edge saved at
 // start, after the lock and without stopping anything: a wildcard token that
-// can't read its DNS zone is logged at error and the Zone is kept, for Caddy to
-// retry like a failed issuance. The other checks warn as they do at `zone add`.
-// It returns when every check has ended.
-func (s *Server) CheckDeclaredZones(ctx context.Context, zones []state.Zone) {
+// can't read its DNS zone is logged at error and the Zone is kept. The check is
+// repeated on the reminder schedule, with an error each time, until it passes;
+// Caddy retries the certificate like any failed issuance meanwhile. The other
+// checks warn as they do at `zone add`. It returns when ctx ends or every check
+// has passed.
+func (s *Server) CheckDeclaredZones(ctx context.Context, zones []state.Zone, sched remind.Schedule, clock remind.Clock) {
 	var wg sync.WaitGroup
 	for _, z := range zones {
 		wg.Add(1)
@@ -185,13 +188,7 @@ func (s *Server) CheckDeclaredZones(ctx context.Context, zones []state.Zone) {
 			defer wg.Done()
 			var warnings []string
 			if z.Mode == state.Wildcard {
-				if s.cfg.Wildcards == nil {
-					return
-				}
-				if _, err := s.checkToken(ctx, z.Provider, z.Token, z.Name); err != nil {
-					// checkToken redacts the token from the message.
-					s.cfg.Log.Error("the declared wildcard Zone's token check failed; the Zone is kept and its certificate is retried",
-						"zone", z.Name, "provider", z.Provider, "error", redact(err.Error(), z.Token))
+				if s.cfg.Wildcards == nil || !s.declaredTokenPasses(ctx, z, sched, clock) {
 					return
 				}
 				warnings = append(warnings, s.declaredCertificate(ctx, z.Name)...)
@@ -201,6 +198,57 @@ func (s *Server) CheckDeclaredZones(ctx context.Context, zones []state.Zone) {
 		}()
 	}
 	wg.Wait()
+}
+
+// declaredTokenPasses checks the Zone's token, and while it fails logs an error
+// and checks again whenever a reminder is due. It reports whether the token
+// passed before ctx ended.
+func (s *Server) declaredTokenPasses(ctx context.Context, z state.Zone, sched remind.Schedule, clock remind.Clock) bool {
+	failed := func(err error, extra ...any) {
+		// checkToken redacts the token from the message; redact again in case
+		// the message came from elsewhere.
+		s.cfg.Log.Error("the declared wildcard Zone's token check failed; the Zone is kept and its certificate is retried",
+			append([]any{"zone", z.Name, "provider", z.Provider, "error", redact(err.Error(), z.Token)}, extra...)...)
+	}
+	_, err := s.checkToken(ctx, z.Provider, z.Token, z.Name)
+	if err == nil {
+		return true
+	}
+	if ctx.Err() != nil {
+		return false
+	}
+	failed(err)
+	if sched.Every == 0 && len(sched.After) == 0 {
+		sched = remind.Standard
+	}
+	tracker := remind.NewTracker(sched, clock)
+	tracker.Begin(z.Name)
+	tick := time.Second
+	if sched.Every > 0 && sched.Every < 4*time.Second {
+		tick = sched.Every / 4
+	}
+	t := time.NewTicker(tick)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return false
+		case <-t.C:
+		}
+		due := tracker.Due()
+		if len(due) == 0 {
+			continue
+		}
+		if _, err := s.checkToken(ctx, z.Provider, z.Token, z.Name); err != nil {
+			if ctx.Err() == nil {
+				failed(err, "failing_for", due[0].Since.Round(time.Second))
+			}
+			continue
+		}
+		since, _ := tracker.End(z.Name)
+		s.cfg.Log.Info("the declared wildcard Zone's token check passes now", "zone", z.Name, "failed_for", since.Round(time.Second))
+		return true
+	}
 }
 
 // declaredCertificate waits, up to CertWait, for a declared wildcard Zone's
