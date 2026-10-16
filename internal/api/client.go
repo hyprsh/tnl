@@ -10,22 +10,38 @@ import (
 	"net"
 	"net/http"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
+
+	"github.com/hyprsh/tnl/internal/addr"
 )
 
-// Client talks to the process whose tnl.sock is in StateDir.
+// Client talks to the process whose tnl.sock is in StateDir, or, when Dial is
+// set, to the Edge's API at 100.64.0.1:TunnelPort inside the Tunnel.
 type Client struct {
 	StateDir string
 	Version  string // this tnl's version; the running process must report exactly it
+
+	// Dial opens a connection through the Tunnel (an Outpost passes its
+	// netstack's dialer). Set, StateDir is unused.
+	Dial func(ctx context.Context, network, address string) (net.Conn, error)
 }
 
-func (c *Client) socket() string { return filepath.Join(c.StateDir, SocketName) }
+func (c *Client) socket() string {
+	if c.Dial != nil {
+		return net.JoinHostPort(addr.Edge.String(), strconv.Itoa(TunnelPort))
+	}
+	return filepath.Join(c.StateDir, SocketName)
+}
 
 func (c *Client) http() *http.Client {
 	return &http.Client{Transport: &http.Transport{
 		DisableKeepAlives: true,
 		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+			if c.Dial != nil {
+				return c.Dial(ctx, "tcp", c.socket())
+			}
 			return (&net.Dialer{}).DialContext(ctx, "unix", c.socket())
 		},
 	}}
@@ -89,6 +105,9 @@ func strictDecoder(raw []byte) *json.Decoder {
 }
 
 func (c *Client) dialError(err error) error {
+	if c.Dial != nil {
+		return fmt.Errorf("can't reach the Edge's API at %s inside the Tunnel: %w", c.socket(), err)
+	}
 	switch {
 	case errors.Is(err, syscall.EACCES), errors.Is(err, syscall.EPERM):
 		return fmt.Errorf("can't open %s: permission denied; run with sudo", c.socket())

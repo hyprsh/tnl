@@ -1,5 +1,5 @@
 // Package edge assembles the Edge's runtime: the state store, WireGuard with
-// one peer per Outpost, the API on tnl.sock, Caddy (web.go) and the start-up
+// one peer per Outpost, the API on tnl.sock and inside the Tunnel, Caddy (web.go) and the start-up
 // log. Caddy's own code stays in edge/caddyx.
 package edge
 
@@ -83,6 +83,10 @@ func Run(ctx context.Context, cfg Config) error {
 	})
 	served := make(chan error, 1)
 	go func() { served <- srv.Serve(ctx, ln, api.ActorLocal) }()
+	tunServed, err := serveTunnelAPI(ctx, srv, tun, store)
+	if err != nil {
+		return refuse(err)
+	}
 
 	if cfg.Web != nil {
 		stopWeb, err := startWeb(cfg.Web, cfg.StateDir, wgPort, store, tun, cfg.Log)
@@ -110,7 +114,11 @@ func Run(ctx context.Context, cfg Config) error {
 	select {
 	case <-ctx.Done():
 		<-served
+		<-tunServed
 		return nil
+	case err := <-tunServed:
+		cfg.Log.Error("the Tunnel API stopped", "error", err)
+		return &logx.LoggedError{Err: err}
 	case err := <-served:
 		cfg.Log.Error("the API stopped", "error", err)
 		return &logx.LoggedError{Err: err}

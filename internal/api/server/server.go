@@ -1,6 +1,6 @@
 // Package server holds the API's handlers and the listeners that serve them.
 // One set of handlers is mounted on each listener with that listener's actor:
-// tnl.sock here, the Tunnel listener in slice 3.
+// tnl.sock and the Tunnel listener.
 package server
 
 import (
@@ -68,9 +68,31 @@ func (s *Server) Handler(actor api.Actor) http.Handler {
 	})
 }
 
+// HandlerBySource serves the API for callers whose actor comes from the
+// connection's source address, as the Tunnel listener's does. who maps the
+// source (host:port) to an actor, or says why there is none; a caller with no
+// actor is refused with 403 and its request goes no further.
+func (s *Server) HandlerBySource(who func(remote string) (api.Actor, error)) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		actor, err := who(r.RemoteAddr)
+		if err != nil {
+			w.Header().Set(api.VersionHeader, s.cfg.Version)
+			s.cfg.Log.Warn("request refused", "source", r.RemoteAddr, "method", r.Method, "path", r.URL.Path, "error", err.Error())
+			s.reply(w, nil, api.Errorf(http.StatusForbidden, "%v", err))
+			return
+		}
+		s.Handler(actor).ServeHTTP(w, r)
+	})
+}
+
 // Serve answers on ln, with every caller the given actor, until ctx ends.
 func (s *Server) Serve(ctx context.Context, ln net.Listener, actor api.Actor) error {
-	hs := &http.Server{Handler: s.Handler(actor), ReadHeaderTimeout: 10 * time.Second}
+	return s.ServeHandler(ctx, ln, s.Handler(actor))
+}
+
+// ServeHandler answers on ln with h until ctx ends.
+func (s *Server) ServeHandler(ctx context.Context, ln net.Listener, h http.Handler) error {
+	hs := &http.Server{Handler: h, ReadHeaderTimeout: 10 * time.Second}
 	errc := make(chan error, 1)
 	go func() { errc <- hs.Serve(ln) }()
 	select {
@@ -130,6 +152,10 @@ func endpoint[Req, Resp any](s *Server, method, path string, fn func(ctx context
 			}
 		}
 		resp, err := fn(r.Context(), actor, req)
+		var ae *api.Error
+		if errors.As(err, &ae) && ae.Status == http.StatusForbidden {
+			s.cfg.Log.Warn("request refused", "actor", actor.String(), "method", r.Method, "path", r.URL.Path, "error", ae.Message)
+		}
 		s.reply(w, resp, err)
 	})
 }
