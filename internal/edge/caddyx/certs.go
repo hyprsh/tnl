@@ -204,7 +204,10 @@ func (c *Certs) holds(name string) bool {
 	st := c.status[name]
 	ok := st != nil && st.NotAfter.After(now)
 	c.mu.Unlock()
-	if ok {
+	// Caddy announces "obtained" before the certificate is in its cache, and a
+	// visitor who arrives in between makes Caddy obtain it again on demand and
+	// fail with a TLS internal error. With Caddy running, the cache decides.
+	if ok && activeTLS() == nil {
 		return true
 	}
 	if na, issuer, found := cachedCert(name); found && na.After(now) {
