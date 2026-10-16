@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/hyprsh/tnl/internal/api"
+	"github.com/hyprsh/tnl/internal/dnsname"
+	"github.com/hyprsh/tnl/internal/state"
 )
 
 // Resolver is the part of *net.Resolver the DNS checks use. Tests inject one.
@@ -118,6 +120,18 @@ func (s *Server) certificateWarnings(ctx context.Context, host string) []string 
 		return []string{fmt.Sprintf("no certificate for %s yet: %v; Caddy keeps retrying", host, err)}
 	}
 	return nil
+}
+
+// coverageWarnings says so when a Hostname in a wildcard Zone is deeper than
+// the wildcard covers: it gets a certificate of its own, and a certificate's
+// names are public in Certificate Transparency logs.
+func (s *Server) coverageWarnings(host string) []string {
+	st := s.cfg.Store.Snapshot()
+	z, in := st.ZoneOf(host)
+	if !in || z.Mode != state.Wildcard || dnsname.WildcardCovers(host, st.WildcardZones()) {
+		return nil
+	}
+	return []string{fmt.Sprintf("%s is deeper than *.%s covers: it gets a certificate of its own, and the name %s will appear in Certificate Transparency logs", host, z.Name, host)}
 }
 
 // edgeAddrs is the Edge's --address as IPs: itself if it is one, else resolved.

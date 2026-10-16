@@ -11,6 +11,11 @@ type Warnings struct {
 // ZoneAddReply answers POST PathZones: the Zone and any warnings.
 type ZoneAddReply struct {
 	ZoneInfo
+	// DNSZone is the provider's DNS zone the Edge found by SOA lookup, and
+	// Covers the names the wildcard certificate covers; both only for a
+	// wildcard Zone.
+	DNSZone string   `json:"dns_zone,omitempty"`
+	Covers  []string `json:"covers,omitempty"`
 	Warnings
 }
 

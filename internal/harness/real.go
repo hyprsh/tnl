@@ -118,6 +118,7 @@ func StartEdgeWith(t testing.TB, opts EdgeOptions) *RealEdge {
 		Address: cmp.Or(opts.Address, "127.0.0.1"), StateDir: dir, Version: harnessVersion, Build: "full", Revision: "test",
 		Log:      logx.New(logx.Options{Level: slog.LevelWarn, Out: testWriter{t}}),
 		Resolver: opts.Resolver, WireGuardPort: opts.WireGuardPort, CertWait: opts.CertWait,
+		DNSResolvers: []string{fakeDNSServer(t)},
 	}
 	if cfg.Resolver == nil {
 		cfg.Resolver = atEdge{}
@@ -143,6 +144,8 @@ func StartEdgeWith(t testing.TB, opts EdgeOptions) *RealEdge {
 			HTTPPort: httpPort, HTTPSPort: httpsPort,
 			ACMECA: p.DirectoryURL, ACMEEmail: "ops@example.com", ACMETrustedRoots: []string{p.certFile}, ServiceRoots: opts.ServiceRoots,
 			AccessLog: opts.AccessLog, DrainTimeout: opts.DrainTimeout,
+			// The fake provider's records are not in DNS to be found.
+			DNSPropagationTimeout: -1,
 		}
 		ce = &CaddyEdge{HTTPPort: httpPort, HTTPSPort: httpsPort, StateDir: dir, Roots: x509.NewCertPool()}
 		ce.Roots.AddCert(p.Root)

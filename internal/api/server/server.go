@@ -69,6 +69,9 @@ type Config struct {
 	// DefaultCertWait.
 	CertWait time.Duration
 
+	// Wildcards does the DNS and Caddy side of wildcard Zones; nil refuses them.
+	Wildcards Wildcards
+
 	// TestDialer test-dials a Route's Service after `route add` and `route
 	// edit`. Nil (no web side) skips the test dial.
 	TestDialer routes.TestDialer
@@ -82,6 +85,20 @@ const DefaultCertWait = 60 * time.Second
 // it, or with an error when ctx ends first; Caddy keeps trying either way.
 type Certificates interface {
 	Obtain(ctx context.Context, hostname string) error
+}
+
+// Wildcards is what wildcard Zones need beyond the state: the DNS provider
+// check, a Caddy reload and the wait for the certificate.
+type Wildcards interface {
+	// Check finds the DNS zone that holds the Zone by SOA lookup and refuses
+	// a token that cannot read it. It returns the DNS zone. No error it
+	// returns carries the token.
+	Check(ctx context.Context, provider, token, zone string) (dnsZone string, err error)
+	// Reload loads Caddy's config for the Zones as they now stand. It cuts
+	// WebSockets and no other stream.
+	Reload() error
+	// Wait waits for a certificate for the name, or until ctx ends.
+	Wait(ctx context.Context, name string) error
 }
 
 // Liveness is the Edge's view of the Outposts, as the handlers read it.

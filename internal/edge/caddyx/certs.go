@@ -15,6 +15,7 @@ import (
 	"github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/modules/caddytls"
 
+	"github.com/hyprsh/tnl/internal/dnsname"
 	"github.com/hyprsh/tnl/internal/remind"
 )
 
@@ -65,6 +66,7 @@ type Certs struct {
 	mu      sync.Mutex
 	issuer  json.RawMessage
 	names   map[string]struct{} // every Hostname handed over
+	wild    []string            // the wildcard Zones, whose certificates cover their Hostnames
 	applied map[string]struct{} // those given a policy in app
 	app     *caddytls.TLS
 	status  map[string]*CertStatus
@@ -105,7 +107,9 @@ func (c *Certs) Manage(names ...string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	for _, n := range names {
-		c.names[normalize(n)] = struct{}{}
+		if n = normalize(n); !c.coveredLocked(n) {
+			c.names[n] = struct{}{}
+		}
 	}
 	err := c.apply()
 	if errors.Is(err, errNotLoaded) {
@@ -165,7 +169,9 @@ func (c *Certs) Retain(names ...string) error {
 	defer c.mu.Unlock()
 	want := make(map[string]struct{}, len(names))
 	for _, n := range names {
-		want[normalize(n)] = struct{}{}
+		if n = normalize(n); !c.coveredLocked(n) {
+			want[n] = struct{}{}
+		}
 	}
 	var drop []string
 	for n := range c.names {
@@ -182,6 +188,21 @@ func (c *Certs) Retain(names ...string) error {
 	}
 	return err
 }
+
+// SetWildcards sets the wildcard Zones. A Hostname one label below one, or its
+// own name, is covered by the Zone's wildcard certificate and gets none of its
+// own; a deeper name is not covered and does. It affects what Manage and
+// Retain take from then on, so the Edge calls it before Retain.
+func (c *Certs) SetWildcards(zones ...string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.wild = make([]string, len(zones))
+	for i, z := range zones {
+		c.wild[i] = normalize(z)
+	}
+}
+
+func (c *Certs) coveredLocked(name string) bool { return dnsname.WildcardCovers(name, c.wild) }
 
 // Stop stops renewing the Hostnames' certificates and forgets them. A
 // certificate already held keeps serving until it expires; nothing asks the CA
