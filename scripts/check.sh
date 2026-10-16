@@ -24,6 +24,9 @@ go test -tags nomysql,outpost "$@" ./cmd/tnl
 
 scripts/check-outpost-deps.sh
 
+# Real Edge and Outpost processes of other versions, and of the latest release tag.
+scripts/check-skew.sh
+
 # The shell scripts parse. (packaging/ tests install.sh and the units; the snapshot
 # build is scripts/check-release.sh, which CI does not run.)
 for f in install.sh scripts/*.sh; do sh -n "$f"; done

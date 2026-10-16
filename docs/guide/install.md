@@ -58,7 +58,7 @@ The script never replaces a full build with the Outpost build, so a host that ru
 
 ### Upgrading
 
-Run the install line again, and pin a version if you want one. It is the upgrade: the binary is swapped atomically and the running units restart. Upgrade the Edge first, then each Outpost whenever convenient.
+Run the install line again, and pin a version if you want one. It is the upgrade: the binary is swapped atomically and the running units restart. Upgrade the Edge first, then each Outpost whenever convenient. [Upgrading](upgrading.md) says which versions work together and which image tags are safe for Outposts.
 
 ### systemd
 
