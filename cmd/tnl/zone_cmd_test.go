@@ -44,27 +44,27 @@ func runningEdge(t *testing.T) {
 	t.Setenv("TNL_STATE_DIR", dir)
 }
 
-// tnl runs a command the way main does and returns what it printed, the error
-// it would print and its exit code.
-func tnl(args ...string) (out string, err error, code int) {
+// tnl runs a command the way main does and returns what it printed, its exit code
+// and the error it would print.
+func tnl(args ...string) (out string, code int, err error) {
 	var buf bytes.Buffer
 	old := stdout
 	stdout = &buf
 	defer func() { stdout = old }()
 	err = commands[args[0]](args[1:])
-	return buf.String(), err, exitCode(err)
+	return buf.String(), exitCode(err), err
 }
 
 func TestZoneAddThenLs(t *testing.T) {
 	runningEdge(t)
-	out, err, code := tnl("zone", "add", "example.com")
+	out, code, err := tnl("zone", "add", "example.com")
 	if err != nil || code != 0 || !strings.Contains(out, "example.com") {
 		t.Fatalf("%q %v %d", out, err, code)
 	}
-	if _, err, _ := tnl("zone", "add", "b.example.com"); err != nil {
+	if _, _, err := tnl("zone", "add", "b.example.com"); err != nil {
 		t.Fatal(err)
 	}
-	out, err, _ = tnl("zone", "ls")
+	out, _, err = tnl("zone", "ls")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +80,7 @@ func TestZoneAddRefusalsExitOne(t *testing.T) {
 	runningEdge(t)
 	tnl("zone", "add", "example.com")
 	for _, name := range []string{"example.com", "not a zone", "*.example.com"} {
-		_, err, code := tnl("zone", "add", name)
+		_, code, err := tnl("zone", "add", name)
 		if err == nil || code != 1 {
 			t.Errorf("%q: err=%v code=%d", name, err, code)
 		}
@@ -91,10 +91,10 @@ func TestStateDirFlagBeatsEnvironment(t *testing.T) {
 	runningEdge(t)
 	dir := os.Getenv("TNL_STATE_DIR")
 	t.Setenv("TNL_STATE_DIR", t.TempDir()) // no Edge here
-	if _, err, _ := tnl("zone", "ls"); err == nil {
+	if _, _, err := tnl("zone", "ls"); err == nil {
 		t.Fatal("used the environment's directory")
 	}
-	if _, err, _ := tnl("zone", "ls", "--state-dir", dir); err != nil {
+	if _, _, err := tnl("zone", "ls", "--state-dir", dir); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -102,7 +102,7 @@ func TestStateDirFlagBeatsEnvironment(t *testing.T) {
 func TestNoEdgeRunningExitsOneWithAClearMessage(t *testing.T) {
 	t.Setenv("TNL_STATE_DIR", t.TempDir())
 	for _, args := range [][]string{{"zone", "ls"}, {"zone", "add", "example.com"}} {
-		_, err, code := tnl(args...)
+		_, code, err := tnl(args...)
 		if code != 1 || err == nil || !strings.Contains(err.Error(), "no Edge is running") {
 			t.Errorf("%v: err=%v code=%d", args, err, code)
 		}

@@ -41,13 +41,6 @@ func parseDaemon(name string, args []string, usageOut io.Writer, define func(*fl
 	return log, nil
 }
 
-// flagGiven reports whether the flag was set on the command line.
-func flagGiven(fs *flag.FlagSet, name string) bool {
-	given := false
-	fs.Visit(func(f *flag.Flag) { given = given || f.Name == name })
-	return given
-}
-
 // runDaemon parses args with parse, sets up the logger, and runs run until
 // SIGINT or SIGTERM cancels its context.
 func runDaemon(args []string, parse func([]string, io.Writer) (*logx.Config, error), run func(context.Context, *slog.Logger) error) error {

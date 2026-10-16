@@ -9,6 +9,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"strconv"
 
 	"github.com/hyprsh/tnl/internal/edge"
 	"github.com/hyprsh/tnl/internal/logx"
@@ -66,4 +67,25 @@ func runEdge(args []string) error {
 		s.cfg.Version, s.cfg.Build = versionInfo()
 		return edge.Run(ctx, s.cfg)
 	})
+}
+
+// envInt reads an integer variable, def if it is unset. A value that isn't an
+// integer is an error, and the value returned is def.
+func envInt(name string, def int) (int, error) {
+	v := os.Getenv(name)
+	if v == "" {
+		return def, nil
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		return def, fmt.Errorf("%s must be an integer, got %q", name, v)
+	}
+	return n, nil
+}
+
+// flagGiven reports whether the flag was set on the command line.
+func flagGiven(fs *flag.FlagSet, name string) bool {
+	given := false
+	fs.Visit(func(f *flag.Flag) { given = given || f.Name == name })
+	return given
 }
