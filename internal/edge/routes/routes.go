@@ -15,7 +15,14 @@ import (
 type Route struct {
 	Hostname string
 	Outpost  string // the Outpost's name
-	Service  string // host:port; http only for now
+	Service  string // host:port
+	// TLS says the Service is https://: the transport speaks TLS to it,
+	// verifying its certificate against ServerName unless InsecureSkipVerify.
+	TLS                bool
+	ServerName         string // the Service URL's host
+	InsecureSkipVerify bool
+	// HostHeader replaces the Visitor's Host header when not empty.
+	HostHeader string
 }
 
 // Table is what the router reads. Lookup must not block.

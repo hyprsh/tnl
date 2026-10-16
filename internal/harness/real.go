@@ -53,6 +53,9 @@ type EdgeOptions struct {
 	// Resolver answers the Edge's DNS checks. Nil answers every name with
 	// 127.0.0.1, the Edge's --address, so no check warns and none uses real DNS.
 	Resolver server.Resolver
+	// ServiceRoots are the roots the Edge trusts for https:// Services, in place
+	// of the system's. Needs Pebble (Caddy).
+	ServiceRoots *x509.CertPool
 }
 
 // atEdge answers every name with the Edge's address.
@@ -99,7 +102,7 @@ func StartEdgeWith(t testing.TB, opts EdgeOptions) *RealEdge {
 		cfg.Web = &edge.Web{
 			HTTPListen: fmt.Sprintf("127.0.0.1:%d", httpPort), HTTPSListen: fmt.Sprintf("127.0.0.1:%d", httpsPort),
 			HTTPPort: httpPort, HTTPSPort: httpsPort,
-			ACMECA: p.DirectoryURL, ACMEEmail: "ops@example.com", ACMETrustedRoots: []string{p.certFile},
+			ACMECA: p.DirectoryURL, ACMEEmail: "ops@example.com", ACMETrustedRoots: []string{p.certFile}, ServiceRoots: opts.ServiceRoots,
 		}
 		ce = &CaddyEdge{HTTPPort: httpPort, HTTPSPort: httpsPort, StateDir: dir, Roots: x509.NewCertPool()}
 		ce.Roots.AddCert(p.Root)

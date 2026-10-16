@@ -122,7 +122,13 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 	out := req.Clone(context.WithValue(ctx, requestIDKey, id))
 	out.URL.Scheme = "http"
+	if route.TLS {
+		out.URL.Scheme = "https"
+	}
 	out.URL.Host = route.Hostname
+	if route.HostHeader != "" {
+		out.Host = route.HostHeader
+	}
 
 	resp, err := t.rt.pool.transport(t.rt, route, addr).RoundTrip(out)
 	if err != nil {

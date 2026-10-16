@@ -115,10 +115,13 @@ type RouteAddRequest struct {
 	Hostname string `json:"hostname"`
 	Service  string `json:"service"`
 	Outpost  string `json:"outpost"`
+	// HostHeader overrides the Host header sent to the Service; "" keeps the Visitor's.
+	HostHeader         string `json:"host_header,omitempty"`
+	InsecureSkipVerify bool   `json:"insecure_skip_verify,omitempty"`
 }
 
 // RouteInfo is a Route as the API shows it. Options holds the Route's options
-// as name=value words; slice 1 has none.
+// as name=value words, such as host-header=app.lan.
 type RouteInfo struct {
 	Hostname string   `json:"hostname"`
 	Outpost  string   `json:"outpost"`
