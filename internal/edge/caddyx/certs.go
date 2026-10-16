@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"maps"
+	"path"
 	"slices"
 	"strings"
 	"sync"
@@ -65,11 +66,16 @@ type Certs struct {
 	log   func() *slog.Logger
 	clock remind.Clock
 
-	mu      sync.Mutex
-	issuer  json.RawMessage
-	names   map[string]struct{} // every Hostname handed over
-	wild    []string            // the wildcard Zones, whose certificates cover their Hostnames
-	applied map[string]struct{} // those given a policy in app
+	mu     sync.Mutex
+	issuer json.RawMessage
+	names  map[string]struct{} // every Hostname handed over
+	wild   []string            // the wildcard Zones
+	// covering are the wildcard Zones whose certificates are held, as of the
+	// last Manage or Retain: only those cover their Hostnames, so a Hostname
+	// keeps its own certificate renewing until the wildcard is in.
+	covering   []string
+	routeNames []string            // what the last Retain was given, for Reconcile
+	applied    map[string]struct{} // those given a policy in app
 	// configured are the names the last config handed to Caddy itself.
 	configured map[string]struct{}
 	app        *caddytls.TLS
@@ -108,7 +114,9 @@ func normalize(name string) string { return strings.ToLower(strings.TrimSuffix(n
 // does not wait. Before Caddy has loaded it only remembers the names, and the
 // load hands them over.
 func (c *Certs) Manage(names ...string) error {
+	covering := c.heldWildcards()
 	c.mu.Lock()
+	c.covering = covering
 	defer c.mu.Unlock()
 	for _, n := range names {
 		if n = normalize(n); !c.coveredLocked(n) {
@@ -169,8 +177,10 @@ func (c *Certs) apply() error {
 // after each change to the state, so a removed Route, however it went, stops
 // renewing.
 func (c *Certs) Retain(names ...string) error {
+	covering := c.heldWildcards()
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.covering, c.routeNames = covering, slices.Clone(names)
 	want := make(map[string]struct{}, len(names))
 	for _, n := range names {
 		if n = normalize(n); !c.coveredLocked(n) {
@@ -193,10 +203,34 @@ func (c *Certs) Retain(names ...string) error {
 	return err
 }
 
+// Settle runs Retain again with the names it last had, for when a wildcard
+// certificate has come in since: the Hostnames it covers stop renewing their
+// own.
+func (c *Certs) Settle() {
+	c.mu.Lock()
+	names := slices.Clone(c.routeNames)
+	c.mu.Unlock()
+	if err := c.Retain(names...); err != nil {
+		c.log().Error("could not settle the certificates", "error", err)
+	}
+}
+
+// heldWildcards lists the wildcard Zones whose certificates, the wildcard's and
+// the apex's, are in Caddy's cache.
+func (c *Certs) heldWildcards() []string {
+	c.mu.Lock()
+	wild := slices.Clone(c.wild)
+	c.mu.Unlock()
+	now := c.clock.Now()
+	return slices.DeleteFunc(wild, func(z string) bool {
+		return slices.ContainsFunc(dnsname.WildcardNames(z), func(n string) bool { return !holdsOwn(n, now) })
+	})
+}
+
 // SetWildcards sets the wildcard Zones. A Hostname one label below one, or its
-// own name, is covered by the Zone's wildcard certificate and gets none of its
-// own; a deeper name is not covered and does. It affects what Manage and
-// Retain take from then on, so the Edge calls it before Retain.
+// own name, is covered by the Zone's wildcard certificate, once that is held,
+// and gets none of its own; a deeper name is not covered and does. It affects
+// what Manage and Retain take from then on, so the Edge calls it before Retain.
 func (c *Certs) SetWildcards(zones ...string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -206,7 +240,7 @@ func (c *Certs) SetWildcards(zones ...string) {
 	}
 }
 
-func (c *Certs) coveredLocked(name string) bool { return dnsname.WildcardCovers(name, c.wild) }
+func (c *Certs) coveredLocked(name string) bool { return dnsname.WildcardCovers(name, c.covering) }
 
 // Stop stops renewing the Hostnames' certificates and forgets them. A
 // certificate already held keeps serving until it expires; nothing asks the CA
@@ -457,6 +491,10 @@ func (c *Certs) process(ev certEvent) {
 	}
 	now := c.clock.Now()
 
+	var stored time.Time
+	if !ev.obtained {
+		stored = storedNotAfter(name)
+	}
 	c.mu.Lock()
 	st := c.statusFor(name)
 	log := c.log()
@@ -468,6 +506,10 @@ func (c *Certs) process(ev certEvent) {
 		since, was := c.failing.End(name)
 		c.broadcast()
 		c.mu.Unlock()
+		if strings.HasPrefix(name, "*.") {
+			// A wildcard is in: its Hostnames stop renewing their own.
+			c.Settle()
+		}
 
 		msg := "certificate obtained"
 		if ev.renewal {
@@ -484,6 +526,10 @@ func (c *Certs) process(ev certEvent) {
 		return
 	}
 
+	if st.NotAfter.IsZero() {
+		// A certificate from before a restart: only storage knows its expiry.
+		st.NotAfter = stored
+	}
 	st.Failed++
 	st.Failures++
 	st.LastError = ev.err
@@ -509,6 +555,25 @@ func (c *Certs) process(ev certEvent) {
 func (c *Certs) broadcast() {
 	close(c.changed)
 	c.changed = make(chan struct{})
+}
+
+// storedNotAfter is the newest expiry among the certificates Caddy's storage
+// holds for the name, expired or not; the zero time if there is none.
+func storedNotAfter(name string) (notAfter time.Time) {
+	if caddy.DefaultStorage == nil {
+		return
+	}
+	issuers, err := caddy.DefaultStorage.List(context.Background(), "certificates", false)
+	if err != nil {
+		return
+	}
+	dir := strings.ReplaceAll(name, "*", "wildcard_")
+	for _, issuer := range issuers {
+		if t := loadNotAfter(path.Join(issuer, dir, dir+".crt")); t.After(notAfter) {
+			notAfter = t
+		}
+	}
+	return
 }
 
 // loadNotAfter reads the certificate at a storage key and returns its expiry,
@@ -537,6 +602,13 @@ func loadNotAfter(key string) time.Time {
 // goroutine calls it every minute; tests call it with their clock moved on.
 func (c *Certs) Tick() {
 	now := c.clock.Now()
+	c.mu.Lock()
+	pending := len(c.wild) > len(c.covering)
+	c.mu.Unlock()
+	if pending {
+		// A wildcard may have come in without an event we could act on.
+		c.Settle()
+	}
 	for _, r := range c.failing.Due() {
 		c.mu.Lock()
 		st := *c.statusFor(r.Key)

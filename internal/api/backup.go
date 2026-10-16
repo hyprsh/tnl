@@ -30,11 +30,11 @@ func (c *Client) Download(ctx context.Context, path string) (io.ReadCloser, http
 	hreq.Header.Set(VersionHeader, c.Version)
 	resp, err := c.http().Do(hreq)
 	if err != nil {
-		return nil, nil, c.dialError(err)
+		return nil, nil, c.link().dialError(err)
 	}
 	if resp.Header.Get(VersionHeader) == "" {
 		resp.Body.Close()
-		return nil, nil, fmt.Errorf("%s answered without a %s header; it is not a tnl", c.socket(), VersionHeader)
+		return nil, nil, fmt.Errorf("%s answered without a %s header; it is not a tnl", c.link().address(), VersionHeader)
 	}
 	if resp.StatusCode >= 400 {
 		defer resp.Body.Close()

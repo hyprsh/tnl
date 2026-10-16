@@ -2,6 +2,7 @@ package harness
 
 import (
 	"context"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/netip"
@@ -24,7 +25,7 @@ func (nowhere) LookupNetIP(_ context.Context, _, host string) ([]netip.Addr, err
 // and the real Edge logs it at warn with the actor.
 func TestRealEdgeZoneAddWarnsAndLogs(t *testing.T) {
 	log := new(lockedBuf)
-	e := StartEdgeWith(t, EdgeOptions{Resolver: nowhere{}, LogOut: log})
+	e := StartEdgeWith(t, EdgeOptions{Resolver: nowhere{}, LogOut: log, LogLevel: slog.LevelWarn})
 	z, err := api.Call[api.ZoneAddReply](context.Background(), e.API, http.MethodPost, api.PathZones, api.ZoneAddRequest{Name: "example.com"})
 	if err != nil {
 		t.Fatal(err)

@@ -25,8 +25,7 @@ func (g *gotToken) Check(_ context.Context, provider, token, zone string) (strin
 func (g *gotToken) Reload() error                         { return nil }
 func (g *gotToken) Wait(context.Context, string) error    { return nil }
 func (g *gotToken) WaitOwn(context.Context, string) error { return nil }
-func (g *gotToken) Retire(...string)                      {}
-func (g *gotToken) Release(...string)                     {}
+func (g *gotToken) Settle()                               {}
 
 func withStdin(t *testing.T, s string) {
 	t.Helper()

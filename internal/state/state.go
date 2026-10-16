@@ -243,6 +243,11 @@ func (s *State) ZoneOf(host string) (Zone, bool) {
 	if !ok {
 		return Zone{}, false
 	}
+	return s.Zone(name)
+}
+
+// Zone returns the Zone of that exact name.
+func (s *State) Zone(name string) (Zone, bool) {
 	for _, z := range s.Zones {
 		if z.Name == name {
 			return z, true

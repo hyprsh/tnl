@@ -17,11 +17,18 @@ tnl route ls
 
 ### From an Outpost host
 
-On an Outpost's host the same commands work through the Outpost's own socket, with no `--outpost`: every Route goes through that Outpost, and you can change or remove only your own. See [Routes from an Outpost](routes-from-an-outpost.md).
+On an Outpost's host, `tnl route add`, `edit`, `rm` and `ls`, and `tnl zone ls`, work through the Outpost's own `tnl.sock`. The Outpost forwards them to the Edge, which takes the Outpost as the caller.
 
 ```sh
 tnl route add app.example.com http://localhost:3000
+tnl route ls
 ```
+
+- There is no `--outpost`: every Route you add goes through this Outpost, and `--outpost` is refused.
+- You can change or remove only Routes through this Outpost, and you can't move one onto another Outpost. A Hostname another Outpost holds is refused, naming the holder.
+- If the Edge can't be reached, the command exits 1 with "Outpost not connected".
+- The `tnl` you run must be the exact version of the running Outpost. If not, it refuses before sending anything and tells you to restart the Outpost's unit.
+- The Outpost logs each Route change made through its CLI at `info`, and the Edge logs it with `actor=outpost:<name>`.
 
 ## Options
 
@@ -49,7 +56,7 @@ The Route is saved either way. A problem is a warning, printed to stderr, with e
 | the certificate fails verification | Pass `--insecure-skip-verify` if the Service's certificate is self-signed or from a private CA. |
 | the TLS handshake failed | The Service didn't speak TLS, or refused the handshake. Check the URL's scheme. |
 
-The test dial is one attempt. A request that meets a refusing Service is retried for up to 5 s, but `route add` does not wait. If the Outpost is Offline or hasn't connected yet, the test dial is skipped.
+The test dial is one attempt. A request that meets a refusing Service is retried for up to 5 s, but `route add` does not wait. If the Outpost is Offline or hasn't connected yet, there is no test dial, and a warning says so.
 
 ## The allowlist
 

@@ -68,7 +68,7 @@ func startConfigured(t *testing.T, version string, actor api.Actor, set func(*se
 	cfg := server.Config{Store: store, Log: lg, Version: version, Build: "full", Revision: "abc123", Role: "edge", Address: "tnl.example.com", WireGuardPort: 51820, StateDir: dir}
 	set(&cfg)
 	srv := server.New(cfg)
-	ln, err := server.ListenSocket(dir)
+	ln, err := api.ListenSocket(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -233,7 +233,7 @@ func TestOtherActorsCannotAddZonesButCanListThem(t *testing.T) {
 
 func TestALiveSocketIsNotReplaced(t *testing.T) {
 	f := start(t, "1.2.3", api.ActorLocal)
-	if _, err := server.ListenSocket(f.dir); err == nil {
+	if _, err := api.ListenSocket(f.dir); err == nil {
 		t.Fatal("second listener on a live socket")
 	}
 }
@@ -250,7 +250,7 @@ func TestAStaleSocketIsReplaced(t *testing.T) {
 	}
 	ln.(*net.UnixListener).SetUnlinkOnClose(false)
 	ln.Close() // leaves the file behind, as a crash would
-	ln2, err := server.ListenSocket(dir)
+	ln2, err := api.ListenSocket(dir)
 	if err != nil {
 		t.Fatal(err)
 	}

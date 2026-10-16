@@ -15,8 +15,8 @@ type JoinRequest struct {
 	Version   string   `json:"version"`
 }
 
-// JoinResponse tells the Outpost its name and the Edge's version.
-type JoinResponse struct {
+// JoinReply tells the Outpost its name and the Edge's version.
+type JoinReply struct {
 	Name        string `json:"name"`
 	EdgeVersion string `json:"edge_version"`
 }

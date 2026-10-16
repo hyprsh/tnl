@@ -1,34 +1,14 @@
 package harness
 
 import (
-	"bytes"
 	"errors"
 	"net/http"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
 	"github.com/hyprsh/tnl/internal/api"
 )
-
-// syncBuffer is a log sink the Edge and the Outposts write to concurrently.
-type syncBuffer struct {
-	mu sync.Mutex
-	b  bytes.Buffer
-}
-
-func (s *syncBuffer) Write(p []byte) (int, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.b.Write(p)
-}
-
-func (s *syncBuffer) String() string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.b.String()
-}
 
 func refusal(t *testing.T, err error, status int, want ...string) {
 	t.Helper()
@@ -45,10 +25,10 @@ func refusal(t *testing.T, err error, status int, want ...string) {
 
 func TestOutpostAddsARouteThroughItselfAndTheEdgeServesItAndLogsTheActor(t *testing.T) {
 	svc := NewHTTPService(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("hello")) }))
-	var edgeLog syncBuffer
-	re := StartEdgeWith(t, EdgeOptions{Pebble: StartPebble(t, PebbleOptions{}), LogOut: &edgeLog, LogInfo: true})
+	var edgeLog lockedBuf
+	re := StartEdgeWith(t, EdgeOptions{Pebble: StartPebble(t, PebbleOptions{}), LogOut: &edgeLog})
 	re.AddZone(t, "test")
-	var outLog syncBuffer
+	var outLog lockedBuf
 	tok := re.AddOutpost(t, "nas")
 	nas, err := re.TryConnectWith(t, "nas", tok, mustTempDir(t), ConnectOptions{LogOut: &outLog})
 	if err != nil {
@@ -89,7 +69,7 @@ func TestOutpostAddsARouteThroughItselfAndTheEdgeServesItAndLogsTheActor(t *test
 	if err != nil || len(zs.Zones) != 1 || zs.Zones[0].Name != "test" {
 		t.Fatalf("zone ls: %+v %v", zs, err)
 	}
-	if _, err := api.Call[api.RouteInfo](ctx(t), nas.CLI, http.MethodPost, api.PathRouteRm, api.RouteRmRequest{Hostname: "a.test"}); err != nil {
+	if _, err := api.Call[api.RouteRmReply](ctx(t), nas.CLI, http.MethodPost, api.PathRouteRm, api.RouteRmRequest{Hostname: "a.test"}); err != nil {
 		t.Fatal(err)
 	}
 }

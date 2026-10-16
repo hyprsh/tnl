@@ -27,8 +27,8 @@ func (s *Server) zoneList(_ context.Context, _ api.Actor, _ struct{}) (api.ZoneL
 }
 
 func (s *Server) zoneAdd(ctx context.Context, actor api.Actor, req api.ZoneAddRequest) (api.ZoneAddReply, error) {
-	if !actor.Local() {
-		return api.ZoneAddReply{}, api.Errorf(http.StatusForbidden, "%s may not add Zones; run `tnl zone add` on the Edge host", actor)
+	if err := localOnly(actor, "add Zones", "zone add"); err != nil {
+		return api.ZoneAddReply{}, err
 	}
 	name, err := zoneName(req.Name)
 	if err != nil {
@@ -36,23 +36,16 @@ func (s *Server) zoneAdd(ctx context.Context, actor api.Actor, req api.ZoneAddRe
 	}
 	z := state.Zone{Name: name, Mode: state.PerHostname}
 	var dnsZone string
-	var covered []string
 	wildcard := req.Provider != "" || req.Token != ""
 	if wildcard {
 		if dnsZone, err = s.checkWildcard(ctx, name, req); err != nil {
 			return api.ZoneAddReply{}, err
 		}
 		z = state.Zone{Name: name, Mode: state.Wildcard, Provider: req.Provider, Token: req.Token}
-		// The Routes the new Zone takes over keep their certificates serving
-		// until the wildcard's is in.
-		covered = coveredRoutes(withZone(s.cfg.Store.Snapshot(), z), name)
-		s.cfg.Wildcards.Retire(covered...)
 	}
 	err = s.cfg.Store.Update(actor, func(st *state.State) error {
-		for _, have := range st.Zones {
-			if have.Name == name {
-				return api.Errorf(http.StatusConflict, "Zone %s already exists", name)
-			}
+		if _, have := st.Zone(name); have {
+			return api.Errorf(http.StatusConflict, "Zone %s already exists", name)
 		}
 		st.Zones = append(st.Zones, z)
 		return nil
@@ -63,19 +56,20 @@ func (s *Server) zoneAdd(ctx context.Context, actor api.Actor, req api.ZoneAddRe
 	s.cfg.Log.Info("zone added", "actor", actor.String(), "zone", z.Name, "mode", z.Mode, "provider", z.Provider) // never the token
 	// After the lock: a slow resolver must not delay another change.
 	var warnings []string
-	reply := api.ZoneAddReply{ZoneInfo: zoneInfo(z), DNSZone: dnsZone}
+	reply := api.ZoneAddReply{ZoneInfo: zoneInfo(z)}
 	if wildcard {
-		reply.Covers = []string{"*." + z.Name, z.Name}
+		reply.WildcardInfo = wildcardInfo(dnsZone, z.Name)
 		w := s.wildcardCertificate(ctx, z.Name)
 		warnings = append(warnings, w...)
-		if len(w) == 0 {
-			s.cfg.Wildcards.Release(covered...)
-		}
 	}
 	warnings = append(warnings, s.zoneDNSWarnings(ctx, z.Name)...)
 	s.warn(actor, warnings, "zone", z.Name)
 	reply.Warnings = api.Warnings{Warnings: warnings}
 	return reply, nil
+}
+
+func wildcardInfo(dnsZone, zone string) api.WildcardInfo {
+	return api.WildcardInfo{DNSZone: dnsZone, Covers: dnsname.WildcardNames(zone)}
 }
 
 // checkWildcard validates a wildcard Zone's request and runs its one hard
@@ -89,10 +83,8 @@ func (s *Server) checkWildcard(ctx context.Context, name string, req api.ZoneAdd
 	case s.cfg.Wildcards == nil:
 		return "", api.Errorf(http.StatusBadRequest, "this Edge cannot get wildcard certificates")
 	}
-	for _, have := range s.cfg.Store.Snapshot().Zones {
-		if have.Name == name {
-			return "", api.Errorf(http.StatusConflict, "Zone %s already exists", name)
-		}
+	if _, have := s.cfg.Store.Snapshot().Zone(name); have {
+		return "", api.Errorf(http.StatusConflict, "Zone %s already exists", name)
 	}
 	return s.checkToken(ctx, req.Provider, req.Token, name)
 }
@@ -105,14 +97,6 @@ func (s *Server) checkToken(ctx context.Context, provider, token, zone string) (
 		return "", api.Errorf(http.StatusBadRequest, "refusing Zone %s: %s", zone, redact(err.Error(), token))
 	}
 	return dnsZone, nil
-}
-
-// withZone is the state with the Zone added, for working out which Zone would
-// hold a Hostname.
-func withZone(st *state.State, z state.Zone) *state.State {
-	c := st.Clone()
-	c.Zones = append(c.Zones, z)
-	return c
 }
 
 // coveredRoutes lists the Hostnames of the Routes that the Zone holds and its
@@ -146,11 +130,12 @@ func (s *Server) wildcardCertificate(ctx context.Context, zone string) []string 
 	ctx, cancel := context.WithTimeout(ctx, s.certWait())
 	defer cancel()
 	// Caddy obtains one certificate per name, the wildcard's and the apex's.
-	for _, name := range []string{"*." + zone, zone} {
+	for _, name := range dnsname.WildcardNames(zone) {
 		if err := s.cfg.Wildcards.Wait(ctx, name); err != nil {
 			return []string{fmt.Sprintf("no certificate for %s yet: %v; Caddy keeps retrying", name, err)}
 		}
 	}
+	s.cfg.Wildcards.Settle()
 	return nil
 }
 

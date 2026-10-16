@@ -31,7 +31,7 @@ func outpostAdd(args []string) error {
 	if len(pos) != 1 {
 		return fmt.Errorf("usage: tnl outpost add <name> [--ttl D]")
 	}
-	r, err := api.Call[api.OutpostAddResponse](context.Background(), c.client(), http.MethodPost, api.PathOutposts, api.OutpostAddRequest{Name: pos[0], TTL: *ttl})
+	r, err := api.Call[api.OutpostAddReply](context.Background(), c.client(), http.MethodPost, api.PathOutposts, api.OutpostAddRequest{Name: pos[0], TTL: *ttl})
 	if err != nil {
 		return err
 	}
@@ -71,7 +71,7 @@ func outpostRm(args []string) error {
 	if len(pos) != 1 {
 		return fmt.Errorf("usage: tnl outpost rm <name> [--with-routes]")
 	}
-	r, err := api.Call[api.OutpostRmResponse](context.Background(), c.client(), http.MethodPost, api.PathOutpostRm,
+	r, err := api.Call[api.OutpostRmReply](context.Background(), c.client(), http.MethodPost, api.PathOutpostRm,
 		api.OutpostRmRequest{Name: pos[0], WithRoutes: *with})
 	if err != nil {
 		return err
@@ -80,6 +80,7 @@ func outpostRm(args []string) error {
 	if len(r.Routes) > 0 {
 		fmt.Fprintf(stdout, "removed its Routes: %s\n", strings.Join(r.Routes, ", "))
 	}
+	printWarnings(r.Warnings)
 	return nil
 }
 
@@ -94,7 +95,7 @@ func outpostRekey(args []string) error {
 	if len(pos) != 1 {
 		return fmt.Errorf("usage: tnl outpost rekey <name> [--ttl D]")
 	}
-	r, err := api.Call[api.OutpostAddResponse](context.Background(), c.client(), http.MethodPost, api.PathOutpostRekey,
+	r, err := api.Call[api.OutpostAddReply](context.Background(), c.client(), http.MethodPost, api.PathOutpostRekey,
 		api.OutpostRekeyRequest{Name: pos[0], TTL: *ttl})
 	if err != nil {
 		return err

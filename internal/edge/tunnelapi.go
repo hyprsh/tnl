@@ -22,18 +22,24 @@ func serveTunnelAPI(ctx context.Context, srv *server.Server, tun *tunnel.Tunnel,
 		return nil, fmt.Errorf("listen on the Tunnel for the API: %w", err)
 	}
 	h := srv.HandlerBySource(func(remote string) (api.Actor, error) {
-		ap, err := netip.ParseAddrPort(remote)
-		if err != nil {
-			return "", fmt.Errorf("no Outpost has the source address %q", remote)
-		}
-		for _, o := range store.Snapshot().Outposts {
-			if o.Address == ap.Addr() {
-				return api.OutpostActor(o.Name), nil
-			}
-		}
-		return "", fmt.Errorf("no Outpost has the Tunnel address %s", ap.Addr())
+		return actorBySource(store.Snapshot(), remote)
 	})
 	done := make(chan error, 1)
 	go func() { done <- srv.ServeHandler(ctx, ln, h) }()
 	return done, nil
+}
+
+// actorBySource is the caller of a Tunnel API connection: the Outpost that has
+// the connection's source address as its Tunnel address.
+func actorBySource(st *state.State, remote string) (api.Actor, error) {
+	ap, err := netip.ParseAddrPort(remote)
+	if err != nil {
+		return "", fmt.Errorf("no Outpost has the source address %q", remote)
+	}
+	for _, o := range st.Outposts {
+		if o.Address == ap.Addr() {
+			return api.OutpostActor(o.Name), nil
+		}
+	}
+	return "", fmt.Errorf("no Outpost has the Tunnel address %s", ap.Addr())
 }

@@ -10,7 +10,7 @@ import (
 )
 
 // requestLines returns the log lines the Edge wrote about requests.
-func requestLines(lines *logCapture) []string {
+func requestLines(lines *lockedBuf) []string {
 	var out []string
 	for _, l := range strings.Split(lines.String(), "\n") {
 		if strings.Contains(l, "msg=request") {
@@ -51,11 +51,11 @@ func TestA404InsideAZoneIsInfoAndOutsideEveryZoneIsDebug(t *testing.T) {
 	for _, l := range got {
 		switch {
 		case strings.Contains(l, "host=inside.test"):
-			if !strings.Contains(l, "level=INFO") || !strings.Contains(l, "status=404") || !strings.Contains(l, `reason="no route"`) {
+			if !strings.Contains(l, "level=info") || !strings.Contains(l, "status=404") || !strings.Contains(l, `reason="no route"`) {
 				t.Errorf("a 404 inside a Zone: %s", l)
 			}
 		case strings.Contains(l, "host=outside.test"):
-			if !strings.Contains(l, "level=DEBUG") || !strings.Contains(l, "status=404") {
+			if !strings.Contains(l, "level=debug") || !strings.Contains(l, "status=404") {
 				t.Errorf("a 404 outside every Zone: %s", l)
 			}
 		}
@@ -74,8 +74,8 @@ func TestEverySelfMadeResponseGetsOneLineWithTheSpecsFields(t *testing.T) {
 		t.Fatalf("%d request lines, want 1:\n%s", len(got), strings.Join(got, "\n"))
 	}
 	l := got[0]
-	for _, want := range []string{"level=INFO", "id=", "visitor=127.0.0.1:", "host=ghost.test", "method=GET", "path=/page", "proto=HTTP/2.0",
-		"status=502", "duration=", "bytes_in=0", "bytes_out=", `reason="outpost offline"`, "outpost=gone"} {
+	for _, want := range []string{"level=info", "id=", "visitor=127.0.0.1:", "host=ghost.test", "method=GET", "path=/page", "proto=HTTP/2.0",
+		"status=503", "duration=", "bytes_in=0", "bytes_out=", `reason="outpost offline"`, "outpost=gone"} {
 		if !strings.Contains(l, want) {
 			t.Errorf("line lacks %q: %s", want, l)
 		}
@@ -117,7 +117,7 @@ func successfulRequests(t *testing.T, access bool) {
 		if len(got) != 2 {
 			t.Fatalf("with --access-log: %d lines, want 2:\n%s", len(got), strings.Join(got, "\n"))
 		}
-		if l := got[0]; !strings.Contains(l, "level=INFO") || !strings.Contains(l, "status=200") || !strings.Contains(l, "path=/hello") ||
+		if l := got[0]; !strings.Contains(l, "level=info") || !strings.Contains(l, "status=200") || !strings.Contains(l, "path=/hello") ||
 			!strings.Contains(l, "bytes_out=5") || !strings.Contains(l, "outpost=home") || strings.Contains(l, "reason") {
 			t.Errorf("the successful request: %s", l)
 		}
