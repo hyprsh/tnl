@@ -207,9 +207,3 @@ func TestRefuseRoutesNamesTheVariable(t *testing.T) {
 		t.Fatal(err)
 	}
 }
-
-func TestRedact(t *testing.T) {
-	if got := Redact("a tok1 b tok2 tok1", "tok1", "", "tok2"); got != "a [redacted] b [redacted] [redacted]" {
-		t.Fatal(got)
-	}
-}

@@ -72,6 +72,18 @@ func TestAJoinTokenIsAFriendlyError(t *testing.T) {
 	}
 }
 
+func TestNoPartOfTheInputIsEchoed(t *testing.T) {
+	for in, needle := range map[string]string{"hunter2hunter2.rest": "hunter", "wg1.abcd": "wg1", "nonsense-secret": "nonsense", "tnlc2secretsecret.x": "secret"} {
+		_, err := Decode(in)
+		if err == nil || strings.Contains(err.Error(), needle) {
+			t.Errorf("%q: the error echoes the input: %v", in, err)
+		}
+	}
+	if _, err := Decode("tnlc2.abcd"); err == nil || !strings.Contains(err.Error(), `"tnlc2"`) {
+		t.Errorf("a tnlc marker is named: %v", err)
+	}
+}
+
 func TestDamagedCredentialsAreRefusedWithoutEchoingThem(t *testing.T) {
 	for _, in := range []string{"", "tnlc1.", "tnlc1.!!!", "tnlc1.e30", "tnlc2.abc", "secret-looking-thing"} {
 		_, err := Decode(in)

@@ -16,6 +16,7 @@ import (
 
 	"github.com/hyprsh/tnl/internal/addr"
 	"github.com/hyprsh/tnl/internal/keys"
+	"github.com/hyprsh/tnl/internal/token"
 )
 
 // Marker starts every credential of this format.
@@ -66,11 +67,7 @@ func Decode(s string) (Credential, error) {
 	}
 	payload, ok := strings.CutPrefix(s, Marker)
 	if !ok {
-		head, _, _ := strings.Cut(s, ".")
-		if len(head) > 12 {
-			head = head[:12]
-		}
-		return Credential{}, fmt.Errorf("this is not an Outpost credential this tnl can read (marker %q, expected %q): a newer tnl may be needed", head, strings.TrimSuffix(Marker, "."))
+		return Credential{}, fmt.Errorf("this is not an Outpost credential this tnl can read (%s, expected %q): a newer tnl may be needed", token.DescribeMarker(s), strings.TrimSuffix(Marker, "."))
 	}
 	raw, err := base64.RawURLEncoding.DecodeString(payload)
 	if err != nil {

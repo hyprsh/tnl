@@ -60,11 +60,22 @@ func text(k keys.Key) string { b, _ := k.MarshalText(); return string(b) }
 type UnknownMarkerError struct{ Token string }
 
 func (e *UnknownMarkerError) Error() string {
-	head, _, _ := strings.Cut(e.Token, ".")
-	if len(head) > 12 {
-		head = head[:12]
+	return fmt.Sprintf("this is not a join token this tnl can read (%s, expected %q): a newer tnl is needed; install the version the Edge runs", DescribeMarker(e.Token), strings.TrimSuffix(Marker, "."))
+}
+
+// DescribeMarker says which marker s starts with, for a message about text this
+// tnl can't read. It names the marker only when it is one of tnl's own (tnl2,
+// tnlc3, ...), and never any other part of s, which may be a key, a token or
+// a credential.
+func DescribeMarker(s string) string {
+	head, _, _ := strings.Cut(strings.TrimSpace(s), ".")
+	if rest, ok := strings.CutPrefix(head, "tnl"); ok {
+		rest = strings.TrimPrefix(rest, "c")
+		if n := len(rest); n > 0 && n <= 4 && strings.Trim(rest, "0123456789") == "" {
+			return fmt.Sprintf("marker %q", head)
+		}
 	}
-	return fmt.Sprintf("this is not a join token this tnl can read (marker %q, expected %q): a newer tnl is needed; install the version the Edge runs", head, strings.TrimSuffix(Marker, "."))
+	return "no marker of tnl's"
 }
 
 // Decode parses a token. A marker other than tnl1 gives *UnknownMarkerError.
