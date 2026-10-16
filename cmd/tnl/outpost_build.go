@@ -13,6 +13,7 @@ func init() {
 	commands["edge"] = func([]string) error { return errors.New("this build is Outpost-only; it has no Edge") }
 	commands["outpost"] = needsFullBuild("outpost")
 	routeGroup.subs["add"] = needsFullBuild("route add")
+	routeGroup.subs["rm"] = needsFullBuild("route rm")
 	zoneGroup.subs["add"] = needsFullBuild("zone add")
 }
 

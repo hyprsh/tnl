@@ -33,6 +33,16 @@ type Config struct {
 	// Address and WireGuardPort go into join tokens: what Outposts dial.
 	Address       string
 	WireGuardPort int
+
+	// Conns closes Tunnel connections after a change that ends them. Nil
+	// closes nothing.
+	Conns ConnCloser
+}
+
+// ConnCloser is the connection tracker as the handlers see it, in the
+// domain's terms. The handlers call it after the store's lock is released.
+type ConnCloser interface {
+	CloseRoute(hostname string)
 }
 
 // Server is the handler set. It has no listener of its own.
@@ -56,6 +66,7 @@ func (s *Server) routes() {
 	endpoint(s, http.MethodPost, api.PathOutposts, s.outpostAdd)
 	endpoint(s, http.MethodGet, api.PathRoutes, s.routeList)
 	endpoint(s, http.MethodPost, api.PathRoutes, s.routeAdd)
+	endpoint(s, http.MethodPost, api.PathRouteRm, s.routeRm)
 }
 
 type actorKey struct{}
