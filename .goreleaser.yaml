@@ -1,0 +1,60 @@
+# Release pipeline (spec section 9). The tag workflow runs this; a snapshot
+# (`goreleaser release --snapshot --clean`) builds everything but publishes nothing.
+version: 2
+
+project_name: tnl
+
+before:
+  hooks:
+    # Each release attaches its own install.sh, which installs that release's version.
+    - sh scripts/stamp-install.sh {{ .Version }} build/install.sh
+
+builds:
+  - id: full
+    main: ./cmd/tnl
+    binary: tnl
+    tags: [nomysql]
+    env: [CGO_ENABLED=0]
+    goos: [linux]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    ldflags: ["-s -w -X main.version={{ .Version }}"]
+  - id: outpost
+    main: ./cmd/tnl
+    binary: tnl
+    tags: [nomysql, outpost]
+    env: [CGO_ENABLED=0]
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    ldflags: ["-s -w -X main.version={{ .Version }}"]
+
+archives:
+  - id: full
+    ids: [full]
+    formats: [tar.gz]
+    name_template: "tnl_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files: &files
+      - LICENSE
+      - NOTICE
+      - README.md
+      - src: packaging/systemd/tnl-edge.service
+        dst: systemd/tnl-edge.service
+      - src: packaging/systemd/tnl-outpost.service
+        dst: systemd/tnl-outpost.service
+  - id: outpost
+    ids: [outpost]
+    formats: [tar.gz]
+    name_template: "tnl-outpost_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files: *files
+
+checksum:
+  name_template: SHA256SUMS
+  algorithm: sha256
+
+changelog:
+  disable: true
+
+release:
+  extra_files:
+    - glob: build/install.sh

@@ -1,0 +1,57 @@
+name: release
+# A vX.Y.Z tag publishes the archives, SHA256SUMS, install.sh and both images,
+# each with a GitHub artifact attestation (check with `gh attestation verify`).
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+*"]
+permissions:
+  contents: write # the GitHub release
+  packages: write # ghcr.io
+  id-token: write # attestations are signed with the workflow's identity
+  attestations: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CGO_ENABLED: "0"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # GoReleaser reads the tag history
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/attest-build-provenance@v3
+        with:
+          subject-path: |
+            dist/*.tar.gz
+            dist/SHA256SUMS
+            build/install.sh
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - run: scripts/build-images.sh "$GITHUB_REF_NAME" dist push
+      - id: digests
+        run: |
+          echo "tnl=$(cat dist/digest-tnl.txt)" >> "$GITHUB_OUTPUT"
+          echo "outpost=$(cat dist/digest-tnl-outpost.txt)" >> "$GITHUB_OUTPUT"
+      - uses: actions/attest-build-provenance@v3
+        with:
+          subject-name: ghcr.io/hyprsh/tnl
+          subject-digest: ${{ steps.digests.outputs.tnl }}
+          push-to-registry: true
+      - uses: actions/attest-build-provenance@v3
+        with:
+          subject-name: ghcr.io/hyprsh/tnl-outpost
+          subject-digest: ${{ steps.digests.outputs.outpost }}
+          push-to-registry: true

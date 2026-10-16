@@ -1,0 +1,19 @@
+# An Outpost, on the network of the Services it forwards to. Replace X.Y.Z with
+# the exact release, and `apps` with that network. The token comes from
+# `docker exec tnl tnl outpost add <name>` on the Edge. It works once; the named
+# volume keeps what the Outpost saves, so a restart needs no token.
+# (The declared setup, where the Outpost lists its own Routes, comes later.)
+services:
+  tnl-outpost:
+    image: ghcr.io/hyprsh/tnl-outpost:X.Y.Z
+    container_name: tnl-outpost
+    restart: unless-stopped
+    environment:
+      TNL_TOKEN: paste-the-token-here
+    volumes: ["tnl-outpost:/var/lib/tnl-outpost"]
+    networks: [apps]
+volumes:
+  tnl-outpost:
+networks:
+  apps:
+    external: true

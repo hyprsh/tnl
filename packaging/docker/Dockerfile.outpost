@@ -1,0 +1,13 @@
+# The Outpost-only build. The context holds linux/<arch>/tnl, laid out by scripts/build-images.sh.
+# The state directory is made on the build platform and owned by 65532, so a
+# named volume inherits that ownership. There is no VOLUME and no HEALTHCHECK.
+FROM --platform=$BUILDPLATFORM busybox:stable AS state
+RUN mkdir -m 0700 /state
+
+FROM gcr.io/distroless/static-debian12:nonroot
+ARG TARGETPLATFORM
+COPY ${TARGETPLATFORM}/tnl /usr/local/bin/tnl
+COPY --from=state --chown=65532:65532 /state /var/lib/tnl-outpost
+ENV TNL_STATE_DIR=/var/lib/tnl-outpost
+ENTRYPOINT ["tnl"]
+CMD ["connect"]
