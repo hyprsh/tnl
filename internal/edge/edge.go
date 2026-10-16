@@ -35,6 +35,8 @@ type Config struct {
 	// Started, if set, is called once the Edge is serving. The harness, and
 	// the ticket that adds Caddy, use it to reach the running parts.
 	Started func(*Running)
+	// Resolver does the DNS checks that warn; nil uses the system's.
+	Resolver server.Resolver
 }
 
 // Running is what a started Edge exposes.
@@ -82,7 +84,7 @@ func Run(ctx context.Context, cfg Config) error {
 	srv := server.New(server.Config{
 		Conns: conns,
 		Store: store, Log: cfg.Log, Version: cfg.Version, Build: cfg.Build, Role: api.RoleEdge,
-		Address: cfg.Address, WireGuardPort: wgPort,
+		Address: cfg.Address, WireGuardPort: wgPort, Resolver: cfg.Resolver,
 	})
 	served := make(chan error, 1)
 	go func() { served <- srv.Serve(ctx, ln, api.ActorLocal) }()
