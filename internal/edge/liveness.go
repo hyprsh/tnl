@@ -14,6 +14,7 @@ import (
 
 	"github.com/hyprsh/tnl/internal/addr"
 	"github.com/hyprsh/tnl/internal/api"
+	"github.com/hyprsh/tnl/internal/declare"
 	"github.com/hyprsh/tnl/internal/edge/liveness"
 	"github.com/hyprsh/tnl/internal/state"
 	"github.com/hyprsh/tnl/internal/tunnel"
@@ -89,7 +90,8 @@ func serveLiveness(ctx context.Context, l *liveness.Liveness, h livenessHooks, t
 			}
 			l.Heard(name)
 			l.SetVersion(name, ping.Version)
-			if pong, err := wire.AppendPong(nil, wire.Pong{Version: h.Version, Inside: l.State(name) != liveness.Incompatible}); err == nil {
+			inside := l.State(name) != liveness.Incompatible
+			if pong, err := wire.AppendPong(nil, answerPing(h.Version, inside, store.Snapshot(), name, ping)); err == nil {
 				conn.WriteTo(pong, from)
 			}
 		}
@@ -116,6 +118,21 @@ func serveLiveness(ctx context.Context, l *liveness.Liveness, h livenessHooks, t
 		}
 	}()
 	return nil
+}
+
+// answerPing is the Edge's answer to an Outpost's ping. A ping with a
+// Declaration digest is told whether it matches the stored copy, and the digest
+// of the Outpost's Routes and waiting lines as the Edge has them.
+func answerPing(version string, inside bool, st *state.State, outpost string, ping wire.Ping) wire.Pong {
+	pong := wire.Pong{Version: version, Inside: inside}
+	if ping.Declaration != nil {
+		stored := st.DeclarationDigest(outpost)
+		pong.Declaration = &wire.DeclarationAnswer{
+			Matches: stored == [declare.DigestSize]byte(*ping.Declaration),
+			Routes:  declare.RoutesDigest(st.Entries(outpost)),
+		}
+	}
+	return pong
 }
 
 // pollWireGuard counts bytes arriving from a peer as hearing from its Outpost,

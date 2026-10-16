@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/hyprsh/tnl/internal/addr"
+	"github.com/hyprsh/tnl/internal/declare"
 	"github.com/hyprsh/tnl/internal/dnsname"
 	"github.com/hyprsh/tnl/internal/keys"
 	"github.com/hyprsh/tnl/internal/statefile"
@@ -31,7 +32,7 @@ const (
 
 // State is one immutable-by-convention snapshot of everything the Edge must
 // remember. Never modify a State you got from Store.Snapshot; Update hands its
-// function a private copy. Declarations arrive in slice 8.
+// function a private copy.
 type State struct {
 	Version    int
 	PrivateKey keys.Key // the Edge's WireGuard private key
@@ -42,6 +43,8 @@ type State struct {
 	Outposts []Outpost
 	Routes   []Route
 	Zones    []Zone
+	// Declarations holds the lines of each Outpost that declares its Routes.
+	Declarations []Declaration
 }
 
 // Outpost is one joined or pending Outpost.
@@ -127,6 +130,11 @@ func (s *State) Clone() *State {
 	}
 	c.Routes = append([]Route(nil), s.Routes...)
 	c.Zones = append([]Zone(nil), s.Zones...)
+	c.Declarations = nil
+	for _, d := range s.Declarations {
+		d.Lines = append([]DeclaredLine(nil), d.Lines...)
+		c.Declarations = append(c.Declarations, d)
+	}
 	return &c
 }
 
@@ -224,7 +232,7 @@ func (s *State) Validate() error {
 			return invalid(e, "%v", err)
 		}
 	}
-	return nil
+	return s.validateDeclarations(names)
 }
 
 // InZone reports whether host is a Zone's own name or lies below one.
@@ -290,6 +298,22 @@ type diskState struct {
 	Outposts   []diskOutpost `json:"outposts"`
 	Routes     []diskRoute   `json:"routes"`
 	Zones      []diskZone    `json:"zones"`
+	// Declarations is absent from a file written before Declarations existed,
+	// which reads as no Outpost declaring.
+	Declarations []diskDeclaration `json:"declarations,omitempty"`
+}
+
+type diskDeclaration struct {
+	Outpost string     `json:"outpost"`
+	Routes  []diskLine `json:"routes"`
+}
+
+type diskLine struct {
+	Hostname           string    `json:"hostname"`
+	Service            string    `json:"service"`
+	InsecureSkipVerify bool      `json:"insecure_skip_verify,omitempty"`
+	HostHeader         string    `json:"host_header,omitempty"`
+	Declared           time.Time `json:"declared"`
 }
 
 type diskOutpost struct {
@@ -339,6 +363,14 @@ func encode(s *State) ([]byte, error) {
 	}
 	for _, z := range s.Zones {
 		d.Zones = append(d.Zones, diskZone{Name: z.Name, Mode: string(z.Mode), Provider: z.Provider, Token: z.Token})
+	}
+	for _, decl := range s.Declarations {
+		dd := diskDeclaration{Outpost: decl.Outpost, Routes: []diskLine{}}
+		for _, l := range decl.Lines {
+			dd.Routes = append(dd.Routes, diskLine{Hostname: l.Hostname, Service: l.Service, InsecureSkipVerify: l.InsecureSkipVerify,
+				HostHeader: l.HostHeader, Declared: l.Declared})
+		}
+		d.Declarations = append(d.Declarations, dd)
 	}
 	b, err := json.MarshalIndent(d, "", "  ")
 	return append(b, '\n'), err
@@ -396,6 +428,16 @@ func decode(raw []byte) (*State, error) {
 	}
 	for _, z := range d.Zones {
 		s.Zones = append(s.Zones, Zone{Name: z.Name, Mode: Mode(z.Mode), Provider: z.Provider, Token: z.Token})
+	}
+	for _, dd := range d.Declarations {
+		decl := Declaration{Outpost: dd.Outpost}
+		for _, l := range dd.Routes {
+			decl.Lines = append(decl.Lines, DeclaredLine{
+				Line:     declare.Line{Hostname: l.Hostname, Service: l.Service, InsecureSkipVerify: l.InsecureSkipVerify, HostHeader: l.HostHeader},
+				Declared: l.Declared,
+			})
+		}
+		s.Declarations = append(s.Declarations, decl)
 	}
 	if err := s.Validate(); err != nil {
 		return nil, err

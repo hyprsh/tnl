@@ -93,6 +93,14 @@ func distance(a, b string) int {
 // the repeated --route flag. Setting both forms is refused. Every error names
 // the variable, or the --route line.
 func ParseRoutes(environ, flagLines []string) (Declaration, error) {
+	d, _, err := ParseRoutesLabelled(environ, flagLines)
+	return d, err
+}
+
+// ParseRoutesLabelled is ParseRoutes that also returns each Hostname's label:
+// the variable that declared it, or the --route text. The Outpost's log names
+// a line by it; the Edge never sees it.
+func ParseRoutesLabelled(environ, flagLines []string) (Declaration, map[string]string, error) {
 	type line struct{ name, text string }
 	var lines []line
 	for _, kv := range environ {
@@ -101,7 +109,7 @@ func ParseRoutes(environ, flagLines []string) (Declaration, error) {
 			continue
 		}
 		if len(flagLines) > 0 {
-			return nil, fmt.Errorf("--route and %s are both set: declare Routes one way", name)
+			return nil, nil, fmt.Errorf("--route and %s are both set: declare Routes one way", name)
 		}
 		lines = append(lines, line{name, value})
 	}
@@ -114,21 +122,21 @@ func ParseRoutes(environ, flagLines []string) (Declaration, error) {
 	for _, l := range lines {
 		if strings.HasPrefix(l.name, RoutePrefix) {
 			if err := checkLabel(strings.TrimPrefix(l.name, RoutePrefix)); err != nil {
-				return nil, fmt.Errorf("%s: %w", l.name, err)
+				return nil, nil, fmt.Errorf("%s: %w", l.name, err)
 			}
 		}
 		r, err := parseRoute(l.text)
 		if err != nil {
-			return nil, fmt.Errorf("%s: %w", l.name, err)
+			return nil, nil, fmt.Errorf("%s: %w", l.name, err)
 		}
 		if other, dup := seen[r.Hostname]; dup {
-			return nil, fmt.Errorf("%s: %s is also on %s", l.name, r.Hostname, other)
+			return nil, nil, fmt.Errorf("%s: %s is also on %s", l.name, r.Hostname, other)
 		}
 		seen[r.Hostname] = l.name
 		d = append(d, r)
 	}
 	sort.Slice(d, func(i, j int) bool { return d[i].Hostname < d[j].Hostname })
-	return d, nil
+	return d, seen, nil
 }
 
 func checkLabel(label string) error {
