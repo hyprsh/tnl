@@ -1,8 +1,6 @@
 package server_test
 
 import (
-	"context"
-	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -27,11 +25,6 @@ func offlineFixture(t *testing.T, live *liveness.Liveness) *fixture {
 	return f
 }
 
-func addRouteReply(f *fixture) (api.RouteAddReply, error) {
-	return api.Call[api.RouteAddReply](context.Background(), f.client, http.MethodPost, api.PathRoutes,
-		api.RouteAddRequest{Hostname: "app.example.com", Service: "http://localhost:3000", Outpost: "nas"})
-}
-
 func TestRouteAddWarnsWhenTheOutpostIsOffline(t *testing.T) {
 	now := time.Now()
 	live := liveness.New(liveness.Config{Now: func() time.Time { return now }})
@@ -39,7 +32,7 @@ func TestRouteAddWarnsWhenTheOutpostIsOffline(t *testing.T) {
 	now = now.Add(2 * time.Minute)
 	f := offlineFixture(t, live)
 
-	r, err := addRouteReply(f)
+	r, err := addRoute(f.client, "app.example.com", "http://localhost:3000", "nas")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +51,7 @@ func TestRouteAddDoesNotWarnForAnOnlineOutpost(t *testing.T) {
 	live := liveness.New(liveness.Config{})
 	live.Seed("nas")
 	f := offlineFixture(t, live)
-	r, err := addRouteReply(f)
+	r, err := addRoute(f.client, "app.example.com", "http://localhost:3000", "nas")
 	if err != nil {
 		t.Fatal(err)
 	}

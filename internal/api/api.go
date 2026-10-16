@@ -107,8 +107,8 @@ type OutpostAddRequest struct {
 	TTL string `json:"ttl,omitempty"`
 }
 
-// OutpostAddResponse carries the join token, which is shown once and never stored.
-type OutpostAddResponse struct {
+// OutpostAddReply carries the join token, which is shown once and never stored.
+type OutpostAddReply struct {
 	Name    string `json:"name"`
 	Address string `json:"address"` // the Outpost's Tunnel address
 	Token   string `json:"token"`

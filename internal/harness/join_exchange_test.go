@@ -190,11 +190,11 @@ func TestAJoinedOutpostCallingTheJoinPathAgainGets403(t *testing.T) {
 	_, pub, _ := keys.Generate()
 	req := api.JoinRequest{PublicKey: pub, Version: harnessVersion}
 	var ae *api.Error
-	_, err := api.Call[api.JoinResponse](context.Background(), j.API, http.MethodPost, api.PathJoin, req)
+	_, err := api.Call[api.JoinReply](context.Background(), j.API, http.MethodPost, api.PathJoin, req)
 	if !errors.As(err, &ae) || ae.Status != http.StatusForbidden {
 		t.Fatalf("err = %v", err)
 	}
-	_, err = api.Call[api.JoinResponse](context.Background(), re.API, http.MethodPost, api.PathJoin, req)
+	_, err = api.Call[api.JoinReply](context.Background(), re.API, http.MethodPost, api.PathJoin, req)
 	if !errors.As(err, &ae) || ae.Status != http.StatusForbidden {
 		t.Fatalf("local: err = %v", err)
 	}

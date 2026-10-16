@@ -23,11 +23,12 @@ func routeRm(args []string) error {
 	if len(pos) != 1 {
 		return fmt.Errorf("usage: tnl route rm <hostname>")
 	}
-	r, err := api.Call[api.RouteInfo](context.Background(), c.client(), http.MethodPost, api.PathRouteRm,
+	r, err := api.Call[api.RouteRmReply](context.Background(), c.client(), http.MethodPost, api.PathRouteRm,
 		api.RouteRmRequest{Hostname: pos[0]})
 	if err != nil {
 		return err
 	}
 	fmt.Fprintf(stdout, "removed Route %s (was %s through Outpost %s)\n", r.Hostname, r.Service, r.Outpost)
+	printWarnings(r.Warnings)
 	return nil
 }

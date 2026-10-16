@@ -3,7 +3,6 @@ package server_test
 import (
 	"context"
 	"errors"
-	"net/http"
 	"strings"
 	"sync"
 	"testing"
@@ -63,11 +62,6 @@ func certFixture(t *testing.T, c server.Certificates, wait time.Duration) *fixtu
 	return f
 }
 
-func routeAddReply(f *fixture, host string) (api.RouteAddReply, error) {
-	return api.Call[api.RouteAddReply](context.Background(), f.client, http.MethodPost, api.PathRoutes,
-		api.RouteAddRequest{Hostname: host, Service: "http://localhost:3000", Outpost: "nas"})
-}
-
 // route add replies only once the certificate is held, and the wait is after
 // the lock: another change goes through meanwhile.
 func TestRouteAddWaitsForTheCertificateAfterTheLock(t *testing.T) {
@@ -75,7 +69,10 @@ func TestRouteAddWaitsForTheCertificateAfterTheLock(t *testing.T) {
 	f := certFixture(t, c, time.Minute)
 
 	replied := make(chan error, 1)
-	go func() { _, err := routeAddReply(f, "app.example.com"); replied <- err }()
+	go func() {
+		_, err := addRoute(f.client, "app.example.com", "http://localhost:3000", "nas")
+		replied <- err
+	}()
 
 	deadline := time.Now().Add(5 * time.Second)
 	for len(c.askedFor()) == 0 && time.Now().Before(deadline) {
@@ -101,7 +98,7 @@ func TestRouteAddWaitsForTheCertificateAfterTheLock(t *testing.T) {
 func TestRouteAddWarnsWhenTheCertificateFailsAndKeepsTheRoute(t *testing.T) {
 	c := &fakeCerts{err: errors.New("the CA said no")}
 	f := certFixture(t, c, time.Minute)
-	r, err := routeAddReply(f, "app.example.com")
+	r, err := addRoute(f.client, "app.example.com", "http://localhost:3000", "nas")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,7 +123,7 @@ func TestRouteAddWaitEndsAtTheLimitWithAWarning(t *testing.T) {
 	c := &fakeCerts{gate: make(chan struct{})}
 	f := certFixture(t, c, 100*time.Millisecond)
 	start := time.Now()
-	r, err := routeAddReply(f, "app.example.com")
+	r, err := addRoute(f.client, "app.example.com", "http://localhost:3000", "nas")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,7 +138,7 @@ func TestRouteAddWarnsWhenTheHostnameDoesNotPointAtTheEdge(t *testing.T) {
 		"app.nowhere.test":     "doesn't resolve",
 	} {
 		f := certFixture(t, &fakeCerts{}, time.Minute)
-		r, err := routeAddReply(f, host)
+		r, err := addRoute(f.client, host, "http://localhost:3000", "nas")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -156,7 +153,7 @@ func TestRouteAddWarnsWhenTheHostnameDoesNotPointAtTheEdge(t *testing.T) {
 
 func TestRouteAddToAHostnamePointingAtTheEdgeHasNoWarnings(t *testing.T) {
 	f := certFixture(t, &fakeCerts{}, time.Minute)
-	r, err := routeAddReply(f, "app.example.com")
+	r, err := addRoute(f.client, "app.example.com", "http://localhost:3000", "nas")
 	if err != nil {
 		t.Fatal(err)
 	}

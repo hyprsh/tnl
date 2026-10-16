@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"slices"
@@ -134,8 +135,8 @@ func TestZoneAddWildcardRefusesAnUnknownProviderAndAMissingToken(t *testing.T) {
 func TestTheTokenIsInNoCaddyConfigNoLogAndNoError(t *testing.T) {
 	fake := StartFakeDNS(t, "example.test", dnsToken)
 	fake.FailChallenges()
-	logs := new(syncBuffer)
-	re := StartEdgeWith(t, EdgeOptions{Pebble: StartPebble(t, PebbleOptions{}), LogOut: logs, LogDebug: true, CertWait: 3 * time.Second})
+	logs := new(lockedBuf)
+	re := StartEdgeWith(t, EdgeOptions{Pebble: StartPebble(t, PebbleOptions{}), LogOut: logs, LogLevel: slog.LevelDebug, CertWait: 3 * time.Second})
 
 	r, err := zoneAddWildcard(t, re, "example.test", "fake", dnsToken)
 	if err != nil {

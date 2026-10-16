@@ -18,20 +18,20 @@ import (
 // outpostAdd assigns the next Tunnel address, creates the one-time key pair,
 // records the public half as the Outpost's peer, with the token's expiry, and
 // returns the join token. The Outpost swaps that key in the join exchange.
-func (s *Server) outpostAdd(_ context.Context, actor api.Actor, req api.OutpostAddRequest) (api.OutpostAddResponse, error) {
-	if !actor.Local() {
-		return api.OutpostAddResponse{}, api.Errorf(http.StatusForbidden, "%s may not add Outposts; run `tnl outpost add` on the Edge host", actor)
+func (s *Server) outpostAdd(_ context.Context, actor api.Actor, req api.OutpostAddRequest) (api.OutpostAddReply, error) {
+	if err := localOnly(actor, "add Outposts", "outpost add"); err != nil {
+		return api.OutpostAddReply{}, err
 	}
 	if err := validOutpostName(req.Name); err != nil {
-		return api.OutpostAddResponse{}, err
+		return api.OutpostAddReply{}, err
 	}
 	ttl, err := tokenTTL(req.TTL)
 	if err != nil {
-		return api.OutpostAddResponse{}, err
+		return api.OutpostAddReply{}, err
 	}
 	priv, pub, err := keys.Generate()
 	if err != nil {
-		return api.OutpostAddResponse{}, err
+		return api.OutpostAddReply{}, err
 	}
 	var o state.Outpost
 	var edgeKey keys.Key
@@ -47,28 +47,28 @@ func (s *Server) outpostAdd(_ context.Context, actor api.Actor, req api.OutpostA
 		return nil
 	})
 	if err != nil {
-		return api.OutpostAddResponse{}, err
+		return api.OutpostAddReply{}, err
 	}
 	s.cfg.Log.Info("outpost added", "actor", actor.String(), "outpost", o.Name, "address", o.Address.String())
 	return s.joinToken(o, edgeKey, priv), nil
 }
 
 // joinToken is the reply that carries an Outpost's one-time private key.
-func (s *Server) joinToken(o state.Outpost, edgeKey, oneTimePriv keys.Key) api.OutpostAddResponse {
+func (s *Server) joinToken(o state.Outpost, edgeKey, oneTimePriv keys.Key) api.OutpostAddReply {
 	tok := token.Token{
 		Address: s.cfg.Address, Port: s.cfg.WireGuardPort,
 		EdgeKey: edgeKey, OneTimeKey: oneTimePriv, TunnelAddr: o.Address, EdgeVersion: s.cfg.Version,
 	}
-	return api.OutpostAddResponse{Name: o.Name, Address: o.Address.String(), Token: tok.Encode()}
+	return api.OutpostAddReply{Name: o.Name, Address: o.Address.String(), Token: tok.Encode()}
 }
 
 // outpostRm removes the Outpost, and with WithRoutes the Routes through it. It
 // then drops the peer and closes the Outpost's connections, after the store's
 // lock is released. An Outpost that hasn't joined loses its token with its
 // record: the token's key is no longer a peer.
-func (s *Server) outpostRm(_ context.Context, actor api.Actor, req api.OutpostRmRequest) (api.OutpostRmResponse, error) {
-	if !actor.Local() {
-		return api.OutpostRmResponse{}, api.Errorf(http.StatusForbidden, "%s may not remove Outposts; run `tnl outpost rm` on the Edge host", actor)
+func (s *Server) outpostRm(_ context.Context, actor api.Actor, req api.OutpostRmRequest) (api.OutpostRmReply, error) {
+	if err := localOnly(actor, "remove Outposts", "outpost rm"); err != nil {
+		return api.OutpostRmReply{}, err
 	}
 	var gone state.Outpost
 	var hosts []string
@@ -86,7 +86,7 @@ func (s *Server) outpostRm(_ context.Context, actor api.Actor, req api.OutpostRm
 		return nil
 	})
 	if err != nil {
-		return api.OutpostRmResponse{}, err
+		return api.OutpostRmReply{}, err
 	}
 	s.cfg.Log.Info("outpost removed", "actor", actor.String(), "outpost", gone.Name, "routes", len(hosts))
 	if s.cfg.DropPeer != nil {
@@ -98,23 +98,23 @@ func (s *Server) outpostRm(_ context.Context, actor api.Actor, req api.OutpostRm
 	if hosts == nil {
 		hosts = []string{}
 	}
-	return api.OutpostRmResponse{Name: gone.Name, Routes: hosts}, nil
+	return api.OutpostRmReply{Name: gone.Name, Routes: hosts}, nil
 }
 
 // outpostRekey revokes the Outpost's current key at once and returns a new
 // token. The new one-time key becomes the peer at the same Tunnel address, so
 // the old key's Tunnel stops, and the name, address and Routes stay.
-func (s *Server) outpostRekey(_ context.Context, actor api.Actor, req api.OutpostRekeyRequest) (api.OutpostAddResponse, error) {
-	if !actor.Local() {
-		return api.OutpostAddResponse{}, api.Errorf(http.StatusForbidden, "%s may not rekey Outposts; run `tnl outpost rekey` on the Edge host", actor)
+func (s *Server) outpostRekey(_ context.Context, actor api.Actor, req api.OutpostRekeyRequest) (api.OutpostAddReply, error) {
+	if err := localOnly(actor, "rekey Outposts", "outpost rekey"); err != nil {
+		return api.OutpostAddReply{}, err
 	}
 	ttl, err := tokenTTL(req.TTL)
 	if err != nil {
-		return api.OutpostAddResponse{}, err
+		return api.OutpostAddReply{}, err
 	}
 	priv, pub, err := keys.Generate()
 	if err != nil {
-		return api.OutpostAddResponse{}, err
+		return api.OutpostAddReply{}, err
 	}
 	var o state.Outpost
 	var old, edgeKey keys.Key
@@ -131,7 +131,7 @@ func (s *Server) outpostRekey(_ context.Context, actor api.Actor, req api.Outpos
 		return nil
 	})
 	if err != nil {
-		return api.OutpostAddResponse{}, err
+		return api.OutpostAddReply{}, err
 	}
 	s.cfg.Log.Info("outpost rekeyed", "actor", actor.String(), "outpost", o.Name, "address", o.Address.String())
 	if s.cfg.RevokePeer != nil {

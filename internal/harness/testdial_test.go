@@ -1,7 +1,7 @@
 package harness
 
 import (
-	"net"
+	"log/slog"
 	"net/http"
 	"strings"
 	"testing"
@@ -10,29 +10,13 @@ import (
 	"github.com/hyprsh/tnl/internal/api"
 )
 
-// refusingAddr is a host:port nothing listens on.
-func refusingAddr(t *testing.T) string {
-	t.Helper()
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	a := ln.Addr().String()
-	ln.Close()
-	return a
-}
-
 func routeAdd(t *testing.T, re *RealEdge, host, service string, extra ...func(*api.RouteAddRequest)) api.RouteAddReply {
 	t.Helper()
 	req := api.RouteAddRequest{Hostname: host, Service: service, Outpost: "nas"}
 	for _, f := range extra {
 		f(&req)
 	}
-	r, err := api.Call[api.RouteAddReply](ctx(t), re.API, http.MethodPost, api.PathRoutes, req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return r
+	return re.AddRouteRequest(t, req)
 }
 
 func routeEditWarnings(t *testing.T, re *RealEdge, req api.RouteEditRequest) []string {
@@ -59,10 +43,10 @@ func hasWarning(ws []string, parts ...string) bool {
 
 func TestRouteAddForAServiceThatRefusesSavesTheRouteAndWarnsAtWarn(t *testing.T) {
 	log := new(lockedBuf)
-	re := StartEdgeWith(t, EdgeOptions{Pebble: StartPebble(t, PebbleOptions{}), LogOut: log})
+	re := StartEdgeWith(t, EdgeOptions{Pebble: StartPebble(t, PebbleOptions{}), LogOut: log, LogLevel: slog.LevelWarn})
 	re.AddZone(t, "test")
 	re.JoinOutpost(t, "nas")
-	addr := refusingAddr(t)
+	addr := closedAddr(t)
 
 	r := routeAdd(t, re, "app.test", "http://"+addr)
 	if !hasWarning(r.Warnings.Warnings, addr, "doesn't answer", "refused") {
@@ -112,7 +96,7 @@ func TestRouteEditTestDialsOnlyWhenTheServiceChanged(t *testing.T) {
 	re := StartEdgeWith(t, EdgeOptions{Pebble: StartPebble(t, PebbleOptions{})})
 	re.AddZone(t, "test")
 	re.JoinOutpost(t, "nas")
-	routeAdd(t, re, "app.test", "http://"+refusingAddr(t))
+	routeAdd(t, re, "app.test", "http://"+closedAddr(t))
 
 	if ws := routeEditWarnings(t, re, api.RouteEditRequest{Hostname: "app.test", HostHeader: ptr("internal.lan")}); len(ws) != 0 {
 		t.Fatalf("an option-only edit test-dialed: %q", ws)
@@ -121,7 +105,7 @@ func TestRouteEditTestDialsOnlyWhenTheServiceChanged(t *testing.T) {
 	if ws := routeEditWarnings(t, re, api.RouteEditRequest{Hostname: "app.test", Service: &same}); len(ws) != 0 {
 		t.Fatalf("an edit that kept the Service test-dialed: %q", ws)
 	}
-	other := "http://" + refusingAddr(t)
+	other := "http://" + closedAddr(t)
 	if ws := routeEditWarnings(t, re, api.RouteEditRequest{Hostname: "app.test", Service: &other}); !hasWarning(ws, "doesn't answer") {
 		t.Fatalf("a changed Service did not warn: %q", ws)
 	}

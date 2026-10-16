@@ -1,7 +1,6 @@
 package harness
 
 import (
-	"bytes"
 	"context"
 	"io"
 	"log/slog"
@@ -14,29 +13,14 @@ import (
 	"time"
 
 	"github.com/hyprsh/tnl/internal/edge/routes"
+	"github.com/hyprsh/tnl/internal/logx"
 )
 
-// logCapture collects the Edge's log lines as text.
-type logCapture struct {
-	mu  sync.Mutex
-	buf bytes.Buffer
-}
-
-func (l *logCapture) Write(p []byte) (int, error) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	return l.buf.Write(p)
-}
-
-func (l *logCapture) String() string {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	return l.buf.String()
-}
-
-func newLogCapture() (*slog.Logger, *logCapture) {
-	c := &logCapture{}
-	return slog.New(slog.NewTextHandler(c, &slog.HandlerOptions{Level: slog.LevelDebug})), c
+// newLogCapture is a logger that writes the Edge's own format, at debug, into
+// a buffer the test reads.
+func newLogCapture() (*slog.Logger, *lockedBuf) {
+	c := new(lockedBuf)
+	return logx.New(logx.Options{Level: slog.LevelDebug, Out: c}), c
 }
 
 func getAccepting(t *testing.T, ce *CaddyEdge, proto Proto, host, accept string) (*http.Response, string) {
@@ -58,18 +42,6 @@ func getAccepting(t *testing.T, ce *CaddyEdge, proto Proto, host, accept string)
 		t.Fatalf("%s: reading body: %v", proto, err)
 	}
 	return resp, string(b)
-}
-
-// closedAddr is a loopback address nothing listens on.
-func closedAddr(t *testing.T) string {
-	t.Helper()
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	addr := ln.Addr().String()
-	ln.Close()
-	return addr
 }
 
 func assertAnonymous(t *testing.T, resp *http.Response, body string) {
@@ -106,7 +78,7 @@ func TestNoRouteGetsThe404Page(t *testing.T) {
 		}
 		assertAnonymous(t, resp, body)
 	}
-	if got := lines.String(); !strings.Contains(got, "level=INFO") || !strings.Contains(got, "status=404") || !strings.Contains(got, `reason="no route"`) {
+	if got := lines.String(); !strings.Contains(got, "level=info") || !strings.Contains(got, "status=404") || !strings.Contains(got, `reason="no route"`) {
 		t.Errorf("the 404 is not logged at info with its reason:\n%s", got)
 	}
 }
@@ -124,7 +96,7 @@ func TestUnreachableServiceGetsThe502PageWithTheIDOfTheLog(t *testing.T) {
 	idRe := regexp.MustCompile(`[0-9a-f]{16}`)
 	for _, proto := range Protos {
 		resp, body := getAccepting(t, ce, proto, "ghost.test", "text/html")
-		if resp.StatusCode != 502 || !strings.Contains(body, "ghost.test isn&#39;t answering") {
+		if resp.StatusCode != 503 || !strings.Contains(body, "ghost.test is offline") {
 			t.Fatalf("%s: got %d %q", proto, resp.StatusCode, body)
 		}
 		assertAnonymous(t, resp, body)
@@ -133,7 +105,7 @@ func TestUnreachableServiceGetsThe502PageWithTheIDOfTheLog(t *testing.T) {
 			t.Errorf("%s: the page's request ID %q is not in the log:\n%s", proto, id, lines.String())
 		}
 		resp, body = getAccepting(t, ce, proto, "ghost.test", "application/json")
-		if resp.StatusCode != 502 || body != "502 ghost.test isn't answering\n" {
+		if resp.StatusCode != 503 || body != "503 ghost.test is offline\n" {
 			t.Fatalf("%s: plain text: got %d %q", proto, resp.StatusCode, body)
 		}
 	}
@@ -156,7 +128,7 @@ func TestRefusedServiceLogsItsReasonAfterTheRetries(t *testing.T) {
 		t.Errorf("502 after %v, want about 5 s", took)
 	}
 	got := lines.String()
-	if !strings.Contains(got, "status=502") || !strings.Contains(got, "reason=refused") || !strings.Contains(got, "level=INFO") {
+	if !strings.Contains(got, "status=502") || !strings.Contains(got, "reason=refused") || !strings.Contains(got, "level=info") {
 		t.Errorf("the 502 is not logged at info with its reason:\n%s", got)
 	}
 	// The Visitor's page never says why.
@@ -229,7 +201,7 @@ func TestEventStreamToADownServiceIsResetNotAnswered(t *testing.T) {
 		{Hostname: "down.test", Outpost: o.Name, Service: closedAddr(t)},
 		{Hostname: "ghost.test", Outpost: "no-such-outpost", Service: closedAddr(t)},
 	})
-	for _, host := range []string{"ghost.test", "down.test"} {
+	for host, status := range map[string]string{"ghost.test": "status=503", "down.test": "status=502"} {
 		for _, proto := range Protos {
 			req, _ := http.NewRequestWithContext(ctx(t), "GET", "https://"+host+"/events", nil)
 			req.Header.Set("Accept", "text/event-stream")
@@ -241,7 +213,7 @@ func TestEventStreamToADownServiceIsResetNotAnswered(t *testing.T) {
 			}
 		}
 		got := lines.String()
-		if !strings.Contains(got, "host="+host) || !strings.Contains(got, "status=502") || !strings.Contains(got, "reset=true") {
+		if !strings.Contains(got, "host="+host) || !strings.Contains(got, status) || !strings.Contains(got, "reset=true") {
 			t.Errorf("%s: the reset does not log the status it replaces:\n%s", host, got)
 		}
 	}

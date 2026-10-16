@@ -28,7 +28,7 @@ func openStream(t *testing.T, re *RealEdge, host string) (next func() bool) {
 }
 
 func routeRm(t *testing.T, re *RealEdge, hostname string) error {
-	_, err := api.Call[api.RouteInfo](ctx(t), re.API, http.MethodPost, api.PathRouteRm, api.RouteRmRequest{Hostname: hostname})
+	_, err := api.Call[api.RouteRmReply](ctx(t), re.API, http.MethodPost, api.PathRouteRm, api.RouteRmRequest{Hostname: hostname})
 	return err
 }
 

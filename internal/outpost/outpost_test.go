@@ -70,7 +70,7 @@ func newFakeEdge(t *testing.T, edgeKey keys.Key, port int, oneTime keys.Key) *fa
 		json.NewDecoder(r.Body).Decode(&req)
 		tun.AddPeer(tunnel.Peer{PublicKey: req.PublicKey}) // can handshake, owns no address yet
 		w.Header().Set(api.VersionHeader, "v9.9.9")
-		b, _ := json.Marshal(api.JoinResponse{Name: "laptop", EdgeVersion: "v9.9.9"})
+		b, _ := json.Marshal(api.JoinReply{Name: "laptop", EdgeVersion: "v9.9.9"})
 		w.Header().Set("Content-Length", strconv.Itoa(len(b)))
 		w.Write(b)
 		w.(http.Flusher).Flush()
@@ -283,15 +283,15 @@ func TestADifferentTokenJoinsAgainAndReplacesTheState(t *testing.T) {
 	}
 }
 
-func TestATokenTheEdgeRefusesLeavesTheStateUntouched(t *testing.T) {
+func TestAJoinThatTimesOutLeavesTheStateUntouchedAndIsNotAConfigError(t *testing.T) {
 	tok, _ := newToken(t, "127.0.0.1")
 	// No Edge answers on this port, so the join times out.
 	tok.Port = 1
 	dir := shortStateDir(t)
 	_, err := start(t, Config{Token: tok.Encode(), StateDir: dir, JoinTimeout: 300 * time.Millisecond})
 	var ce *ConfigError
-	if !errors.As(err, &ce) {
-		t.Fatalf("err = %v", err)
+	if err == nil || errors.As(err, &ce) {
+		t.Fatalf("err = %v, want an error that is not a ConfigError (systemd must restart on it)", err)
 	}
 	if _, err := os.Stat(dir); !os.IsNotExist(err) {
 		t.Errorf("the state directory was touched: %v", err)

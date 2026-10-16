@@ -65,6 +65,8 @@ func TestCoreLevelMap(t *testing.T) {
 		{"http.log.error", zapcore.ErrorLevel, "dial tcp: refused", "debug"},
 		{"http.handlers.reverse_proxy", zapcore.ErrorLevel, "aborting", "debug"},
 		{"http.stdlib", zapcore.ErrorLevel, "http: TLS handshake error", "debug"},
+		{"tls.issuance.acme", zapcore.ErrorLevel, "no ACME server answered", "error"},
+		{"http.stdlib", zapcore.ErrorLevel, "http: Accept error: too many open files", "error"},
 		{"tls", zapcore.WarnLevel, "something real", "warn"},
 		{"tls.cache.maintenance", zapcore.ErrorLevel, "other failure", "error"},
 		{"admin", zapcore.InfoLevel, "x", "info"},

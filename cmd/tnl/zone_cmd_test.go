@@ -69,7 +69,7 @@ func runningEdgeWith(t *testing.T, res server.Resolver) {
 	}
 	v, rev := versionInfo()
 	srv := server.New(server.Config{Store: store, Log: lg, Version: v, Build: buildName, Revision: rev, Role: "edge", Address: "tnl.example.com", WireGuardPort: 51820, Resolver: res, StateDir: dir, TestDialer: edgeTestDialer, Wildcards: edgeWildcards})
-	ln, err := server.ListenSocket(dir)
+	ln, err := api.ListenSocket(dir)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -14,8 +14,6 @@ const (
 	DialCertificate
 	// DialTLS: the TLS handshake failed for another reason.
 	DialTLS
-	// DialIncompatible: the Outpost refused the tnl header; Detail is its version.
-	DialIncompatible
 )
 
 // DialFailure is why a test dial failed, in terms the API turns into a warning.

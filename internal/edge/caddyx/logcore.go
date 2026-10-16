@@ -37,12 +37,7 @@ func (l *LogCore) Provision(ctx caddy.Context) error {
 	if err != nil {
 		return err
 	}
-	l.Core = newSlogCore(func() *slog.Logger {
-		if rt.Log != nil {
-			return rt.Log
-		}
-		return slog.Default()
-	})
+	l.Core = newSlogCore(rt.logger)
 	return nil
 }
 
@@ -114,10 +109,13 @@ func attrValue(v any) any {
 func slogLevel(ent zapcore.Entry) slog.Level {
 	n := ent.LoggerName
 	switch {
-	case hasLoggerPrefix(n, "tls.obtain"), hasLoggerPrefix(n, "tls.renew"), hasLoggerPrefix(n, "tls.issuance"),
+	case hasLoggerPrefix(n, "tls.obtain"), hasLoggerPrefix(n, "tls.renew"),
 		hasLoggerPrefix(n, "http.log.error"), hasLoggerPrefix(n, "http.handlers.reverse_proxy"),
-		hasLoggerPrefix(n, "http.stdlib"),
 		strings.Contains(ent.Message, "in renewal window"):
+		return slog.LevelDebug
+	case hasLoggerPrefix(n, "tls.issuance") && ent.Level < zapcore.ErrorLevel:
+		return slog.LevelDebug
+	case hasLoggerPrefix(n, "http.stdlib") && strings.Contains(ent.Message, "TLS handshake error"):
 		return slog.LevelDebug
 	}
 	switch {

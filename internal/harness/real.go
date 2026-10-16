@@ -58,7 +58,7 @@ type EdgeOptions struct {
 	// certificates from this ACME CA. RealEdge.Caddy is then set. Caddy is a
 	// process singleton, so only one such Edge runs at a time.
 	Pebble *Pebble
-	// LogOut, if set, also receives the Edge's log lines, at warn and above.
+	// LogOut, if set, also receives the Edge's log lines at LogLevel and above.
 	LogOut io.Writer
 	// Resolver answers the Edge's DNS checks. Nil answers every name with
 	// 127.0.0.1, the Edge's --address, so no check warns and none uses real DNS.
@@ -69,10 +69,8 @@ type EdgeOptions struct {
 	// WireGuardPort fixes the UDP port, as a restored Edge keeps the one its
 	// Outposts' credentials name. Zero picks a free one.
 	WireGuardPort int
-	// LogInfo lets LogOut receive info lines too.
-	LogInfo bool
-	// LogDebug lets LogOut receive debug lines too.
-	LogDebug bool
+	// LogLevel is the lowest level LogOut receives; the zero value is info.
+	LogLevel slog.Level
 	// AccessLog is --access-log. DrainTimeout shrinks the 10 s of stopping.
 	AccessLog    bool
 	DrainTimeout time.Duration
@@ -126,14 +124,7 @@ func StartEdgeWith(t testing.TB, opts EdgeOptions) *RealEdge {
 	cfg.LivenessPoll = cmp.Or(opts.LivenessPoll, 20*time.Millisecond)
 	cfg.OfflineAfter = opts.OfflineAfter // zero is the spec's 60 s
 	if opts.LogOut != nil {
-		level := slog.LevelWarn
-		if opts.LogInfo {
-			level = slog.LevelInfo
-		}
-		if opts.LogDebug {
-			level = slog.LevelDebug
-		}
-		cfg.Log = logx.New(logx.Options{Level: level, Out: io.MultiWriter(testWriter{t}, opts.LogOut)})
+		cfg.Log = logx.New(logx.Options{Level: opts.LogLevel, Out: io.MultiWriter(testWriter{t}, opts.LogOut)})
 	}
 	var ce *CaddyEdge
 	if p := opts.Pebble; p != nil {
@@ -214,8 +205,13 @@ func (e *RealEdge) AddRoute(t testing.TB, hostname, serviceURL, outpost string) 
 // AddRouteReply is AddRoute that returns the reply, warnings included.
 func (e *RealEdge) AddRouteReply(t testing.TB, hostname, serviceURL, outpost string) api.RouteAddReply {
 	t.Helper()
-	r, err := api.Call[api.RouteAddReply](context.Background(), e.API, http.MethodPost, api.PathRoutes,
-		api.RouteAddRequest{Hostname: hostname, Service: serviceURL, Outpost: outpost})
+	return e.AddRouteRequest(t, api.RouteAddRequest{Hostname: hostname, Service: serviceURL, Outpost: outpost})
+}
+
+// AddRouteRequest is AddRouteReply for a request with options.
+func (e *RealEdge) AddRouteRequest(t testing.TB, req api.RouteAddRequest) api.RouteAddReply {
+	t.Helper()
+	r, err := api.Call[api.RouteAddReply](context.Background(), e.API, http.MethodPost, api.PathRoutes, req)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -231,7 +227,7 @@ func (e *RealEdge) AddOutpost(t testing.TB, name string) string {
 // AddOutpostTTL is AddOutpost with `--ttl`; empty is the default.
 func (e *RealEdge) AddOutpostTTL(t testing.TB, name, ttl string) string {
 	t.Helper()
-	resp, err := api.Call[api.OutpostAddResponse](context.Background(), e.API, http.MethodPost, api.PathOutposts, api.OutpostAddRequest{Name: name, TTL: ttl})
+	resp, err := api.Call[api.OutpostAddReply](context.Background(), e.API, http.MethodPost, api.PathOutposts, api.OutpostAddRequest{Name: name, TTL: ttl})
 	if err != nil {
 		t.Fatal(err)
 	}

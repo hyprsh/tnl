@@ -15,8 +15,8 @@ import (
 // does: the certificates that served before are kept serving across the Caddy
 // reload (Retire), and the new ones are waited for after it.
 func (s *Server) zoneEdit(ctx context.Context, actor api.Actor, req api.ZoneEditRequest) (api.ZoneEditReply, error) {
-	if !actor.Local() {
-		return api.ZoneEditReply{}, api.Errorf(http.StatusForbidden, "%s may not edit Zones; run `tnl zone edit` on the Edge host", actor)
+	if err := localOnly(actor, "edit Zones", "zone edit"); err != nil {
+		return api.ZoneEditReply{}, err
 	}
 	name, err := zoneName(req.Name)
 	if err != nil {
@@ -36,7 +36,7 @@ func (s *Server) zoneEdit(ctx context.Context, actor api.Actor, req api.ZoneEdit
 	case s.cfg.Wildcards == nil:
 		return api.ZoneEditReply{}, api.Errorf(http.StatusBadRequest, "this Edge cannot get wildcard certificates")
 	}
-	zone, ok := s.zone(name)
+	zone, ok := s.cfg.Store.Snapshot().Zone(name)
 	if !ok {
 		return api.ZoneEditReply{}, api.Errorf(http.StatusNotFound, "no Zone %s", name)
 	}
@@ -47,15 +47,6 @@ func (s *Server) zoneEdit(ctx context.Context, actor api.Actor, req api.ZoneEdit
 		return s.zoneToPerHostname(ctx, actor, zone)
 	}
 	return s.zoneToken(ctx, actor, zone, req.Token)
-}
-
-func (s *Server) zone(name string) (state.Zone, bool) {
-	for _, z := range s.cfg.Store.Snapshot().Zones {
-		if z.Name == name {
-			return z, true
-		}
-	}
-	return state.Zone{}, false
 }
 
 // changeZone applies fn to the Zone under the store's lock, refusing if it
@@ -86,23 +77,16 @@ func (s *Server) zoneToWildcard(ctx context.Context, actor api.Actor, zone state
 		return api.ZoneEditReply{}, err
 	}
 	wild := state.Zone{Name: zone.Name, Mode: state.Wildcard, Provider: req.Wildcard, Token: req.Token}
-	// The Routes the wildcard takes over keep serving with their own
-	// certificates, which the reload would drop from the cache, until the
-	// wildcard's is in.
-	covered := coveredRoutes(withZone(withoutZone(s.cfg.Store.Snapshot(), zone.Name), wild), zone.Name)
-	s.cfg.Wildcards.Retire(covered...)
+	// The Routes the wildcard takes over keep renewing their own certificates
+	// until the wildcard's is in.
 	if err := s.changeZone(actor, zone.Name, state.PerHostname, func(z *state.Zone) { *z = wild }); err != nil {
-		s.cfg.Wildcards.Release(covered...)
 		return api.ZoneEditReply{}, err
 	}
 	s.cfg.Log.Info("zone edited", "actor", actor.String(), "zone", zone.Name, "mode", wild.Mode, "provider", wild.Provider) // never the token
 	warnings := s.wildcardCertificate(ctx, zone.Name)
-	if len(warnings) == 0 {
-		s.cfg.Wildcards.Release(covered...)
-	}
 	s.warn(actor, warnings, "zone", zone.Name)
 	return api.ZoneEditReply{
-		ZoneInfo: zoneInfo(wild), DNSZone: dnsZone, Covers: []string{"*." + zone.Name, zone.Name},
+		ZoneInfo: zoneInfo(wild), WildcardInfo: wildcardInfo(dnsZone, zone.Name),
 		Warnings: api.Warnings{Warnings: warnings},
 	}, nil
 }
@@ -111,15 +95,13 @@ func (s *Server) zoneToPerHostname(ctx context.Context, actor api.Actor, zone st
 	if zone.Mode != state.Wildcard {
 		return api.ZoneEditReply{}, api.Errorf(http.StatusConflict, "Zone %s is already a per-Hostname Zone", zone.Name)
 	}
-	wildNames := []string{"*." + zone.Name, zone.Name}
 	covered := coveredRoutes(s.cfg.Store.Snapshot(), zone.Name)
 	// The wildcard keeps serving every Hostname that has no certificate of its
-	// own yet, through the reload and after it, until it expires.
-	s.cfg.Wildcards.Retire(wildNames...)
+	// own yet, through the reload and after it, until it expires: the Edge
+	// loads the certificates of per-Hostname Zones' wildcards from storage.
 	if err := s.changeZone(actor, zone.Name, state.Wildcard, func(z *state.Zone) {
 		*z = state.Zone{Name: zone.Name, Mode: state.PerHostname} // the token goes with the mode
 	}); err != nil {
-		s.cfg.Wildcards.Release(wildNames...)
 		return api.ZoneEditReply{}, err
 	}
 	s.cfg.Log.Info("zone edited", "actor", actor.String(), "zone", zone.Name, "mode", state.PerHostname)
@@ -130,9 +112,6 @@ func (s *Server) zoneToPerHostname(ctx context.Context, actor api.Actor, zone st
 		warnings = append(warnings, fmt.Sprintf("couldn't reload Caddy after dropping the wildcard of %s: %v", zone.Name, err))
 	} else {
 		warnings = s.ownCertificates(ctx, covered)
-	}
-	if len(warnings) == 0 {
-		s.cfg.Wildcards.Release(wildNames...)
 	}
 	s.warn(actor, warnings, "zone", zone.Name)
 	return api.ZoneEditReply{
@@ -171,11 +150,5 @@ func (s *Server) zoneToken(ctx context.Context, actor api.Actor, zone state.Zone
 	}
 	s.cfg.Log.Info("zone token replaced", "actor", actor.String(), "zone", zone.Name, "provider", zone.Provider) // never the token
 	zone.Token = ""
-	return api.ZoneEditReply{ZoneInfo: zoneInfo(zone), DNSZone: dnsZone}, nil
-}
-
-func withoutZone(st *state.State, name string) *state.State {
-	c := st.Clone()
-	c.Zones = slices.DeleteFunc(c.Zones, func(z state.Zone) bool { return z.Name == name })
-	return c
+	return api.ZoneEditReply{ZoneInfo: zoneInfo(zone), WildcardInfo: api.WildcardInfo{DNSZone: dnsZone}}, nil
 }

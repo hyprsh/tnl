@@ -70,6 +70,9 @@ func LongestZone(host string, zones []string) (string, bool) {
 	return best, found
 }
 
+// WildcardNames are the names a wildcard Zone's certificate carries.
+func WildcardNames(zone string) []string { return []string{"*." + zone, zone} }
+
 // WildcardCovers says whether a wildcard certificate for any of the zones
 // ("*.zone" and "zone") covers host: it is a zone's own name, or one label
 // below it. A name deeper than that is not covered, whatever Zone holds it.

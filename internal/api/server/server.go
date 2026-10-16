@@ -102,12 +102,9 @@ type Wildcards interface {
 	// WaitOwn waits for a certificate that names the Hostname itself, not a
 	// wildcard that covers it, or until ctx ends.
 	WaitOwn(ctx context.Context, name string) error
-	// Retire keeps the certificates held for the names serving across the
-	// reloads that follow, though Caddy no longer manages them, until Release.
-	// A name is a certificate's subject, so a wildcard's is "*.zone".
-	Retire(names ...string)
-	// Release lets go of what Retire kept: the next reload drops it.
-	Release(names ...string)
+	// Settle tells the Edge a wildcard's certificate is in, so the Hostnames it
+	// covers stop renewing their own.
+	Settle()
 }
 
 // Liveness is the Edge's view of the Outposts, as the handlers read it.
@@ -223,9 +220,6 @@ func (s *Server) ServeHandler(ctx context.Context, ln net.Listener, h http.Handl
 	return err
 }
 
-// ListenSocket listens on tnl.sock in dir with mode 0600; see api.ListenSocket.
-func ListenSocket(dir string) (net.Listener, error) { return api.ListenSocket(dir) }
-
 // endpoint registers a handler that takes a decoded request and returns a
 // response. The request body is decoded strictly: an unknown field refuses it
 // whole, before the handler runs. GET handlers take struct{} and read no body.
@@ -241,12 +235,26 @@ func endpoint[Req, Resp any](s *Server, method, path string, fn func(ctx context
 			}
 		}
 		resp, err := fn(r.Context(), actor, req)
-		var ae *api.Error
-		if errors.As(err, &ae) && ae.Status == http.StatusForbidden {
-			s.cfg.Log.Warn("request refused", "actor", actor.String(), "method", r.Method, "path", r.URL.Path, "error", ae.Message)
-		}
-		s.reply(w, resp, err)
+		s.reply(w, resp, s.logRefusal(r, actor, err))
 	})
+}
+
+// logRefusal logs a 403 at warn, whichever handler refused, and returns err.
+func (s *Server) logRefusal(r *http.Request, actor api.Actor, err error) error {
+	var ae *api.Error
+	if errors.As(err, &ae) && ae.Status == http.StatusForbidden {
+		s.cfg.Log.Warn("request refused", "actor", actor.String(), "method", r.Method, "path", r.URL.Path, "error", ae.Message)
+	}
+	return err
+}
+
+// localOnly refuses an actor that is not the Edge host's own: the command is
+// one to run there.
+func localOnly(actor api.Actor, action, command string) error {
+	if actor.Local() {
+		return nil
+	}
+	return api.Errorf(http.StatusForbidden, "%s may not %s; run `tnl %s` on the Edge host", actor, action, command)
 }
 
 func (s *Server) decode(r *http.Request, v any) error {

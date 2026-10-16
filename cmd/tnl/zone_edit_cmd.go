@@ -6,7 +6,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"strings"
 
 	"github.com/hyprsh/tnl/internal/api"
 )
@@ -53,21 +52,13 @@ func zoneEdit(args []string) error {
 	if err != nil {
 		return err
 	}
-	if z.DNSZone != "" {
-		fmt.Fprintf(stdout, "DNS zone %s\n", z.DNSZone)
+	headline := fmt.Sprintf("Zone %s is now %s", z.Name, z.Mode)
+	if z.Provider != "" {
+		headline += " (" + z.Provider + ")"
 	}
 	if *token {
-		fmt.Fprintf(stdout, "replaced the token of Zone %s\n", z.Name)
-		return nil
+		headline = fmt.Sprintf("replaced the token of Zone %s", z.Name)
 	}
-	if z.Provider != "" {
-		fmt.Fprintf(stdout, "Zone %s is now %s (%s)\n", z.Name, z.Mode, z.Provider)
-	} else {
-		fmt.Fprintf(stdout, "Zone %s is now %s\n", z.Name, z.Mode)
-	}
-	if len(z.Covers) > 0 {
-		fmt.Fprintf(stdout, "the certificate covers %s\n", strings.Join(z.Covers, ", "))
-	}
-	printWarnings(z.Warnings)
+	printZoneResult(headline, z.WildcardInfo, z.Warnings)
 	return nil
 }

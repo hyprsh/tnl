@@ -16,4 +16,5 @@ type ZoneRmReply struct {
 	Name    string   `json:"name"`
 	Removed []string `json:"removed"`
 	Moved   []string `json:"moved"`
+	Warnings
 }

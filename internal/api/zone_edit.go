@@ -19,7 +19,6 @@ type ZoneEditRequest struct {
 // to wildcard the DNS zone and the names the certificate covers.
 type ZoneEditReply struct {
 	ZoneInfo
-	DNSZone string   `json:"dns_zone,omitempty"`
-	Covers  []string `json:"covers,omitempty"`
+	WildcardInfo
 	Warnings
 }

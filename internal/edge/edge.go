@@ -95,7 +95,7 @@ func Run(ctx context.Context, cfg Config) error {
 	if err != nil {
 		return refuse(err)
 	}
-	ln, err := server.ListenSocket(cfg.StateDir)
+	ln, err := api.ListenSocket(cfg.StateDir)
 	if err != nil {
 		return refuse(err)
 	}
@@ -105,7 +105,7 @@ func Run(ctx context.Context, cfg Config) error {
 	}
 	conns := conntrack.New()
 	certs := new(certsRef)
-	wild := &wildcards{resolvers: cfg.DNSResolvers, certs: certs}
+	wild := &wildcards{resolvers: cfg.DNSResolvers, certsRef: certs}
 	hooks := livenessHooks{
 		Version: cfg.Version, OfflineAfter: cfg.OfflineAfter, Poll: cfg.LivenessPoll, Log: cfg.Log,
 		CloseOutpost: conns.CloseOutpost,
@@ -133,7 +133,7 @@ func Run(ctx context.Context, cfg Config) error {
 	}
 
 	if cfg.Web != nil {
-		stopWeb, err := startWeb(cfg.Web, cfg.StateDir, wgPort, store, tun, conns, live, certs, testDial, wild, cfg.DNSResolvers, cfg.Log)
+		stopWeb, err := startWeb(cfg.Web, webDeps{StateDir: cfg.StateDir, WGPort: wgPort, Store: store, Tunnel: tun, Conns: conns, Live: live, Certs: certs, TestDial: testDial, Wild: wild, DNSResolvers: cfg.DNSResolvers, Log: cfg.Log})
 		if err != nil {
 			return refuse(err)
 		}
@@ -154,7 +154,7 @@ func Run(ctx context.Context, cfg Config) error {
 		"zones", len(st.Zones),
 	)
 	if cfg.Started != nil {
-		cfg.Started(&Running{Store: store, Tunnel: tun, WireGuardPort: wgPort, Liveness: live, Certs: certs.p.Load()})
+		cfg.Started(&Running{Store: store, Tunnel: tun, WireGuardPort: wgPort, Liveness: live, Certs: certs.manager()})
 	}
 	select {
 	case <-ctx.Done():
