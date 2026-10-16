@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/netip"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -109,10 +110,11 @@ func (e *Edge) StartCaddy(t testing.TB, opts CaddyOptions) *CaddyEdge {
 	t.Cleanup(func() {
 		caddyx.Stop()
 		if rt.Certs().Managing() > 0 {
-			// certmagic's jobs finish their storage writes, such as releasing a lock
-			// file, a moment after the event and after Stop, and would race the
-			// removal of the temp directory.
-			time.Sleep(time.Second)
+			// certmagic's jobs finish their storage writes a moment after Stop,
+			// releasing their lock files last, and would race the removal of the
+			// temp directory. Wait until no lock file is left; the cap keeps a
+			// lock that is never released from stalling the test.
+			waitNoLocks(filepath.Join(ce.StateDir, "caddy", "locks"), time.Second)
 		}
 		unregister()
 	})
@@ -230,4 +232,15 @@ func verifyOpts(p *Pebble, chain []*x509.Certificate) x509.VerifyOptions {
 		inter.AddCert(c)
 	}
 	return x509.VerifyOptions{Roots: roots, Intermediates: inter}
+}
+
+// waitNoLocks waits, for at most max, until dir holds no certmagic lock file.
+func waitNoLocks(dir string, max time.Duration) {
+	deadline := time.Now().Add(max)
+	for time.Now().Before(deadline) {
+		if entries, err := os.ReadDir(dir); err != nil || len(entries) == 0 {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }
