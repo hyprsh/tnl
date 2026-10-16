@@ -13,6 +13,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/letsencrypt/pebble/v2/ca"
 	"github.com/letsencrypt/pebble/v2/db"
@@ -27,6 +28,9 @@ type PebbleOptions struct {
 	// Pebble.ValidationPort on the Hostname, so the Edge must listen there:
 	// pass the Pebble in CaddyOptions and StartCaddy does.
 	Validate bool
+	// Validity is how long its certificates last; zero is Pebble's 90 days. The
+	// renewal tests use seconds.
+	Validity time.Duration
 }
 
 // Pebble is an in-process ACME CA (Let's Encrypt's test server).
@@ -41,6 +45,7 @@ type Pebble struct {
 	opts     PebbleOptions
 	tlsCert  *x509.Certificate
 	orders   atomic.Int64
+	refusing atomic.Bool
 	certFile string
 }
 
@@ -56,7 +61,11 @@ func StartPebble(t testing.TB, opts PebbleOptions) *Pebble {
 
 	lg := log.New(io.Discard, "", 0)
 	mem := db.NewMemoryStore()
-	cai := ca.New(lg, mem, "", "ecdsa", 0, 1, map[string]ca.Profile{"default": {Description: "default"}})
+	profile := ca.Profile{Description: "default"}
+	if opts.Validity > 0 {
+		profile.ValidityPeriod = uint64(opts.Validity / time.Second)
+	}
+	cai := ca.New(lg, mem, "", "ecdsa", 0, 1, map[string]ca.Profile{"default": profile})
 
 	pebbleEnv.Lock()
 	restore := setenv(map[string]string{
@@ -73,6 +82,12 @@ func StartPebble(t testing.TB, opts PebbleOptions) *Pebble {
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/order-plz") {
 			p.orders.Add(1)
+			if p.refusing.Load() {
+				rw.Header().Set("Content-Type", "application/problem+json")
+				rw.WriteHeader(http.StatusInternalServerError)
+				io.WriteString(rw, `{"type":"urn:ietf:params:acme:error:serverInternal","detail":"the test CA is refusing orders"}`)
+				return
+			}
 		}
 		handler.ServeHTTP(rw, r)
 	}))
@@ -88,6 +103,10 @@ func StartPebble(t testing.TB, opts PebbleOptions) *Pebble {
 	}
 	return p
 }
+
+// Refuse makes Pebble answer every new order with an error until Refuse(false).
+// The orders still count.
+func (p *Pebble) Refuse(on bool) { p.refusing.Store(on) }
 
 // Orders is how many certificate orders Pebble has received: how often the Edge
 // asked for issuance.

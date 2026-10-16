@@ -21,6 +21,7 @@ func init() {
 	caddy.RegisterModule(Router{})
 	caddy.RegisterModule(Transport{})
 	caddy.RegisterModule(Permission{})
+	caddy.RegisterModule(EventHandler{})
 }
 
 const (

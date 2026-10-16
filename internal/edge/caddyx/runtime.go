@@ -16,6 +16,7 @@ import (
 	"github.com/hyprsh/tnl/internal/edge/conntrack"
 	"github.com/hyprsh/tnl/internal/edge/liveness"
 	"github.com/hyprsh/tnl/internal/edge/routes"
+	"github.com/hyprsh/tnl/internal/remind"
 	"github.com/hyprsh/tnl/internal/wire"
 )
 
@@ -44,8 +45,26 @@ type Runtime struct {
 	Liveness interface {
 		State(outpost string) liveness.State
 	}
+	// Clock drives the certificate reminders; nil is the wall clock.
+	Clock remind.Clock
 
 	pool pool
+
+	certsOnce sync.Once
+	certs     *Certs
+}
+
+// Certs is the certificate manager, made on first use. It outlives reloads.
+func (rt *Runtime) Certs() *Certs {
+	rt.certsOnce.Do(func() {
+		rt.certs = newCerts(func() *slog.Logger {
+			if rt.Log != nil {
+				return rt.Log
+			}
+			return slog.Default()
+		}, rt.Clock)
+	})
+	return rt.certs
 }
 
 var (
@@ -60,6 +79,7 @@ func Register(id string, rt *Runtime) (unregister func()) {
 	defer regMu.Unlock()
 	registry[id] = rt
 	return func() {
+		rt.Certs().close()
 		regMu.Lock()
 		defer regMu.Unlock()
 		if registry[id] == rt {

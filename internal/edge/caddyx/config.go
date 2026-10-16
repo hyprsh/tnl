@@ -68,6 +68,28 @@ type Config struct {
 	// NoHTTP3 serves HTTP/1.1 and HTTP/2 only, leaving the HTTPS port's UDP side
 	// free for something else (WireGuard).
 	NoHTTP3 bool
+	// RenewCheckInterval is how often Caddy scans for certificates to renew;
+	// zero keeps Caddy's 10 min. The Caddy suite shortens it.
+	RenewCheckInterval time.Duration
+}
+
+// issuer is the issuer module every automation policy uses.
+func (c Config) issuer() map[string]any {
+	a := c.ACME
+	if a == nil {
+		return map[string]any{"module": "internal"}
+	}
+	iss := map[string]any{"module": "acme", "ca": a.CA}
+	if a.CA == "" {
+		iss["ca"] = certmagic.LetsEncryptProductionCA
+	}
+	if a.Email != "" {
+		iss["email"] = a.Email
+	}
+	if len(a.TrustedRoots) > 0 {
+		iss["trusted_roots_pem_files"] = a.TrustedRoots
+	}
+	return iss
 }
 
 func (c Config) withDefaults() Config {
@@ -106,30 +128,17 @@ func (c Config) JSON() ([]byte, error) {
 	location += "{http.request.uri}"
 
 	automation := map[string]any{
-		"policies": []any{map[string]any{
-			"on_demand": true,
-			"issuers":   []any{map[string]any{"module": "internal"}},
-		}},
+		// The catch-all is the on-demand fallback. Route Hostnames the certificate
+		// manager hands over get a policy of their own that isn't on-demand,
+		// because certmagic's maintenance loop skips on-demand certificates.
+		"policies": []any{map[string]any{"on_demand": true, "issuers": []any{c.issuer()}}},
 	}
-	if a := c.ACME; a != nil {
-		iss := map[string]any{"module": "acme", "ca": a.CA}
-		if a.CA == "" {
-			iss["ca"] = certmagic.LetsEncryptProductionCA
-		}
-		if a.Email != "" {
-			iss["email"] = a.Email
-		}
-		if len(a.TrustedRoots) > 0 {
-			iss["trusted_roots_pem_files"] = a.TrustedRoots
-		}
-		automation = map[string]any{
-			// Issuance only for Hostnames that have a Route.
-			"on_demand": map[string]any{"permission": map[string]any{"module": "tnl", "edge": c.EdgeID}},
-			"policies": []any{map[string]any{
-				"on_demand": true,
-				"issuers":   []any{iss},
-			}},
-		}
+	if c.ACME != nil {
+		// Issuance on demand only for Hostnames that have a Route.
+		automation["on_demand"] = map[string]any{"permission": map[string]any{"module": "tnl", "edge": c.EdgeID}}
+	}
+	if c.RenewCheckInterval > 0 {
+		automation["renew_interval"] = c.RenewCheckInterval.String()
 	}
 
 	protocols := []string{"h1", "h2", "h3"}
@@ -188,6 +197,11 @@ func (c Config) JSON() ([]byte, error) {
 				"local": map[string]any{"install_trust": false},
 			}},
 			"tls": map[string]any{"automation": automation},
+			// The certificate manager records both events and returns.
+			"events": map[string]any{"subscriptions": []any{map[string]any{
+				"events":   []string{"cert_obtained", "cert_failed"},
+				"handlers": []any{map[string]any{"handler": "tnl", "edge": c.EdgeID}},
+			}}},
 		},
 	}
 	return json.Marshal(cfg)
@@ -216,8 +230,23 @@ func Start(c Config) error {
 		return err
 	}
 	caddy.DefaultStorage = &certmagic.FileStorage{Path: caddy.AppDataDir()}
+	raw, err := json.Marshal(c.withDefaults().issuer())
+	if err != nil {
+		return err
+	}
+	rt, err := lookupRuntime(c.EdgeID)
+	if err != nil {
+		return err
+	}
+	certs := rt.Certs()
+	certs.setIssuer(raw)
 	loads.Add(1)
-	return caddy.Load(b, true)
+	if err := caddy.Load(b, true); err != nil {
+		return err
+	}
+	certs.start()
+	// The new TLS app knows none of the Hostnames handed over before.
+	return certs.loaded()
 }
 
 // Stop stops Caddy.
