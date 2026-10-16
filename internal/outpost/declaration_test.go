@@ -71,6 +71,24 @@ func TestADeclarationTheEdgeRefusesWholeIsSentAgainOnlyWhenTheEdgesVersionChange
 	waitUntil(t, "the send after the Edge's version changed", func() bool { return posts.Load() == 2 && idle() })
 }
 
+func TestADeclarationThatGetsAServerErrorIsSentAgainAtTheNextPing(t *testing.T) {
+	var posts atomic.Int32
+	d := newTestDeclarer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			posts.Add(1)
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": "boom"})
+			return
+		}
+		json.NewEncoder(w).Encode(api.MyRoutes{Routes: []api.MyRoute{}})
+	})
+	idle := func() bool { d.mu.Lock(); defer d.mu.Unlock(); return !d.busy }
+	for i := int32(1); i <= 3; i++ {
+		d.answered(context.Background(), wire.Pong{Version: "v1", Declaration: &wire.DeclarationAnswer{Matches: false}})
+		waitUntil(t, "a send", func() bool { return posts.Load() == i && idle() })
+	}
+}
+
 func TestAMatchingAnswerSendsNothing(t *testing.T) {
 	var posts atomic.Int32
 	d := newTestDeclarer(t, func(w http.ResponseWriter, r *http.Request) {
