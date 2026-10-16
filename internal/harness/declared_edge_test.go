@@ -2,11 +2,15 @@ package harness
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
+	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -198,6 +202,55 @@ func TestRestartingWithEveryLineRemovedKeepsEverythingClearsTheMarksAndWarns(t *
 	// The counter skipped nothing it should not, and the state is still valid.
 	if got := len(again.Store.Snapshot().Outposts); got != 2 {
 		t.Fatalf("%d outposts", got)
+	}
+}
+
+// Restarting the Edge with a declared Zone line's mode changed, wildcard and
+// back, switches with no certificate error for a Visitor.
+func TestRestartingWithAZoneLinesModeChangedSwitchesWithoutACertificateError(t *testing.T) {
+	svc := NewHTTPService(t, hello())
+	StartFakeDNS(t, "example.test", dnsToken)
+	d := newDeclaredEdge(t)
+	line, cred := d.outpost(t, "nas")
+	perHostname := []state.DeclaredZone{{Name: "example.test"}}
+	wildcard := []state.DeclaredZone{{Name: "example.test", Provider: "fake", Token: dnsToken}}
+	elog := new(lockedBuf)
+	opts := d.options(EdgeOptions{Pebble: StartPebble(t, PebbleOptions{}), Zones: perHostname, Outposts: []state.DeclaredOutpost{line}, LogOut: elog, LogLevel: slog.LevelInfo})
+	re := StartEdgeWith(t, opts)
+	j := re.ConnectCredential(t, "nas", cred, ConnectOptions{Declaration: []outpostLine{DeclaredLine("A", "app.example.test", "http://"+svc.Addr())}})
+	defer j.Stop()
+	waitFor(t, "the line to apply", 10*time.Second, func() bool { return len(re.Store.Snapshot().Routes) == 1 })
+	// Its certificate is obtained in the background.
+	waitFor(t, "app's own certificate", 20*time.Second, func() bool {
+		conn, err := tls.Dial("tcp", net.JoinHostPort("127.0.0.1", fmt.Sprint(re.Caddy.HTTPSPort)), &tls.Config{ServerName: "app.example.test", RootCAs: re.Caddy.Roots})
+		if err != nil {
+			return false
+		}
+		defer conn.Close()
+		return slices.Contains(conn.ConnectionState().PeerCertificates[0].DNSNames, "app.example.test")
+	})
+
+	// The wildcard is in once app's own certificate stops renewing; going back,
+	// once app has its own certificate again.
+	for _, step := range []struct {
+		mode  string
+		zones []state.DeclaredZone
+		done  func() bool
+	}{
+		{"wildcard", wildcard, func() bool {
+			return re.Certs.Managing() == 0 && strings.Contains(elog.String(), "hostname=*.example.test")
+		}},
+		{"per-Hostname", perHostname, func() bool { return re.Certs.Managing() == 1 }},
+	} {
+		re.Stop()
+		opts.StateDir, opts.Zones = re.StateDir, step.zones
+		re = StartEdgeWith(t, opts)
+		v := startPoller(t, re, "app.example.test")
+		waitFor(t, "the switch to "+step.mode, 20*time.Second, step.done)
+		time.Sleep(500 * time.Millisecond)
+		if n, fails := v.finish(); len(fails) != 0 || n < 5 {
+			t.Fatalf("%s: %d of %d handshakes failed, first: %v", step.mode, len(fails), n, fails)
+		}
 	}
 }
 
