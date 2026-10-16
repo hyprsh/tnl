@@ -140,9 +140,11 @@ func (c Config) JSON() ([]byte, error) {
 	cfg := map[string]any{
 		"admin":   map[string]any{"disabled": true, "config": map[string]any{"persist": false}},
 		"storage": map[string]any{"module": "file_system", "root": filepath.Join(c.StateDir, "caddy")},
-		// Caddy's own logs stay quiet until the logging core module arrives.
+		// Caddy's entries leave through tnl's log core, which sets the levels; the
+		// log's own writer discards. No "sink": Go's log package follows slog.
 		"logging": map[string]any{"logs": map[string]any{"default": map[string]any{
-			"level": "INFO", "writer": map[string]any{"output": "discard"},
+			"level": "DEBUG", "writer": map[string]any{"output": "discard"},
+			"core": map[string]any{"module": "tnl", "edge": c.EdgeID},
 		}}},
 		"apps": map[string]any{
 			"http": map[string]any{

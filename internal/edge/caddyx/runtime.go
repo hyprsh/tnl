@@ -3,6 +3,7 @@ package caddyx
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/netip"
@@ -26,6 +27,8 @@ type Runtime struct {
 	Table    routes.Table
 	Outposts routes.Outposts
 	Dialer   Dialer
+	// Log receives Caddy's entries through the log core. Nil means slog.Default().
+	Log *slog.Logger
 
 	pool pool
 }
