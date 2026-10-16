@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/hyprsh/tnl/internal/allow"
+	"github.com/hyprsh/tnl/internal/declare"
 	"github.com/hyprsh/tnl/internal/logx"
 	"github.com/hyprsh/tnl/internal/outpost"
 	"github.com/hyprsh/tnl/internal/settings"
@@ -34,8 +35,8 @@ func init() {
 type connectSettings struct {
 	cfg outpost.Config
 	log *logx.Config
-	// declaration is the Routes this Outpost declares, checked at start. The
-	// Edge is sent it by the ping, which is wired in the next ticket.
+	// declaration is the Routes this Outpost declares, checked at start. They
+	// are also in cfg.Declaration, with their labels, for the Edge to be sent.
 	declaration settings.Declaration
 }
 
@@ -70,8 +71,15 @@ func parseConnectFlags(args []string, usageOut io.Writer) (connectSettings, erro
 		if err := settings.CheckEnv(os.Environ(), connectEnvVars, settings.RoutePrefix); err != nil {
 			return err
 		}
-		if s.declaration, err = settings.ParseRoutes(os.Environ(), routes); err != nil {
+		var labels map[string]string
+		if s.declaration, labels, err = settings.ParseRoutesLabelled(os.Environ(), routes); err != nil {
 			return err
+		}
+		for _, r := range s.declaration {
+			s.cfg.Declaration = append(s.cfg.Declaration, outpost.DeclaredRoute{
+				Line:  declare.Line{Hostname: r.Hostname, Service: r.Service, HostHeader: r.HostHeader, InsecureSkipVerify: r.InsecureSkipVerify},
+				Label: labels[r.Hostname],
+			})
 		}
 		s.cfg.Allow, err = allow.Parse(allowSpec)
 		return err

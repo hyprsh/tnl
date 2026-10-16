@@ -17,12 +17,13 @@ const DefaultPingInterval = 10 * time.Second
 
 // runPinger pings 100.64.0.1 on the ping port every interval, from the
 // Outpost's Tunnel address and the ping port, and reads the Edge's answers,
-// calling answered with each. A ping from the Edge, which
+// calling answered with each. The ping carries the digest of the Outpost's
+// Declaration. A ping from the Edge, which
 // it sends at its start to every remembered endpoint, is answered with a ping at
 // once, so the Edge learns this Outpost's version within a round trip. It
 // returns when ctx ends. A ping that fails to send or an answer that fails to
 // parse is only logged at debug: the Edge decides what silence means.
-func runPinger(ctx context.Context, tun *tunnel.Tunnel, self netip.Addr, version string, interval time.Duration, answered func(wire.Pong), log *slog.Logger) error {
+func runPinger(ctx context.Context, tun *tunnel.Tunnel, self netip.Addr, version string, declaration *wire.Digest, interval time.Duration, answered func(wire.Pong), log *slog.Logger) error {
 	conn, err := tun.Net.DialUDPAddrPort(netip.AddrPortFrom(self, wire.PingPort), netip.AddrPortFrom(addr.Edge, wire.PingPort))
 	if err != nil {
 		return err
@@ -31,7 +32,7 @@ func runPinger(ctx context.Context, tun *tunnel.Tunnel, self netip.Addr, version
 		<-ctx.Done()
 		conn.Close()
 	}()
-	ping, err := wire.AppendPing(nil, wire.Ping{Version: version})
+	ping, err := wire.AppendPing(nil, wire.Ping{Version: version, Declaration: declaration})
 	if err != nil {
 		return err
 	}

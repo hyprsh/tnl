@@ -149,6 +149,8 @@ func (s *Server) routes() {
 	endpoint(s, http.MethodPost, api.PathRouteRm, s.routeRm)
 	endpoint(s, http.MethodPost, api.PathJoin, s.join)
 	endpoint(s, http.MethodPost, api.PathRouteEdit, s.routeEdit)
+	endpoint(s, http.MethodPost, api.PathDeclaration, s.declare)
+	endpoint(s, http.MethodGet, api.PathDeclaration, s.myRoutes)
 	s.mux.HandleFunc("GET "+api.PathBackup, s.backup) // streams a tar, so not endpoint
 }
 

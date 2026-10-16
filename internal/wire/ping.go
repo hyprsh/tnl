@@ -19,22 +19,35 @@ var (
 	PongMarker = [4]byte{'t', 'n', 'l', 2}
 )
 
-// Ping and pong field tags. The version is in both; the window flag is the
-// answer's alone. Slice 8 adds the Declaration digests as new tags.
+// Ping and pong field tags. The version is in both; the window flag and the
+// Declaration answer are the pong's alone, and the Declaration digest the
+// ping's.
 const (
 	tagPingVersion = 1
-	tagPongInside  = 2
+	tagPongInside  = 2 // pong: whether the Outpost is inside the window, 1 byte (0 or 1)
+	tagDigest      = 3 // ping: the digest of the Outpost's Declaration, 32 bytes
+	tagMatches     = 4 // pong: whether that digest matches the Edge's copy, 1 byte (0 or 1)
+	tagRoutes      = 5 // pong: the digest of the Outpost's Routes and waiting lines, 32 bytes
 )
+
+const digestSize = 32
 
 var (
 	ErrTruncated = errors.New("tnl: ping is cut short")
 	ErrTrailing  = errors.New("tnl: ping has bytes after its end")
 	ErrBadFlag   = errors.New("tnl: ping flag is not 0 or 1")
+	ErrBadLength = errors.New("tnl: ping field has the wrong length")
 )
+
+// Digest is a SHA-256 digest as the ping carries it.
+type Digest [digestSize]byte
 
 // Ping is what an Outpost sends the Edge every 10 s.
 type Ping struct {
 	Version string // the Outpost's version
+	// Declaration is the digest of the Outpost's Declaration, an empty one
+	// included. Nil leaves the field out, as the Edge's own ping does.
+	Declaration *Digest
 }
 
 // Pong is the Edge's answer.
@@ -43,122 +56,159 @@ type Pong struct {
 	// Inside says whether the Outpost is inside the Edge's version window. A
 	// pong without the flag counts as inside.
 	Inside bool
+	// Declaration is what the Edge says of the Outpost's Declaration. Nil
+	// leaves the fields out, as it does for a ping that carried no digest.
+	Declaration *DeclarationAnswer
+}
+
+// DeclarationAnswer is the Edge's answer about a Declaration.
+type DeclarationAnswer struct {
+	Matches bool   // the ping's digest matches the Edge's stored copy
+	Routes  Digest // of this Outpost's Routes and waiting lines as the Edge has them
 }
 
 // AppendPing appends the datagram for p to b.
 func AppendPing(b []byte, p Ping) ([]byte, error) {
-	b, err := appendStart(b, PingMarker, p.Version)
-	if err != nil {
-		return nil, err
+	f := fields{{tagPingVersion, []byte(p.Version)}}
+	if p.Declaration != nil {
+		f = append(f, field{tagDigest, p.Declaration[:]})
 	}
-	return append(b, tagEnd), nil
+	return appendFields(b, PingMarker, f)
 }
 
 // AppendPong appends the datagram for p to b.
 func AppendPong(b []byte, p Pong) ([]byte, error) {
-	b, err := appendStart(b, PongMarker, p.Version)
-	if err != nil {
-		return nil, err
+	f := fields{{tagPingVersion, []byte(p.Version)}, {tagPongInside, []byte{flag(p.Inside)}}}
+	if d := p.Declaration; d != nil {
+		f = append(f, field{tagMatches, []byte{flag(d.Matches)}}, field{tagRoutes, d.Routes[:]})
 	}
-	flag := byte(0)
-	if p.Inside {
-		flag = 1
+	return appendFields(b, PongMarker, f)
+}
+
+func flag(b bool) byte {
+	if b {
+		return 1
 	}
-	b = append(b, tagPongInside, 1, flag)
-	return append(b, tagEnd), nil
+	return 0
 }
 
 // ParsePing reads a whole datagram, refusing an unknown marker, format number
 // or field.
 func ParsePing(b []byte) (Ping, error) {
-	f, err := parseFields(b, PingMarker, false)
-	return Ping{Version: f.version}, err
-}
-
-// ParsePong reads a whole datagram, refusing what ParsePing refuses.
-func ParsePong(b []byte) (Pong, error) {
-	f, err := parseFields(b, PongMarker, true)
-	return Pong{Version: f.version, Inside: f.inside}, err
-}
-
-func appendStart(b []byte, marker [4]byte, version string) ([]byte, error) {
-	if len(version) > maxVersion {
-		return nil, ErrFieldTooLong
+	got, err := parseFields(b, PingMarker, map[byte]int{tagPingVersion: maxVersion, tagDigest: digestSize})
+	if err != nil {
+		return Ping{}, err
 	}
+	p := Ping{Version: string(got[tagPingVersion])}
+	if d, ok := got[tagDigest]; ok {
+		if len(d) != digestSize {
+			return Ping{}, ErrBadLength
+		}
+		p.Declaration = (*Digest)(d)
+	}
+	return p, nil
+}
+
+// ParsePong reads a whole datagram, refusing what ParsePing refuses. The
+// match flag and the Routes digest go together.
+func ParsePong(b []byte) (Pong, error) {
+	got, err := parseFields(b, PongMarker, map[byte]int{tagPingVersion: maxVersion, tagPongInside: 1, tagMatches: 1, tagRoutes: digestSize})
+	if err != nil {
+		return Pong{}, err
+	}
+	p := Pong{Version: string(got[tagPingVersion]), Inside: true}
+	if v, ok := got[tagPongInside]; ok {
+		if len(v) != 1 || v[0] > 1 {
+			return Pong{}, ErrBadFlag
+		}
+		p.Inside = v[0] == 1
+	}
+	m, hasM := got[tagMatches]
+	r, hasR := got[tagRoutes]
+	switch {
+	case hasM != hasR:
+		return Pong{}, ErrMissingField
+	case hasM:
+		if len(m) != 1 || m[0] > 1 {
+			return Pong{}, ErrBadFlag
+		}
+		if len(r) != digestSize {
+			return Pong{}, ErrBadLength
+		}
+		p.Declaration = &DeclarationAnswer{Matches: m[0] == 1, Routes: Digest(r)}
+	}
+	return p, nil
+}
+
+type field struct {
+	tag   byte
+	value []byte
+}
+type fields []field
+
+func appendFields(b []byte, marker [4]byte, fs fields) ([]byte, error) {
 	b = append(b, marker[:]...)
-	b = append(b, FormatV1, tagPingVersion)
-	b = binary.AppendUvarint(b, uint64(len(version)))
-	return append(b, version...), nil
+	b = append(b, FormatV1)
+	for _, f := range fs {
+		if f.tag == tagPingVersion && len(f.value) > maxVersion {
+			return nil, ErrFieldTooLong
+		}
+		b = append(b, f.tag)
+		b = binary.AppendUvarint(b, uint64(len(f.value)))
+		b = append(b, f.value...)
+	}
+	return append(b, tagEnd), nil
 }
 
-type fields struct {
-	version string
-	inside  bool
-}
-
-// parseFields reads a datagram of the marker's kind. withFlag says whether
-// the window flag is a known tag.
-func parseFields(b []byte, marker [4]byte, withFlag bool) (fields, error) {
-	var out fields
+// parseFields reads a whole datagram into its fields. limits holds the tags
+// the message may carry and each one's longest value. The version is required.
+func parseFields(b []byte, marker [4]byte, limits map[byte]int) (map[byte][]byte, error) {
 	switch {
 	case len(b) == 0:
-		return out, ErrTruncated
+		return nil, ErrTruncated
 	case len(b) < 4 || [4]byte(b[:4]) != marker:
-		return out, ErrBadMarker
+		return nil, ErrBadMarker
 	case len(b) < 5:
-		return out, ErrTruncated
+		return nil, ErrTruncated
 	case b[4] != FormatV1:
-		return out, fmt.Errorf("%w: %d", ErrUnknownFormat, b[4])
+		return nil, fmt.Errorf("%w: %d", ErrUnknownFormat, b[4])
 	}
 	b = b[5:]
-	var haveVersion, haveFlag bool
-	out.inside = true
+	got := map[byte][]byte{}
 	for {
 		if len(b) == 0 {
-			return out, ErrTruncated
+			return nil, ErrTruncated
 		}
 		tag := b[0]
 		b = b[1:]
 		if tag == tagEnd {
 			break
 		}
-		if tag != tagPingVersion && !(withFlag && tag == tagPongInside) {
-			return out, fmt.Errorf("%w: tag %d", ErrUnknownField, tag)
+		limit, known := limits[tag]
+		if !known {
+			return nil, fmt.Errorf("%w: tag %d", ErrUnknownField, tag)
 		}
-		if (tag == tagPingVersion && haveVersion) || (tag == tagPongInside && haveFlag) {
-			return out, ErrDuplicate
+		if _, dup := got[tag]; dup {
+			return nil, ErrDuplicate
 		}
 		n, w := binary.Uvarint(b)
 		if w <= 0 {
-			return out, ErrTruncated
+			return nil, ErrTruncated
 		}
 		b = b[w:]
-		limit := uint64(maxVersion)
-		if tag == tagPongInside {
-			limit = 1
-		}
-		if n > limit {
-			return out, ErrFieldTooLong
+		if n > uint64(limit) {
+			return nil, ErrFieldTooLong
 		}
 		if uint64(len(b)) < n {
-			return out, ErrTruncated
+			return nil, ErrTruncated
 		}
-		val := b[:n]
-		b = b[n:]
-		if tag == tagPingVersion {
-			out.version, haveVersion = string(val), true
-			continue
-		}
-		if n != 1 || val[0] > 1 {
-			return out, ErrBadFlag
-		}
-		out.inside, haveFlag = val[0] == 1, true
+		got[tag], b = b[:n:n], b[n:]
 	}
 	if len(b) != 0 {
-		return out, ErrTrailing
+		return nil, ErrTrailing
 	}
-	if !haveVersion {
-		return out, ErrMissingField
+	if _, ok := got[tagPingVersion]; !ok {
+		return nil, ErrMissingField
 	}
-	return out, nil
+	return got, nil
 }

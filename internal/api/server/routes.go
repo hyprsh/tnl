@@ -63,6 +63,9 @@ func (s *Server) routeEdit(ctx context.Context, actor api.Actor, req api.RouteEd
 			if isOutpost && have.Outpost != own {
 				return notYours(own, "edit", have)
 			}
+			if st.Declares(have.Outpost) {
+				return declaringRefusal(have.Outpost)
+			}
 			before, after = have, have
 			if req.Service != nil {
 				after.Service = service.Canonical
@@ -70,6 +73,9 @@ func (s *Server) routeEdit(ctx context.Context, actor api.Actor, req api.RouteEd
 			if req.Outpost != nil {
 				if !hasOutpost(st, *req.Outpost) {
 					return api.Errorf(http.StatusBadRequest, "unknown Outpost %q; add it first with `tnl outpost add %s`", *req.Outpost, *req.Outpost)
+				}
+				if st.Declares(*req.Outpost) {
+					return declaringRefusal(*req.Outpost)
 				}
 				after.Outpost = *req.Outpost
 			}
@@ -160,6 +166,9 @@ func (s *Server) routeAdd(ctx context.Context, actor api.Actor, req api.RouteAdd
 		}
 		if !hasOutpost(st, req.Outpost) {
 			return api.Errorf(http.StatusBadRequest, "unknown Outpost %q; add it first with `tnl outpost add %s`", req.Outpost, req.Outpost)
+		}
+		if st.Declares(req.Outpost) {
+			return declaringRefusal(req.Outpost)
 		}
 		if !st.InZone(host) {
 			return api.Errorf(http.StatusBadRequest, "%s is outside every Zone; add its Zone first with `tnl zone add`", host)
