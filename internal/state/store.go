@@ -46,6 +46,14 @@ func (s *Store) Raw() []byte {
 // is missing or empty. It refuses, naming the bad entry, a state that fails
 // its checks, and never loads part of one.
 func Open(dir string, log *slog.Logger) (*Store, error) {
+	return OpenWithKey(dir, log, nil, "")
+}
+
+// OpenWithKey is Open for an Edge whose key the operator supplies. A new Edge
+// takes key as its WireGuard key; an existing state must hold it, or the open is
+// refused with "state.json holds a different Edge key than <source>", which
+// names where the key came from and never shows the key. A nil key is Open.
+func OpenWithKey(dir string, log *slog.Logger, key *keys.Key, source string) (*Store, error) {
 	s := &Store{dir: dir, log: log}
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, fmt.Errorf("state directory: %w", err)
@@ -65,6 +73,9 @@ func Open(dir string, log *slog.Logger) (*Store, error) {
 		if err != nil {
 			return nil, err
 		}
+		if key != nil && st.PrivateKey != *key {
+			return nil, fmt.Errorf("state.json holds a different Edge key than %s", source)
+		}
 		s.last = raw
 		s.cur.Store(st)
 	case errors.Is(err, os.ErrNotExist):
@@ -75,8 +86,10 @@ func Open(dir string, log *slog.Logger) (*Store, error) {
 		if len(entries) > 0 {
 			return nil, fmt.Errorf("%s has files but no %s; refusing to create a new Edge over them", dir, FileName)
 		}
-		priv, pub, err := keys.Generate()
-		if err != nil {
+		var priv, pub keys.Key
+		if key != nil {
+			priv, pub = *key, key.Public()
+		} else if priv, pub, err = keys.Generate(); err != nil {
 			return nil, err
 		}
 		st := &State{Version: Version, PrivateKey: priv}

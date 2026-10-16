@@ -121,7 +121,7 @@ func ParseRoutesLabelled(environ, flagLines []string) (Declaration, map[string]s
 	seen := map[string]string{}
 	for _, l := range lines {
 		if strings.HasPrefix(l.name, RoutePrefix) {
-			if err := checkLabel(strings.TrimPrefix(l.name, RoutePrefix)); err != nil {
+			if err := checkLabel(RoutePrefix, strings.TrimPrefix(l.name, RoutePrefix)); err != nil {
 				return nil, nil, fmt.Errorf("%s: %w", l.name, err)
 			}
 		}
@@ -139,9 +139,9 @@ func ParseRoutesLabelled(environ, flagLines []string) (Declaration, map[string]s
 	return d, seen, nil
 }
 
-func checkLabel(label string) error {
+func checkLabel(prefix, label string) error {
 	if label == "" {
-		return fmt.Errorf("the variable needs a label after %s", RoutePrefix)
+		return fmt.Errorf("the variable needs a label after %s", prefix)
 	}
 	for _, c := range label {
 		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '_') {

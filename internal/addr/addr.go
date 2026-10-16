@@ -2,7 +2,11 @@
 // and exists only inside the netstacks.
 package addr
 
-import "net/netip"
+import (
+	"crypto/sha256"
+	"encoding/binary"
+	"net/netip"
+)
 
 // Range is the Tunnel range. It isn't configurable.
 var Range = netip.MustParsePrefix("100.64.0.0/10")
@@ -33,4 +37,16 @@ func OutpostIndex(a netip.Addr) (int, bool) {
 func ip32(a netip.Addr) uint32 {
 	b := a.As4()
 	return uint32(b[0])<<24 | uint32(b[1])<<16 | uint32(b[2])<<8 | uint32(b[3])
+}
+
+// Derive returns the Tunnel address of a declared Outpost, worked out from its
+// name alone: the first 8 bytes of the SHA-256 of the name, as a big-endian
+// integer, modulo 2^22 - 3, plus 2, counted from 100.64.0.0. That never yields
+// 100.64.0.0, 100.64.0.1 (the Edge) or 100.127.255.255. The hash is frozen: an
+// Outpost credential carries the address it gives.
+func Derive(name string) netip.Addr {
+	sum := sha256.Sum256([]byte(name))
+	idx := binary.BigEndian.Uint64(sum[:8])%(1<<22-3) + 2
+	v := ip32(Range.Addr()) + uint32(idx)
+	return netip.AddrFrom4([4]byte{byte(v >> 24), byte(v >> 16), byte(v >> 8), byte(v)})
 }
