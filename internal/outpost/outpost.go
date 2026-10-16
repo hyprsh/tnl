@@ -16,6 +16,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"os"
 	"time"
 
 	"github.com/hyprsh/tnl/internal/addr"
@@ -50,6 +51,9 @@ type Config struct {
 	// PingInterval is how often the Outpost pings the Edge; 0 is 10 s. The
 	// harness shrinks it.
 	PingInterval time.Duration
+	// RelayDialTimeout bounds each attempt of the relay to reach the Edge's
+	// API; zero is 5 s.
+	RelayDialTimeout time.Duration
 }
 
 // Running is what a started Outpost exposes.
@@ -153,6 +157,11 @@ func Run(ctx context.Context, cfg Config) error {
 	if err := runPinger(pingCtx, tun, st.Address, cfg.Version, cmp.Or(cfg.PingInterval, DefaultPingInterval), cfg.Log); err != nil {
 		return fmt.Errorf("start pinging the Edge: %w", err)
 	}
+	stopRelay, err := startRelay(cfg, tun)
+	if err != nil {
+		return err
+	}
+	defer stopRelay()
 
 	fields := []any{
 		"name", st.Name,
@@ -243,4 +252,36 @@ func resolve(ctx context.Context, cfg Config, host string) (netip.Addr, error) {
 		return netip.Addr{}, errors.New("no addresses")
 	}
 	return ips[0], nil
+}
+
+// startRelay serves the Outpost's tnl.sock in its state directory and returns
+// the function that stops it.
+func startRelay(cfg Config, tun *tunnel.Tunnel) (stop func(), err error) {
+	if err := os.MkdirAll(cfg.StateDir, 0o700); err != nil {
+		return nil, fmt.Errorf("state directory: %w", err)
+	}
+	ln, err := api.ListenSocket(cfg.StateDir)
+	if err != nil {
+		return nil, fmt.Errorf("serve the relay socket: %w", err)
+	}
+	timeout := cfg.RelayDialTimeout
+	if timeout == 0 {
+		timeout = defaultRelayDialTimeout
+	}
+	r := &relay{
+		info: api.Info{Role: api.RoleOutpost, Version: cfg.Version, Build: cfg.Build, Revision: cfg.Revision},
+		log:  cfg.Log,
+		dial: func(ctx context.Context, address string) (net.Conn, error) {
+			ap, err := netip.ParseAddrPort(address)
+			if err != nil {
+				return nil, err
+			}
+			return tun.Net.DialContextTCPAddrPort(ctx, ap)
+		},
+		timeout: timeout,
+	}
+	hs := &http.Server{Handler: r.handler(), ReadHeaderTimeout: 10 * time.Second}
+	done := make(chan struct{})
+	go func() { defer close(done); hs.Serve(ln) }()
+	return func() { hs.Close(); <-done }, nil
 }

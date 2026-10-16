@@ -1,5 +1,3 @@
-//go:build !outpost
-
 package main
 
 import (
@@ -14,8 +12,8 @@ func init() {
 	routeGroup.subs["rm"] = routeRm
 }
 
-// routeRm removes a Route and closes its connections. Outposts cannot call it
-// until the relay comes.
+// routeRm removes a Route and closes its connections. An Outpost's call goes
+// through its relay and removes only its own Routes.
 func routeRm(args []string) error {
 	c := newClientCommand("route rm")
 	pos, err := c.parse(args)

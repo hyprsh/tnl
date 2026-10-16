@@ -16,9 +16,6 @@ var edgeOnlyCommands = []string{
 	"backup",
 	"edge",
 	"outpost",
-	"route add",
-	"route edit",
-	"route rm",
 	"zone add",
 }
 

@@ -212,6 +212,7 @@ func (e *RealEdge) AddOutpostTTL(t testing.TB, name, ttl string) string {
 type JoinedOutpost struct {
 	*Outpost
 	API      *api.Client // calls the Edge's API through the Tunnel
+	CLI      *api.Client // the local CLI: talks to the Outpost's relay socket in StateDir
 	Token    string
 	StateDir string
 	Stop     func() error // stops the Outpost; the test's end does too
@@ -263,8 +264,8 @@ func (e *RealEdge) TryConnectWith(t testing.TB, name, tok, stateDir string, opts
 	go func() {
 		done <- outpost.Run(ctx, outpost.Config{
 			Token: tok, StateDir: stateDir, Version: harnessVersion, Build: "outpost", Revision: "test",
-			Log:          logx.New(logx.Options{Level: slog.LevelInfo, Out: out}),
-			JoinTimeout:  opts.JoinTimeout,
+			Log:         logx.New(logx.Options{Level: slog.LevelInfo, Out: out}),
+			JoinTimeout: opts.JoinTimeout, RelayDialTimeout: 2 * time.Second,
 			Started:      func(r *outpost.Running) { up <- r },
 			PingInterval: e.pingInterval,
 		})
@@ -294,7 +295,7 @@ func (e *RealEdge) TryConnectWith(t testing.TB, name, tok, stateDir string, opts
 	}
 	o := &Outpost{Name: name, Addr: r.Address, Tunnel: r.Tunnel, Net: r.Tunnel.Net}
 	e.Outposts.Set(name, o.DataAddr())
-	return &JoinedOutpost{Outpost: o, API: r.API, Token: tok, StateDir: stateDir, Stop: func() error { stopped = true; return stop() }}, nil
+	return &JoinedOutpost{Outpost: o, API: r.API, CLI: &api.Client{StateDir: stateDir, Version: harnessVersion}, Token: tok, StateDir: stateDir, Stop: func() error { stopped = true; return stop() }}, nil
 }
 
 // waitHandshake waits until the Edge has completed a handshake with the peer
@@ -323,7 +324,13 @@ func (e *RealEdge) waitHandshake(ctx context.Context, a netip.Addr) error {
 
 func mustTempDir(t testing.TB) string {
 	t.Helper()
-	return t.TempDir() + "/outpost"
+	// The Outpost's tnl.sock lives here, so keep the path short.
+	dir, err := os.MkdirTemp("", "tnlo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
+	return dir + "/outpost"
 }
 
 // testWriter sends log lines to the test log.
