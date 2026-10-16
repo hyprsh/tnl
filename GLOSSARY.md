@@ -20,6 +20,10 @@ _Avoid_: Enrollment key, auth key, provisioning key, invite
 A durable secret that is an Outpost's identity: its private key, plus what it needs to reach and trust the Edge. Anyone holding it can connect as that Outpost until it's replaced.
 _Avoid_: Tunnel token, enrollment key, auth key, join token
 
+**Declared Zone / declared Outpost**:
+A Zone or an Outpost that the Edge's own settings list, one line each. While any line of a kind is set, the declared items are the Edge's whole set of that kind and the CLI may not change them; with no line set, they stay and go back to the CLI. A declared Outpost never joins: it connects with its Outpost credential, at a Tunnel address derived from its name.
+_Avoid_: Using "Declaration" for these, which is only an Outpost's Routes
+
 **Offline**:
 An Outpost the Edge has stopped hearing from, so its Routes can't be served until it's heard from again.
 _Avoid_: Down, disconnected, dead

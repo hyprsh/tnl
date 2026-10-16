@@ -94,6 +94,8 @@ docker exec tnl tnl zone add example.com
 docker exec tnl tnl outpost add nas
 ```
 
+The commands above are the CLI way. The example files are the declared way: the Zones and Outposts are in the Edge's environment and each Outpost holds a credential, so nothing needs `docker exec`. See [Declaring the Edge](declaring-the-edge.md).
+
 Things to know:
 
 - **Commands:** `docker exec tnl tnl …` in a container, where `sudo tnl …` is on a host. The image's `TNL_STATE_DIR` carries over into the exec.
@@ -102,7 +104,7 @@ Things to know:
 - **Ports:** the Edge publishes its ports rather than using host networking. On a bridge network Docker lets a non-root process bind ports below 1024. Without Docker's IPv6 enabled, IPv6 Visitors arrive through the userland proxy and lose their address.
 - **Stopping:** `stop_grace_period: 20s` gives the Edge time to drain.
 - **The Outpost reaches Services by container name** on a shared network, such as `http://immich:2283`. Inside the Outpost's container, `localhost` is the container, not the host.
-- **The token** goes in `TNL_TOKEN`. It works once, and the volume keeps what the Outpost saves.
+- **The token** goes in `TNL_TOKEN`. It works once, and the volume keeps what the Outpost saves. An Outpost declared by its Edge uses `TNL_CREDENTIAL_FILE` instead and needs no volume.
 - **Routes** can be declared in `TNL_ROUTE_*` variables, as the example does; see [Declaring Routes on the Outpost](declaring-routes.md).
 
 ## Uninstalling
