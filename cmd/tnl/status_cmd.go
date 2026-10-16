@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"path/filepath"
+	"time"
 
 	"github.com/hyprsh/tnl/internal/api"
 	"github.com/hyprsh/tnl/internal/render"
@@ -60,25 +61,40 @@ func statusCmd(args []string) error {
 	if err != nil {
 		return err
 	}
-	if info.Role != api.RoleEdge {
-		return fmt.Errorf("`tnl status` on an Outpost is not available yet")
-	}
-	s, err := api.Call[api.EdgeStatus](ctx, c.client(), http.MethodGet, api.PathStatus, nil)
-	if err != nil {
-		return err
-	}
-	if *asJSON {
-		err = render.JSON(stdout, s)
+	var attention []api.AttentionItem
+	if info.Role == api.RoleEdge {
+		s, err := api.Call[api.EdgeStatus](ctx, c.client(), http.MethodGet, api.PathStatus, nil)
+		if err != nil {
+			return err
+		}
+		attention = s.Attention
+		err = printStatus(*asJSON, s, func() error { return render.EdgeStatus(stdout, s) })
+		if err != nil {
+			return err
+		}
 	} else {
-		err = render.EdgeStatus(stdout, s)
+		s, err := api.Call[api.OutpostStatus](ctx, c.client(), http.MethodGet, api.PathStatus, nil)
+		if err != nil {
+			return err
+		}
+		attention = s.Attention
+		err = printStatus(*asJSON, s, func() error { return render.OutpostStatus(stdout, s, time.Now()) })
+		if err != nil {
+			return err
+		}
 	}
-	if err != nil {
-		return err
-	}
-	if len(s.Attention) > 0 {
+	if len(attention) > 0 {
 		return exitError{code: exitAttention}
 	}
 	return nil
+}
+
+// printStatus prints the reply as JSON, or as text by text.
+func printStatus(asJSON bool, reply any, text func() error) error {
+	if asJSON {
+		return render.JSON(stdout, reply)
+	}
+	return text()
 }
 
 // silent reports whether err is an exit code alone, which main does not print.

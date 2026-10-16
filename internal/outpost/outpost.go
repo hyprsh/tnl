@@ -231,7 +231,7 @@ func connect(ctx context.Context, cfg Config, st *State, joining bool) error {
 	if err := runPinger(pingCtx, tun, st.Address, cfg.Version, &digest, cmp.Or(cfg.PingInterval, DefaultPingInterval), answered, cfg.Log); err != nil {
 		return fmt.Errorf("start pinging the Edge: %w", err)
 	}
-	stopRelay, err := startRelay(cfg, tun)
+	stopRelay, err := startRelay(cfg, tun, &statusSource{cfg: cfg, st: st, w: w, judge: judge, dec: dec, edge: edgeAPI})
 	if err != nil {
 		return err
 	}
@@ -273,10 +273,31 @@ type edgeJudge struct {
 	mu       sync.Mutex
 	reported string // the Edge version the Incompatible warning was logged for
 	tooOld   string // the Edge version the older-major error was logged for
+
+	last    wire.Pong // the latest answer, for `tnl status`
+	hasLast bool
+}
+
+// verdict is what the Edge's latest answer says of this Outpost: whether the
+// Edge calls it Incompatible, or is too old for it, and the message for either.
+func (j *edgeJudge) verdict() (incompatible, tooOld bool, message string) {
+	j.mu.Lock()
+	p, ok := j.last, j.hasLast
+	j.mu.Unlock()
+	switch {
+	case !ok:
+		return false, false, ""
+	case !version.OutpostAcceptsEdge(j.cfg.Version, p.Version):
+		return false, true, version.EdgeTooOld(j.cfg.Version, p.Version)
+	case !p.Inside:
+		return true, false, version.IncompatibleOutpost(p.Version, j.cfg.Version)
+	}
+	return false, false, ""
 }
 
 func (j *edgeJudge) judge(p wire.Pong) {
 	j.mu.Lock()
+	j.last, j.hasLast = p, true
 	tell := !p.Inside && j.reported != p.Version
 	if tell {
 		j.reported = p.Version
@@ -375,7 +396,7 @@ func resolve(ctx context.Context, cfg Config, host string) (netip.Addr, error) {
 
 // startRelay serves the Outpost's tnl.sock in its state directory and returns
 // the function that stops it.
-func startRelay(cfg Config, tun *tunnel.Tunnel) (stop func(), err error) {
+func startRelay(cfg Config, tun *tunnel.Tunnel, src *statusSource) (stop func(), err error) {
 	if err := os.MkdirAll(cfg.StateDir, 0o700); err != nil {
 		return nil, fmt.Errorf("state directory: %w", err)
 	}
@@ -399,6 +420,8 @@ func startRelay(cfg Config, tun *tunnel.Tunnel) (stop func(), err error) {
 		},
 		timeout: timeout,
 	}
+	src.timeout = timeout
+	r.status = src.status
 	hs := &http.Server{Handler: r.handler(), ReadHeaderTimeout: 10 * time.Second}
 	done := make(chan struct{})
 	go func() { defer close(done); hs.Serve(ln) }()
