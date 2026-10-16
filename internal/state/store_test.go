@@ -79,7 +79,7 @@ func TestFirstStartCreatesStateWithKeyAndLogsFingerprint(t *testing.T) {
 	s, buf := open(t, dir)
 
 	st := s.Snapshot()
-	if st.Version != 1 || st.PrivateKey == (keys.Key{}) || st.NextAddr != 0 {
+	if st.Version != 2 || st.PrivateKey == (keys.Key{}) || st.NextAddr != 0 {
 		t.Fatalf("bad new state: %+v", st)
 	}
 	if len(st.Outposts)+len(st.Routes)+len(st.Zones) != 0 {
@@ -189,7 +189,7 @@ func openErr(t *testing.T, dir string) (string, error) {
 }
 
 func TestUnknownSchemaVersionIsRefused(t *testing.T) {
-	for _, v := range []string{"2", "0", "99"} {
+	for _, v := range []string{"1", "0", "99"} {
 		dir := t.TempDir()
 		writeState(t, dir, `{"version": `+v+`}`)
 		_, err := openErr(t, dir)
@@ -211,7 +211,7 @@ func TestStartChecksTheWholeStateAndNamesTheBadEntry(t *testing.T) {
 	priv, _, _ := keys.Generate()
 	k := func(x keys.Key) string { b, _ := x.MarshalText(); return string(b) }
 	doc := func(outposts, routes, zones string, next int) string {
-		return `{"version":1,"private_key":"` + k(priv) + `","next_address":` + itoa(next) +
+		return `{"version":2,"private_key":"` + k(priv) + `","next_address":` + itoa(next) +
 			`,"outposts":[` + outposts + `],"routes":[` + routes + `],"zones":[` + zones + `]}`
 	}
 	op := func(name, addr string) string {
@@ -239,7 +239,7 @@ func TestStartChecksTheWholeStateAndNamesTheBadEntry(t *testing.T) {
 		{"wildcard zone without provider", doc("", "", `{"name":"example.com","mode":"wildcard"}`, 0), "example.com"},
 		{"unknown mode", doc("", "", `{"name":"example.com","mode":"sometimes"}`, 0), "example.com"},
 		{"duplicate outpost name", doc(op("a", "100.64.0.2")+","+op("a", "100.64.0.3"), "", zone, 2), `"a"`},
-		{"unknown field", strings.Replace(doc("", "", zone, 0), `"version":1,`, `"version":1,"bogus":1,`, 1), "bogus"},
+		{"unknown field", strings.Replace(doc("", "", zone, 0), `"version":2,`, `"version":2,"bogus":1,`, 1), "bogus"},
 		{"not json", `{`, "state.json"},
 	}
 	for _, tc := range cases {

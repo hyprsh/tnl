@@ -19,7 +19,7 @@ import (
 )
 
 // Version is the schema version this tnl reads and writes.
-const Version = 1
+const Version = 2
 
 // Mode is a Zone's certificate mode.
 type Mode string
@@ -56,6 +56,9 @@ type Outpost struct {
 	// For an Outpost that hasn't joined, or was rekeyed and hasn't joined again.
 	OneTimeKey   *keys.Key
 	TokenExpires time.Time
+	// Declared marks an Outpost the Edge's settings declare. It is never
+	// `not joined`, and its Tunnel address is derived from its name.
+	Declared bool
 }
 
 // Route sends a Hostname to a Service through an Outpost. Its Zone is worked
@@ -74,13 +77,25 @@ type Zone struct {
 	Mode     Mode   // PerHostname or Wildcard
 	Provider string // wildcard only
 	Token    string // wildcard only
+	// Declared marks a Zone the Edge's settings declare.
+	Declared bool
 }
 
-// AllocAddr hands out the next Tunnel address and advances the counter.
+// AllocAddr hands out the next Tunnel address and advances the counter. It
+// skips an address that an Outpost already holds, such as a declared Outpost's
+// derived one.
 func (s *State) AllocAddr() netip.Addr {
-	a := addr.Outpost(s.NextAddr)
-	s.NextAddr++
-	return a
+	for {
+		a := addr.Outpost(s.NextAddr)
+		s.NextAddr++
+		if !s.addrTaken(a) {
+			return a
+		}
+	}
+}
+
+func (s *State) addrTaken(a netip.Addr) bool {
+	return slices.ContainsFunc(s.Outposts, func(o Outpost) bool { return o.Address == a })
 }
 
 // RoutesVia returns the Hostnames of the Routes through the named Outpost.
@@ -201,7 +216,15 @@ func (s *State) Validate() error {
 		if !ok {
 			return invalid(e, "Tunnel address %s is not an Outpost address in %s", o.Address, addr.Range)
 		}
-		if idx >= s.NextAddr {
+		derived := o.Address == addr.Derive(o.Name)
+		switch {
+		case o.Declared && !derived:
+			return invalid(e, "a declared Outpost's Tunnel address is %s, derived from its name; this one has %s", addr.Derive(o.Name), o.Address)
+		case o.Declared && o.OneTimeKey != nil:
+			return invalid(e, "a declared Outpost never waits to join, so it has no one-time key")
+		case idx >= s.NextAddr && !derived:
+			// Only the counter's own addresses must be below it; a derived
+			// address lies anywhere in the range.
 			return invalid(e, "Tunnel address %s is not below the counter (%d)", o.Address, s.NextAddr)
 		}
 	}
@@ -323,6 +346,7 @@ type diskOutpost struct {
 	Endpoint     string     `json:"endpoint,omitempty"`
 	OneTimeKey   string     `json:"one_time_key,omitempty"`
 	TokenExpires *time.Time `json:"token_expires,omitempty"`
+	Declared     bool       `json:"declared,omitempty"`
 }
 
 // diskRoute and diskZone are the on-disk spellings of Route and Zone.
@@ -339,13 +363,14 @@ type diskZone struct {
 	Mode     string `json:"mode"`
 	Provider string `json:"provider,omitempty"`
 	Token    string `json:"token,omitempty"`
+	Declared bool   `json:"declared,omitempty"`
 }
 
 func encode(s *State) ([]byte, error) {
 	d := diskState{Version: s.Version, NextAddr: s.NextAddr, Outposts: []diskOutpost{}, Routes: []diskRoute{}, Zones: []diskZone{}}
 	d.PrivateKey = keyText(s.PrivateKey)
 	for _, o := range s.Outposts {
-		do := diskOutpost{Name: o.Name, PublicKey: keyText(o.PublicKey), Address: o.Address.String()}
+		do := diskOutpost{Name: o.Name, PublicKey: keyText(o.PublicKey), Address: o.Address.String(), Declared: o.Declared}
 		if o.Endpoint.IsValid() {
 			do.Endpoint = o.Endpoint.String()
 		}
@@ -362,7 +387,7 @@ func encode(s *State) ([]byte, error) {
 		d.Routes = append(d.Routes, diskRoute(r))
 	}
 	for _, z := range s.Zones {
-		d.Zones = append(d.Zones, diskZone{Name: z.Name, Mode: string(z.Mode), Provider: z.Provider, Token: z.Token})
+		d.Zones = append(d.Zones, diskZone{Name: z.Name, Mode: string(z.Mode), Provider: z.Provider, Token: z.Token, Declared: z.Declared})
 	}
 	for _, decl := range s.Declarations {
 		dd := diskDeclaration{Outpost: decl.Outpost, Routes: []diskLine{}}
@@ -399,7 +424,7 @@ func decode(raw []byte) (*State, error) {
 	}
 	for _, do := range d.Outposts {
 		e := fmt.Sprintf("outpost %q", do.Name)
-		o := Outpost{Name: do.Name}
+		o := Outpost{Name: do.Name, Declared: do.Declared}
 		if o.PublicKey, err = parseKey(e, "public_key", do.PublicKey); err != nil {
 			return nil, err
 		}
@@ -427,7 +452,7 @@ func decode(raw []byte) (*State, error) {
 		s.Routes = append(s.Routes, Route(r))
 	}
 	for _, z := range d.Zones {
-		s.Zones = append(s.Zones, Zone{Name: z.Name, Mode: Mode(z.Mode), Provider: z.Provider, Token: z.Token})
+		s.Zones = append(s.Zones, Zone{Name: z.Name, Mode: Mode(z.Mode), Provider: z.Provider, Token: z.Token, Declared: z.Declared})
 	}
 	for _, dd := range d.Declarations {
 		decl := Declaration{Outpost: dd.Outpost}

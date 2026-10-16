@@ -70,6 +70,9 @@ func (e *UnknownMarkerError) Error() string {
 // Decode parses a token. A marker other than tnl1 gives *UnknownMarkerError.
 func Decode(s string) (Token, error) {
 	s = strings.TrimSpace(s)
+	if strings.HasPrefix(s, "tnlc1.") {
+		return Token{}, errors.New("this is an Outpost credential, not a join token: pass it as --credential-file (TNL_CREDENTIAL_FILE), or in TNL_CREDENTIAL")
+	}
 	payload, ok := strings.CutPrefix(s, Marker)
 	if !ok {
 		return Token{}, &UnknownMarkerError{Token: s}
