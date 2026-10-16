@@ -78,6 +78,33 @@ func (s *State) AllocAddr() netip.Addr {
 	return a
 }
 
+// RoutesVia returns the Hostnames of the Routes through the named Outpost.
+func (s *State) RoutesVia(outpost string) []string {
+	var hosts []string
+	for _, r := range s.Routes {
+		if r.Outpost == outpost {
+			hosts = append(hosts, r.Hostname)
+		}
+	}
+	return hosts
+}
+
+// RemoveRoutesVia removes the Routes through the named Outpost and returns
+// their Hostnames. Zone and Outpost removal share it.
+func (s *State) RemoveRoutesVia(outpost string) []string {
+	var hosts []string
+	kept := make([]Route, 0, len(s.Routes))
+	for _, r := range s.Routes {
+		if r.Outpost == outpost {
+			hosts = append(hosts, r.Hostname)
+			continue
+		}
+		kept = append(kept, r)
+	}
+	s.Routes = kept
+	return hosts
+}
+
 // Clone returns a deep copy.
 func (s *State) Clone() *State {
 	c := *s

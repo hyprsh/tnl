@@ -85,3 +85,10 @@ func (o *MemOutposts) Addr(name string) (netip.AddrPort, bool) {
 	a, ok := o.m[name]
 	return a, ok
 }
+
+// Swap replaces every Outpost at once, so a removed one is no longer addressable.
+func (o *MemOutposts) Swap(m map[string]netip.AddrPort) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.m = m
+}
