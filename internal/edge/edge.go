@@ -7,8 +7,10 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/netip"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"github.com/hyprsh/tnl/internal/addr"
 	"github.com/hyprsh/tnl/internal/api"
@@ -74,7 +76,8 @@ func Run(ctx context.Context, cfg Config) error {
 	if err != nil {
 		return refuse(err)
 	}
-	if err := syncPeers(tun, store, cfg.Log); err != nil {
+	peers, err := syncPeers(tun, store, cfg.Log)
+	if err != nil {
 		return refuse(err)
 	}
 	ln, err := server.ListenSocket(cfg.StateDir)
@@ -87,6 +90,8 @@ func Run(ctx context.Context, cfg Config) error {
 		Conns: conns,
 		Store: store, Log: cfg.Log, Version: cfg.Version, Build: cfg.Build, Revision: cfg.Revision, Role: api.RoleEdge,
 		Address: cfg.Address, WireGuardPort: wgPort, Resolver: cfg.Resolver,
+		PreparePeer: peers.prepare,
+		SwapPeer:    func(old, new keys.Key, a netip.Addr) { peers.swap(old, new, a, cfg.Log) },
 	})
 	served := make(chan error, 1)
 	go func() { served <- srv.Serve(ctx, ln, api.ActorLocal) }()
@@ -133,30 +138,64 @@ func Run(ctx context.Context, cfg Config) error {
 	}
 }
 
+// peerSet is the Edge's WireGuard peers, one per Outpost Tunnel address.
+type peerSet struct {
+	mu   sync.Mutex
+	tun  *tunnel.Tunnel
+	have map[netip.Addr]keys.Key
+}
+
 // syncPeers installs a WireGuard peer for every Outpost in the state, now and
 // after every later change, so `outpost add` needs no restart. The Edge learns
-// an Outpost's endpoint from its first packet, so a peer has none.
-func syncPeers(tun *tunnel.Tunnel, store *state.Store, log *slog.Logger) error {
-	have := map[keys.Key]bool{}
-	apply := func(st *state.State) error {
-		for _, o := range st.Outposts {
-			if have[o.PublicKey] {
-				continue
-			}
-			if err := tun.AddPeer(tunnel.Peer{PublicKey: o.PublicKey, AllowedIP: o.Address}); err != nil {
-				return fmt.Errorf("add the WireGuard peer for outpost %q: %w", o.Name, err)
-			}
-			have[o.PublicKey] = true
-		}
-		return nil
-	}
-	if err := apply(store.Snapshot()); err != nil {
-		return err
+// an Outpost's endpoint from its first packet, so a peer has none. An Outpost
+// whose peer exists keeps it: the join exchange swaps the key itself, after
+// its reply is out (peerSet.swap).
+func syncPeers(tun *tunnel.Tunnel, store *state.Store, log *slog.Logger) (*peerSet, error) {
+	ps := &peerSet{tun: tun, have: map[netip.Addr]keys.Key{}}
+	if err := ps.apply(store.Snapshot()); err != nil {
+		return nil, err
 	}
 	store.OnChange(func(st *state.State) {
-		if err := apply(st); err != nil {
+		if err := ps.apply(st); err != nil {
 			log.Error("could not update the WireGuard peers", "error", err)
 		}
 	})
+	return ps, nil
+}
+
+func (ps *peerSet) apply(st *state.State) error {
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+	for _, o := range st.Outposts {
+		if _, ok := ps.have[o.Address]; ok {
+			continue
+		}
+		if err := ps.tun.AddPeer(tunnel.Peer{PublicKey: o.PublicKey, AllowedIP: o.Address}); err != nil {
+			return fmt.Errorf("add the WireGuard peer for outpost %q: %w", o.Name, err)
+		}
+		ps.have[o.Address] = o.PublicKey
+	}
 	return nil
+}
+
+// prepare adds a peer that owns no Tunnel address yet.
+func (ps *peerSet) prepare(key keys.Key) error {
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+	return ps.tun.AddPeer(tunnel.Peer{PublicKey: key})
+}
+
+// swap replaces the peer at address: the new key takes the address over, then
+// the old peer goes.
+func (ps *peerSet) swap(old, new keys.Key, address netip.Addr, log *slog.Logger) {
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+	if err := ps.tun.AddPeer(tunnel.Peer{PublicKey: new, AllowedIP: address}); err != nil {
+		log.Error("could not add the Outpost's new WireGuard peer", "address", address.String(), "error", err)
+		return
+	}
+	if err := ps.tun.RemovePeer(old); err != nil {
+		log.Error("could not remove the one-time WireGuard peer", "address", address.String(), "error", err)
+	}
+	ps.have[address] = new
 }

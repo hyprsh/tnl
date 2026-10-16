@@ -168,7 +168,13 @@ func (e *RealEdge) AddRoute(t testing.TB, hostname, serviceURL, outpost string) 
 // AddOutpost calls `outpost add` on the running Edge and returns the join token.
 func (e *RealEdge) AddOutpost(t testing.TB, name string) string {
 	t.Helper()
-	resp, err := api.Call[api.OutpostAddResponse](context.Background(), e.API, http.MethodPost, api.PathOutposts, api.OutpostAddRequest{Name: name})
+	return e.AddOutpostTTL(t, name, "")
+}
+
+// AddOutpostTTL is AddOutpost with `--ttl`; empty is the default.
+func (e *RealEdge) AddOutpostTTL(t testing.TB, name, ttl string) string {
+	t.Helper()
+	resp, err := api.Call[api.OutpostAddResponse](context.Background(), e.API, http.MethodPost, api.PathOutposts, api.OutpostAddRequest{Name: name, TTL: ttl})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -196,14 +202,43 @@ func (e *RealEdge) JoinOutpost(t testing.TB, name string) *JoinedOutpost {
 // `tnl connect` would. Pass an empty token to reconnect from the state.
 func (e *RealEdge) Connect(t testing.TB, name, tok, stateDir string) *JoinedOutpost {
 	t.Helper()
+	j, err := e.TryConnect(t, name, tok, stateDir)
+	if err != nil {
+		t.Fatalf("outpost.Run: %v", err)
+	}
+	return j
+}
+
+// ConnectOptions tunes an Outpost started by TryConnectWith.
+type ConnectOptions struct {
+	// LogOut, if set, receives the Outpost's log lines at info and above.
+	LogOut io.Writer
+	// JoinTimeout bounds the join exchange; zero uses the Outpost's default.
+	JoinTimeout time.Duration
+}
+
+// TryConnect is Connect that returns the error `tnl connect` would exit on.
+func (e *RealEdge) TryConnect(t testing.TB, name, tok, stateDir string) (*JoinedOutpost, error) {
+	t.Helper()
+	return e.TryConnectWith(t, name, tok, stateDir, ConnectOptions{JoinTimeout: 3 * time.Second})
+}
+
+// TryConnectWith is TryConnect with options.
+func (e *RealEdge) TryConnectWith(t testing.TB, name, tok, stateDir string, opts ConnectOptions) (*JoinedOutpost, error) {
+	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	up := make(chan *outpost.Running, 1)
 	done := make(chan error, 1)
+	var out io.Writer = testWriter{t}
+	if opts.LogOut != nil {
+		out = io.MultiWriter(out, opts.LogOut)
+	}
 	go func() {
 		done <- outpost.Run(ctx, outpost.Config{
 			Token: tok, StateDir: stateDir, Version: harnessVersion, Build: "outpost", Revision: "test",
-			Log:     logx.New(logx.Options{Level: slog.LevelWarn, Out: testWriter{t}}),
-			Started: func(r *outpost.Running) { up <- r },
+			Log:         logx.New(logx.Options{Level: slog.LevelInfo, Out: out}),
+			JoinTimeout: opts.JoinTimeout,
+			Started:     func(r *outpost.Running) { up <- r },
 		})
 	}()
 	stop := func() error { cancel(); return <-done }
@@ -218,7 +253,7 @@ func (e *RealEdge) Connect(t testing.TB, name, tok, stateDir string) *JoinedOutp
 	case r = <-up:
 	case err := <-done:
 		stopped = true
-		t.Fatalf("outpost.Run: %v", err)
+		return nil, err
 	case <-time.After(10 * time.Second):
 		t.Fatal("the Outpost did not start")
 	}
@@ -231,7 +266,7 @@ func (e *RealEdge) Connect(t testing.TB, name, tok, stateDir string) *JoinedOutp
 	}
 	o := &Outpost{Name: name, Addr: r.Address, Tunnel: r.Tunnel, Net: r.Tunnel.Net}
 	e.Outposts.Set(name, o.DataAddr())
-	return &JoinedOutpost{Outpost: o, API: r.API, Token: tok, StateDir: stateDir, Stop: func() error { stopped = true; return stop() }}
+	return &JoinedOutpost{Outpost: o, API: r.API, Token: tok, StateDir: stateDir, Stop: func() error { stopped = true; return stop() }}, nil
 }
 
 // waitHandshake waits until the Edge has completed a handshake with the peer
