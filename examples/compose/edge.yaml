@@ -1,0 +1,15 @@
+# The Edge. Replace X.Y.Z with the exact release you install, and the address
+# with the DNS name Outposts dial. (The declared setup, with Zones and Outposts
+# in the environment, comes later.)
+services:
+  tnl:
+    image: ghcr.io/hyprsh/tnl:X.Y.Z
+    container_name: tnl
+    restart: unless-stopped
+    stop_grace_period: 20s
+    environment:
+      TNL_ADDRESS: edge.example.com
+    ports: ["80:80/tcp", "443:443/tcp", "443:443/udp", "51820:51820/udp"]
+    volumes: ["tnl:/var/lib/tnl"]
+volumes:
+  tnl:

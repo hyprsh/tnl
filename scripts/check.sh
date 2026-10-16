@@ -23,4 +23,8 @@ go test -timeout 15m -tags nomysql "$@" ./...
 go test -tags nomysql,outpost "$@" ./cmd/tnl
 
 scripts/check-outpost-deps.sh
+
+# The shell scripts parse. (packaging/ tests install.sh and the units; the snapshot
+# build is scripts/check-release.sh, which CI does not run.)
+for f in install.sh scripts/*.sh; do sh -n "$f"; done
 echo "ok: every check passed"

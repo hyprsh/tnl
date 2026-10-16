@@ -1,0 +1,20 @@
+[Unit]
+Description=tnl Outpost
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+ExecStart=/usr/local/bin/tnl connect
+EnvironmentFile=/etc/tnl/outpost.env
+Environment=TNL_STATE_DIR=/var/lib/tnl-outpost
+DynamicUser=yes
+User=tnl-outpost
+StateDirectory=tnl-outpost
+StateDirectoryMode=0700
+CapabilityBoundingSet=
+Restart=on-failure
+RestartSec=5s
+RestartPreventExitStatus=78
+
+[Install]
+WantedBy=multi-user.target

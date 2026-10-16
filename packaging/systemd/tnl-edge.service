@@ -1,0 +1,21 @@
+[Unit]
+Description=tnl Edge
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+ExecStart=/usr/local/bin/tnl edge
+EnvironmentFile=/etc/tnl/edge.env
+DynamicUser=yes
+User=tnl
+StateDirectory=tnl
+StateDirectoryMode=0700
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+Restart=on-failure
+RestartSec=5s
+RestartPreventExitStatus=78
+TimeoutStopSec=20s
+
+[Install]
+WantedBy=multi-user.target
