@@ -17,6 +17,7 @@ var edgeOnlyCommands = []string{
 	"edge",
 	"outpost",
 	"zone add",
+	"zone edit",
 	"zone rm",
 }
 

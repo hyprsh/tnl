@@ -5,11 +5,14 @@
 package caddyx
 
 import (
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -75,6 +78,19 @@ type Config struct {
 	// "*.zone" and "zone" whose DNS-01 challenge goes through the tnl DNS
 	// provider module. The config names the Zone, never a token (ADR 0005).
 	Wildcards []string
+	// Retired names certificates, by subject, that Caddy no longer manages and
+	// yet keeps serving: the config loads each one's newest unexpired
+	// certificate from storage, as one nobody renews. It is what lets a
+	// Hostname that changed from one mode to the other keep its certificate
+	// until the new one is in, and a dropped wildcard keep serving until it
+	// expires.
+	Retired []string
+	// Hostnames are the Route Hostnames the certificate manager hands to Caddy
+	// (Start fills them in): the config gives each a policy of its own that
+	// isn't on-demand and automates it, so a certificate is obtained for it even
+	// where a retired wildcard is also managed, which Caddy would otherwise take
+	// as covering it.
+	Hostnames []string
 	// DNSPropagationTimeout is how long a challenge waits for its TXT record to
 	// appear; zero keeps Caddy's 2 min and -1 skips the check, which the harness
 	// does because its records are not in DNS.
@@ -82,6 +98,49 @@ type Config struct {
 	// DNSResolvers are the DNS servers the challenges and their SOA lookups ask;
 	// none means the system's.
 	DNSResolvers []string
+}
+
+// retiredNames are the retired names that hold an unexpired certificate in
+// storage. A name whose Zone is a wildcard again is left out.
+func (c Config) retiredNames() (out []any) {
+	managed := map[string]bool{}
+	for _, z := range c.Wildcards {
+		for _, n := range wildcardNames(z) {
+			managed[n] = true
+		}
+	}
+	for _, name := range c.Retired {
+		if managed[name] {
+			continue
+		}
+		dir := strings.ReplaceAll(name, "*", "wildcard_")
+		matches, _ := filepath.Glob(filepath.Join(c.StateDir, "caddy", "certificates", "*", dir, dir+".crt"))
+		for _, m := range matches {
+			if certExpiry(m).After(time.Now()) {
+				out = append(out, name)
+				break
+			}
+		}
+	}
+	return out
+}
+
+// certExpiry is when the PEM certificate file expires; the zero time if it
+// can't be read.
+func certExpiry(path string) time.Time {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return time.Time{}
+	}
+	block, _ := pem.Decode(b)
+	if block == nil {
+		return time.Time{}
+	}
+	leaf, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return time.Time{}
+	}
+	return leaf.NotAfter
 }
 
 // wildcardNames are the names a wildcard Zone's certificate covers.
@@ -163,6 +222,12 @@ func (c Config) JSON() ([]byte, error) {
 	// a policy of their own that isn't on-demand, because certmagic's
 	// maintenance loop skips on-demand certificates.
 	var policies, automate []any
+	if len(c.Hostnames) > 0 {
+		policies = append(policies, map[string]any{"subjects": c.Hostnames, "issuers": []any{c.issuer()}})
+		for _, n := range c.Hostnames {
+			automate = append(automate, n)
+		}
+	}
 	for _, z := range c.Wildcards {
 		policies = append(policies, c.wildcardPolicy(z))
 		for _, n := range wildcardNames(z) {
@@ -185,9 +250,20 @@ func (c Config) JSON() ([]byte, error) {
 	}
 
 	tlsApp := map[string]any{"automation": automation}
+	certificates := map[string]any{}
 	if len(automate) > 0 {
 		// A policy's subjects don't start issuance; automating the names does.
-		tlsApp["certificates"] = map[string]any{"automate": automate}
+		certificates["automate"] = automate
+	}
+	// Automated under the catch-all, which is on-demand: Caddy loads the
+	// certificate from storage and keeps it in its cache across the reload, and
+	// nothing renews it, because certmagic's maintenance skips on-demand
+	// certificates.
+	if retired := c.retiredNames(); len(retired) > 0 {
+		certificates["automate"] = append(automate, retired...)
+	}
+	if len(certificates) > 0 {
+		tlsApp["certificates"] = certificates
 	}
 
 	cfg := map[string]any{
@@ -273,10 +349,6 @@ func Loads() int64 { return loads.Load() }
 // with fresh module instances, and Runtime state carries over. Caddy is a
 // process singleton, so only one Edge runs per process.
 func Start(c Config) error {
-	b, err := c.JSON()
-	if err != nil {
-		return err
-	}
 	// Caddy's data directory is $XDG_DATA_HOME/caddy.
 	dataHome := c.StateDir
 	if err := os.MkdirAll(dataHome, 0o700); err != nil {
@@ -296,6 +368,11 @@ func Start(c Config) error {
 	}
 	certs := rt.Certs()
 	certs.setIssuer(raw)
+	c.Hostnames = certs.configure()
+	b, err := c.JSON()
+	if err != nil {
+		return err
+	}
 	loads.Add(1)
 	if err := caddy.Load(b, true); err != nil {
 		return err

@@ -99,6 +99,15 @@ type Wildcards interface {
 	Reload() error
 	// Wait waits for a certificate for the name, or until ctx ends.
 	Wait(ctx context.Context, name string) error
+	// WaitOwn waits for a certificate that names the Hostname itself, not a
+	// wildcard that covers it, or until ctx ends.
+	WaitOwn(ctx context.Context, name string) error
+	// Retire keeps the certificates held for the names serving across the
+	// reloads that follow, though Caddy no longer manages them, until Release.
+	// A name is a certificate's subject, so a wildcard's is "*.zone".
+	Retire(names ...string)
+	// Release lets go of what Retire kept: the next reload drops it.
+	Release(names ...string)
 }
 
 // Liveness is the Edge's view of the Outposts, as the handlers read it.
@@ -131,6 +140,7 @@ func (s *Server) routes() {
 	endpoint(s, http.MethodGet, api.PathInfo, s.info)
 	endpoint(s, http.MethodGet, api.PathZones, s.zoneList)
 	endpoint(s, http.MethodPost, api.PathZones, s.zoneAdd)
+	endpoint(s, http.MethodPost, api.PathZoneEdit, s.zoneEdit)
 	endpoint(s, http.MethodPost, api.PathZoneRm, s.zoneRm)
 	endpoint(s, http.MethodPost, api.PathOutposts, s.outpostAdd)
 	endpoint(s, http.MethodPost, api.PathOutpostRm, s.outpostRm)

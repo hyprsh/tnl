@@ -3,7 +3,10 @@ package edge
 import (
 	"context"
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
+	"sync"
 	"sync/atomic"
 
 	"github.com/hyprsh/tnl/internal/edge/dns"
@@ -18,6 +21,43 @@ type wildcards struct {
 	resolvers []string
 	certs     *certsRef
 	reload    atomic.Pointer[func() error]
+
+	mu      sync.Mutex
+	retired map[string]int
+}
+
+// Retire implements server.Wildcards.
+func (w *wildcards) Retire(names ...string) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.retired == nil {
+		w.retired = map[string]int{}
+	}
+	for _, n := range names {
+		w.retired[n]++
+	}
+}
+
+// Release implements server.Wildcards.
+func (w *wildcards) Release(names ...string) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	for _, n := range names {
+		if w.retired[n]--; w.retired[n] <= 0 {
+			delete(w.retired, n)
+		}
+	}
+}
+
+func (w *wildcards) retiredNames() []string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return slices.Sorted(maps.Keys(w.retired))
+}
+
+// WaitOwn waits for a certificate that names the Hostname itself.
+func (w *wildcards) WaitOwn(ctx context.Context, name string) error {
+	return w.certs.WaitOwn(ctx, name)
 }
 
 // Check finds the Zone's DNS zone and refuses a token that cannot read it.
