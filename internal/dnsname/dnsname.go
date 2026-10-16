@@ -69,3 +69,18 @@ func LongestZone(host string, zones []string) (string, bool) {
 	}
 	return best, found
 }
+
+// WildcardCovers says whether a wildcard certificate for any of the zones
+// ("*.zone" and "zone") covers host: it is a zone's own name, or one label
+// below it. A name deeper than that is not covered, whatever Zone holds it.
+func WildcardCovers(host string, zones []string) bool {
+	for _, z := range zones {
+		if host == z {
+			return true
+		}
+		if rest, ok := strings.CutSuffix(host, "."+z); ok && rest != "" && !strings.Contains(rest, ".") {
+			return true
+		}
+	}
+	return false
+}

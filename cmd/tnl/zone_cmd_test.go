@@ -26,6 +26,10 @@ import (
 // before starting one.
 var edgeTestDialer routes.TestDialer
 
+// edgeWildcards is the wildcard-Zone side runningEdge gives the Edge; nil
+// refuses wildcard Zones.
+var edgeWildcards server.Wildcards
+
 func runningEdge(t *testing.T) {
 	runningEdgeWith(t, fakeDNS{"zone.test": true, "example.com": true, "b.example.com": true})
 }
@@ -64,7 +68,7 @@ func runningEdgeWith(t *testing.T, res server.Resolver) {
 		t.Fatal(err)
 	}
 	v, rev := versionInfo()
-	srv := server.New(server.Config{Store: store, Log: lg, Version: v, Build: buildName, Revision: rev, Role: "edge", Address: "tnl.example.com", WireGuardPort: 51820, Resolver: res, StateDir: dir, TestDialer: edgeTestDialer})
+	srv := server.New(server.Config{Store: store, Log: lg, Version: v, Build: buildName, Revision: rev, Role: "edge", Address: "tnl.example.com", WireGuardPort: 51820, Resolver: res, StateDir: dir, TestDialer: edgeTestDialer, Wildcards: edgeWildcards})
 	ln, err := server.ListenSocket(dir)
 	if err != nil {
 		t.Fatal(err)

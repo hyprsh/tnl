@@ -24,6 +24,7 @@ func (s *Server) zoneRm(_ context.Context, actor api.Actor, req api.ZoneRmReques
 		return api.ZoneRmReply{}, err
 	}
 	var removed, moved []string
+	var wasWildcard bool
 	err = s.cfg.Store.Update(actor, func(st *state.State) error {
 		i := slices.IndexFunc(st.Zones, func(z state.Zone) bool { return z.Name == name })
 		if i < 0 {
@@ -39,6 +40,7 @@ func (s *Server) zoneRm(_ context.Context, actor api.Actor, req api.ZoneRmReques
 				moved = append(moved, r.Hostname)
 			}
 		}
+		wasWildcard = st.Zones[i].Mode == state.Wildcard
 		removed = st.RemoveRoutes(func(r state.Route) bool { return slices.Contains(stranded, r.Hostname) })
 		st.Zones = slices.Delete(slices.Clone(st.Zones), i, i+1)
 		return nil
@@ -50,6 +52,13 @@ func (s *Server) zoneRm(_ context.Context, actor api.Actor, req api.ZoneRmReques
 	if s.cfg.Conns != nil {
 		for _, h := range removed {
 			s.cfg.Conns.CloseRoute(h)
+		}
+	}
+	if wasWildcard && s.cfg.Wildcards != nil {
+		// The Zone's policy and its token are gone from the state; Caddy stops
+		// managing its certificate with the reload.
+		if err := s.cfg.Wildcards.Reload(); err != nil {
+			s.cfg.Log.Error("could not reload Caddy after removing a wildcard Zone", "zone", name, "error", err)
 		}
 	}
 	slices.Sort(removed)
