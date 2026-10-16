@@ -56,3 +56,30 @@ func TestZoneRmOfAWildcardZoneWaitsForTheMovedRoutesOwnCertificates(t *testing.T
 		t.Fatalf("%d of %d handshakes failed, first: %s", len(fails), n, fails[0])
 	}
 }
+
+// A restarted Edge finds the wildcard's certificates in storage and orders
+// nothing for the Hostnames they cover, not even for the moments before the
+// first Tick would settle them.
+func TestARestartOrdersNothingForHostnamesAStoredWildcardCovers(t *testing.T) {
+	StartFakeDNS(t, "example.test", dnsToken)
+	pb := StartPebble(t, PebbleOptions{})
+	re := StartEdgeWith(t, EdgeOptions{Pebble: pb})
+	re.JoinOutpost(t, "nas")
+	if _, err := zoneAddWildcard(t, re, "lab.example.test", "fake", dnsToken); err != nil {
+		t.Fatal(err)
+	}
+	re.AddRoute(t, "app.lab.example.test", "http://127.0.0.1:1", "nas")
+	re.AddRoute(t, "lab.example.test", "http://127.0.0.1:1", "nas")
+	orders := pb.Orders()
+	port, dir := re.Port, re.StateDir
+	re.Stop()
+
+	again := StartEdgeWith(t, EdgeOptions{StateDir: dir, WireGuardPort: port, Pebble: pb})
+	time.Sleep(3 * time.Second)
+	if n := pb.Orders(); n != orders {
+		t.Errorf("the restart made %d orders for covered Hostnames", n-orders)
+	}
+	if again.Certs.Managing() != 0 {
+		t.Errorf("managing %d covered Hostnames of their own", again.Certs.Managing())
+	}
+}

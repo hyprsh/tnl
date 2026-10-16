@@ -3,6 +3,7 @@ package harness
 import (
 	"bufio"
 	"io"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -49,7 +50,7 @@ func drainEdge(t *testing.T, timeout time.Duration) (*RealEdge, *drainService, *
 	t.Helper()
 	svc := newDrainService(t)
 	logs := &lockedBuf{}
-	re := StartEdgeWith(t, EdgeOptions{Pebble: StartPebble(t, PebbleOptions{}), LogOut: logs, DrainTimeout: timeout})
+	re := StartEdgeWith(t, EdgeOptions{Pebble: StartPebble(t, PebbleOptions{}), LogOut: logs, LogLevel: slog.LevelInfo, DrainTimeout: timeout})
 	re.AddZone(t, "test")
 	re.JoinOutpost(t, "nas")
 	re.AddRoute(t, "app.test", "http://"+svc.Addr(), "nas")

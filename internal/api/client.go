@@ -160,7 +160,7 @@ func Call[Resp any](ctx context.Context, c *Client, method, path string, req any
 	return out, nil
 }
 
-// Info asks the process on the socket for its role, version and build, and
+// Info asks the process at the other end of the link, the socket or the Tunnel, for its role, version and build, and
 // refuses unless its version is exactly this client's, where the link requires
 // that. Over the Tunnel it only asks.
 func (c *Client) Info(ctx context.Context) (Info, error) {

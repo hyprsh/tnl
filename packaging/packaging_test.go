@@ -295,3 +295,22 @@ func TestStampedInstallScriptKnowsItsVersion(t *testing.T) {
 		t.Error("unstamped install.sh ran without TNL_VERSION")
 	}
 }
+
+// Only a plain X.Y.Z takes the moving tags; any other version is refused, so a
+// pre-release can never move X.Y, X or latest.
+func TestImageTagsAreXYZXYXAndLatestForAPlainVersionOnly(t *testing.T) {
+	tags := func(v string) (string, error) {
+		out, err := exec.Command("sh", "../scripts/build-images.sh", v, t.TempDir(), "tags").Output()
+		return strings.TrimSpace(string(out)), err
+	}
+	for _, v := range []string{"v1.2.3", "1.2.3"} {
+		if got, err := tags(v); err != nil || got != "1.2.3 1.2 1 latest" {
+			t.Errorf("%s: %q, %v", v, got, err)
+		}
+	}
+	for _, v := range []string{"v1.2.3-rc.1", "1.2.3-rc", "v1.2", "v1.2.3.4", "vX.Y.Z", ""} {
+		if got, err := tags(v); err == nil {
+			t.Errorf("%q was accepted: %q", v, got)
+		}
+	}
+}
