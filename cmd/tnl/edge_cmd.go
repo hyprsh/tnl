@@ -67,7 +67,7 @@ func parseEdgeFlags(args []string, usageOut io.Writer) (edgeSettings, error) {
 		if s.cfg.WireGuardPort < 1 || s.cfg.WireGuardPort > 65535 {
 			return fmt.Errorf("--wireguard-port (TNL_WIREGUARD_PORT) must be a port from 1 to 65535, got %d", s.cfg.WireGuardPort)
 		}
-		return nil
+		return applyTestWeb(s.cfg.Web)
 	})
 	return s, err
 }
