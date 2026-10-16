@@ -96,12 +96,17 @@ func startWeb(w *Web, stateDir string, wgPort int, store *state.Store, tun *tunn
 		}
 		table.Swap(rs)
 		// Every Route Hostname goes to Caddy's TLS app, now and for every new
-		// Route. Manage only queues work, so it is safe under the store's lock.
+		// Route, and a Hostname whose Route is gone, by whatever command,
+		// stops renewing. Retain only queues work, so it is safe under the
+		// store's lock. The Zone that holds a Hostname is the one shared
+		// question; a Hostname in none gets no certificate.
 		names := make([]string, 0, len(rs))
 		for _, r := range rs {
-			names = append(names, r.Hostname)
+			if _, in := st.ZoneOf(r.Hostname); in {
+				names = append(names, r.Hostname)
+			}
 		}
-		if err := manager.Manage(names...); err != nil {
+		if err := manager.Retain(names...); err != nil {
 			log.Error("could not hand Hostnames to Caddy for certificates", "error", err)
 		}
 	}
