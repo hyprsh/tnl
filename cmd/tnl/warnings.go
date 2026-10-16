@@ -1,5 +1,3 @@
-//go:build !outpost
-
 package main
 
 import (

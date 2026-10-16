@@ -12,8 +12,9 @@ import (
 // publishers drop it from the router's table, so the next request is a 404; the
 // close comes after Update returns, never under the store's lock.
 func (s *Server) routeRm(_ context.Context, actor api.Actor, req api.RouteRmRequest) (api.RouteInfo, error) {
-	if !actor.Local() {
-		return api.RouteInfo{}, api.Errorf(http.StatusForbidden, "%s may not remove Routes here yet; run `tnl route rm` on the Edge host", actor)
+	own, isOutpost := actor.OutpostName()
+	if !actor.Local() && !isOutpost {
+		return api.RouteInfo{}, api.Errorf(http.StatusForbidden, "%s may not remove Routes", actor)
 	}
 	host, err := dnsName("Hostname", req.Hostname, "a Route holds one exact Hostname")
 	if err != nil {
@@ -23,6 +24,9 @@ func (s *Server) routeRm(_ context.Context, actor api.Actor, req api.RouteRmRequ
 	err = s.cfg.Store.Update(actor, func(st *state.State) error {
 		for i, have := range st.Routes {
 			if have.Hostname == host {
+				if isOutpost && have.Outpost != own {
+					return notYours(own, "remove", have)
+				}
 				gone = have
 				st.Routes = append(st.Routes[:i:i], st.Routes[i+1:]...)
 				return nil

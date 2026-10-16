@@ -1,5 +1,3 @@
-//go:build !outpost
-
 package main
 
 import (
@@ -31,6 +29,10 @@ func routeEdit(args []string) error {
 	if len(pos) != 1 {
 		return fmt.Errorf("usage: tnl route edit <hostname> [--service URL] [--outpost NAME] [--host-header V] [--insecure-skip-verify=true|false]")
 	}
+	cl := c.client()
+	if err := checkOutpostFlag(cl, "route edit", flagGiven(c.fs, "outpost"), false, ""); err != nil {
+		return err
+	}
 	req := api.RouteEditRequest{Hostname: pos[0]}
 	if flagGiven(c.fs, "service") {
 		req.Service = service
@@ -44,7 +46,7 @@ func routeEdit(args []string) error {
 	if flagGiven(c.fs, "insecure-skip-verify") {
 		req.InsecureSkipVerify = insecure
 	}
-	r, err := api.Call[api.RouteInfo](context.Background(), c.client(), http.MethodPost, api.PathRouteEdit, req)
+	r, err := api.Call[api.RouteInfo](context.Background(), cl, http.MethodPost, api.PathRouteEdit, req)
 	if err != nil {
 		return err
 	}

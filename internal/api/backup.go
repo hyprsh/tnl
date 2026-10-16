@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -19,6 +20,9 @@ const SkippedHeader = "Tnl-Backup-Skipped"
 // aren't JSON. The same version check and refusals as Call apply. The caller
 // closes the body.
 func (c *Client) Download(ctx context.Context, path string) (io.ReadCloser, http.Header, error) {
+	if err := c.checkLocal(ctx); err != nil {
+		return nil, nil, err
+	}
 	hreq, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://tnl"+path, nil)
 	if err != nil {
 		return nil, nil, err
@@ -28,9 +32,9 @@ func (c *Client) Download(ctx context.Context, path string) (io.ReadCloser, http
 	if err != nil {
 		return nil, nil, c.dialError(err)
 	}
-	if err := c.checkVersion(resp); err != nil {
+	if resp.Header.Get(VersionHeader) == "" {
 		resp.Body.Close()
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("%s answered without a %s header; it is not a tnl", c.socket(), VersionHeader)
 	}
 	if resp.StatusCode >= 400 {
 		defer resp.Body.Close()

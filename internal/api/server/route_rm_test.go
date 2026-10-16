@@ -48,8 +48,8 @@ func TestRouteRmOfAnUnknownHostnameIsA404(t *testing.T) {
 	}
 }
 
-func TestOtherActorsCannotRemoveRoutes(t *testing.T) {
-	f := start(t, "1.2.3", api.OutpostActor("nas"))
+func TestAnActorThatIsNeitherLocalNorAnOutpostCannotRemoveRoutes(t *testing.T) {
+	f := start(t, "1.2.3", api.Actor("stranger"))
 	_, err := rmRoute(f.client, "app.example.com")
 	var e *api.Error
 	if !errors.As(err, &e) || e.Status != http.StatusForbidden {

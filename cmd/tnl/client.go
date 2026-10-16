@@ -126,3 +126,10 @@ func (c *clientCommand) client() *api.Client {
 	v, _ := versionInfo()
 	return &api.Client{StateDir: c.stateDir, Version: v}
 }
+
+// flagGiven reports whether the flag was set on the command line.
+func flagGiven(fs *flag.FlagSet, name string) bool {
+	given := false
+	fs.Visit(func(f *flag.Flag) { given = given || f.Name == name })
+	return given
+}

@@ -29,8 +29,12 @@ func (s *Server) afterRouteChange(before *state.Route, after state.Route) {
 // routeEdit changes the Route's Service, Outpost or options and closes its
 // connections.
 func (s *Server) routeEdit(_ context.Context, actor api.Actor, req api.RouteEditRequest) (api.RouteInfo, error) {
-	if !actor.Local() {
-		return api.RouteInfo{}, api.Errorf(http.StatusForbidden, "%s may not edit Routes here yet; run `tnl route edit` on the Edge host", actor)
+	own, isOutpost := actor.OutpostName()
+	if !actor.Local() && !isOutpost {
+		return api.RouteInfo{}, api.Errorf(http.StatusForbidden, "%s may not edit Routes", actor)
+	}
+	if isOutpost && req.Outpost != nil && *req.Outpost != own {
+		return api.RouteInfo{}, api.Errorf(http.StatusForbidden, "Outpost %s may not move a Route onto Outpost %s", own, *req.Outpost)
 	}
 	host, err := dnsName("Hostname", req.Hostname, "a Route holds one exact Hostname")
 	if err != nil {
@@ -55,6 +59,9 @@ func (s *Server) routeEdit(_ context.Context, actor api.Actor, req api.RouteEdit
 		for i, have := range st.Routes {
 			if have.Hostname != host {
 				continue
+			}
+			if isOutpost && have.Outpost != own {
+				return notYours(own, "edit", have)
 			}
 			before, after = have, have
 			if req.Service != nil {
@@ -87,6 +94,11 @@ func (s *Server) routeEdit(_ context.Context, actor api.Actor, req api.RouteEdit
 	return routeInfo(after), nil
 }
 
+// notYours refuses an Outpost's change to a Route another Outpost holds, naming the holder.
+func notYours(own, verb string, have state.Route) error {
+	return api.Errorf(http.StatusForbidden, "Outpost %s may not %s %s: it is held by a Route through Outpost %s", own, verb, have.Hostname, have.Outpost)
+}
+
 func hasOutpost(st *state.State, name string) bool {
 	for _, o := range st.Outposts {
 		if o.Name == name {
@@ -108,8 +120,14 @@ func (s *Server) routeList(_ context.Context, _ api.Actor, _ struct{}) (api.Rout
 // routeAdd saves the Route. The store's change publishers swap it into the
 // router's table, so the next request is served with no Caddy reload.
 func (s *Server) routeAdd(_ context.Context, actor api.Actor, req api.RouteAddRequest) (api.RouteAddReply, error) {
-	if !actor.Local() {
-		return api.RouteAddReply{}, api.Errorf(http.StatusForbidden, "%s may not add Routes here yet; run `tnl route add` on the Edge host", actor)
+	// An Outpost's Routes go through itself: the Edge fills in the caller.
+	if own, ok := actor.OutpostName(); ok {
+		if req.Outpost != "" && req.Outpost != own {
+			return api.RouteAddReply{}, api.Errorf(http.StatusForbidden, "Outpost %s may not add a Route through Outpost %s", own, req.Outpost)
+		}
+		req.Outpost = own
+	} else if !actor.Local() {
+		return api.RouteAddReply{}, api.Errorf(http.StatusForbidden, "%s may not add Routes", actor)
 	}
 	host, err := dnsName("Hostname", req.Hostname, "a Route takes one exact Hostname; wildcard Routes are not supported")
 	if err != nil {
