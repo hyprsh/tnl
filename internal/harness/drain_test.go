@@ -138,7 +138,10 @@ func TestSIGTERMEndsStreamsAtOnceAndLetsASlowUploadFinish(t *testing.T) {
 }
 
 func TestARequestStillRunningAfterTheDrainIsClosed(t *testing.T) {
-	for _, proto := range Protos {
+	// Closing the drain is the same in Caddy and the Edge for every protocol, so
+	// HTTP/1.1 and HTTP/3, the two that differ most, stand for all three here;
+	// the SIGTERM test above keeps every protocol.
+	for _, proto := range []Proto{H1, H3} {
 		t.Run(string(proto), func(t *testing.T) {
 			re, _, logs := drainEdge(t, 300*time.Millisecond)
 			client := re.Caddy.Client(t, proto)
