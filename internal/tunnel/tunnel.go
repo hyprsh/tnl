@@ -89,6 +89,11 @@ func (t *Tunnel) AddPeer(p Peer) error {
 	return t.Dev.IpcSet(b.String())
 }
 
+// SetEndpoint points an existing peer at a new endpoint and touches nothing else.
+func (t *Tunnel) SetEndpoint(key keys.Key, ep netip.AddrPort) error {
+	return t.Dev.IpcSet(fmt.Sprintf("public_key=%s\nupdate_only=true\nendpoint=%s\n", key.Hex(), ep))
+}
+
 // RemovePeer removes a peer; one that isn't there is not an error.
 func (t *Tunnel) RemovePeer(key keys.Key) error {
 	return t.Dev.IpcSet(fmt.Sprintf("public_key=%s\nremove=true\n", key.Hex()))

@@ -170,7 +170,7 @@ type peerSet struct {
 
 // syncPeers installs a WireGuard peer for every Outpost in the state, now and
 // after every later change, so `outpost add` needs no restart. The Edge learns
-// an Outpost's endpoint from its first packet, so a peer has none. An Outpost
+// an Outpost's endpoint from its first packet, unless the state remembers one. An Outpost
 // whose peer exists keeps it: the join exchange swaps the key itself, after
 // its reply is out (peerSet.swap).
 func syncPeers(tun *tunnel.Tunnel, store *state.Store, log *slog.Logger) (*peerSet, error) {
@@ -193,7 +193,7 @@ func (ps *peerSet) apply(st *state.State) error {
 		if _, ok := ps.have[o.Address]; ok {
 			continue
 		}
-		if err := ps.tun.AddPeer(tunnel.Peer{PublicKey: o.PublicKey, AllowedIP: o.Address}); err != nil {
+		if err := ps.tun.AddPeer(tunnel.Peer{PublicKey: o.PublicKey, AllowedIP: o.Address, Endpoint: o.Endpoint}); err != nil {
 			return fmt.Errorf("add the WireGuard peer for outpost %q: %w", o.Name, err)
 		}
 		ps.have[o.Address] = o.PublicKey

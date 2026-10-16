@@ -16,11 +16,14 @@ import (
 const DefaultPingInterval = 10 * time.Second
 
 // runPinger pings 100.64.0.1 on the ping port every interval, from the
-// Outpost's Tunnel address, and reads the Edge's answers. It returns when ctx
-// ends. A ping that fails to send or an answer that fails to parse is only
-// logged at debug: the Edge decides what silence means.
-func runPinger(ctx context.Context, tun *tunnel.Tunnel, self netip.Addr, version string, interval time.Duration, log *slog.Logger) error {
-	conn, err := tun.Net.DialUDPAddrPort(netip.AddrPortFrom(self, 0), netip.AddrPortFrom(addr.Edge, wire.PingPort))
+// Outpost's Tunnel address and the ping port, and reads the Edge's answers,
+// calling answered with the Edge's version for each. A ping from the Edge, which
+// it sends at its start to every remembered endpoint, is answered with a ping at
+// once, so the Edge learns this Outpost's version within a round trip. It
+// returns when ctx ends. A ping that fails to send or an answer that fails to
+// parse is only logged at debug: the Edge decides what silence means.
+func runPinger(ctx context.Context, tun *tunnel.Tunnel, self netip.Addr, version string, interval time.Duration, answered func(edgeVersion string), log *slog.Logger) error {
+	conn, err := tun.Net.DialUDPAddrPort(netip.AddrPortFrom(self, wire.PingPort), netip.AddrPortFrom(addr.Edge, wire.PingPort))
 	if err != nil {
 		return err
 	}
@@ -28,6 +31,15 @@ func runPinger(ctx context.Context, tun *tunnel.Tunnel, self netip.Addr, version
 		<-ctx.Done()
 		conn.Close()
 	}()
+	ping, err := wire.AppendPing(nil, wire.Ping{Version: version})
+	if err != nil {
+		return err
+	}
+	send := func() {
+		if _, err := conn.Write(ping); err != nil {
+			log.Debug("could not send a ping", "error", err)
+		}
+	}
 	go func() {
 		buf := make([]byte, 512)
 		for {
@@ -38,24 +50,23 @@ func runPinger(ctx context.Context, tun *tunnel.Tunnel, self netip.Addr, version
 				}
 				continue
 			}
+			if _, err := wire.ParsePing(buf[:n]); err == nil {
+				send() // the Edge's own ping: answer with ours
+				continue
+			}
 			if pong, err := wire.ParsePong(buf[:n]); err != nil {
-				log.Debug("refused the Edge's answer to a ping", "error", err)
+				log.Debug("refused a datagram from the Edge", "error", err)
 			} else {
 				log.Debug("the Edge answered a ping", "edge_version", pong.Version)
+				answered(pong.Version)
 			}
 		}
 	}()
-	ping, err := wire.AppendPing(nil, wire.Ping{Version: version})
-	if err != nil {
-		return err
-	}
 	go func() {
 		t := time.NewTicker(interval)
 		defer t.Stop()
 		for {
-			if _, err := conn.Write(ping); err != nil {
-				log.Debug("could not send a ping", "error", err)
-			}
+			send()
 			select {
 			case <-ctx.Done():
 				return
