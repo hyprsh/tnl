@@ -4,8 +4,14 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
+	"os"
+	"strings"
+
+	"golang.org/x/term"
 
 	"github.com/hyprsh/tnl/internal/api"
 )
@@ -14,21 +20,65 @@ func init() {
 	zoneGroup.subs["add"] = zoneAdd
 }
 
-// zoneAdd saves a per-Hostname Zone. Wildcard Zones come in slice 5.
+// stdin is where a command reads a secret from when it is not a terminal;
+// tests swap it.
+var stdin io.Reader = os.Stdin
+
+// zoneAdd saves a Zone. With --wildcard PROVIDER it gets one wildcard
+// certificate through that DNS provider, and the token comes from a hidden
+// prompt on a terminal, else from stdin: never from an argument or a variable.
 func zoneAdd(args []string) error {
 	c := newClientCommand("zone add")
+	provider := c.fs.String("wildcard", "", "get one wildcard certificate through this DNS provider (cloudflare); the token is read from the terminal or stdin")
 	pos, err := c.parse(args)
 	if err != nil {
 		return err
 	}
 	if len(pos) != 1 {
-		return fmt.Errorf("usage: tnl zone add <zone>")
+		return fmt.Errorf("usage: tnl zone add <zone> [--wildcard PROVIDER]")
 	}
-	z, err := api.Call[api.ZoneAddReply](context.Background(), c.client(), http.MethodPost, api.PathZones, api.ZoneAddRequest{Name: pos[0]})
+	req := api.ZoneAddRequest{Name: pos[0], Provider: *provider}
+	if *provider != "" {
+		if req.Token, err = readToken(*provider); err != nil {
+			return err
+		}
+	}
+	z, err := api.Call[api.ZoneAddReply](context.Background(), c.client(), http.MethodPost, api.PathZones, req)
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(stdout, "added Zone %s (%s)\n", z.Name, z.Mode)
+	if z.DNSZone != "" {
+		fmt.Fprintf(stdout, "DNS zone %s\n", z.DNSZone)
+	}
+	if z.Provider != "" {
+		fmt.Fprintf(stdout, "added Zone %s (%s, %s)\n", z.Name, z.Mode, z.Provider)
+	} else {
+		fmt.Fprintf(stdout, "added Zone %s (%s)\n", z.Name, z.Mode)
+	}
+	if len(z.Covers) > 0 {
+		fmt.Fprintf(stdout, "the certificate covers %s\n", strings.Join(z.Covers, ", "))
+	}
 	printWarnings(z.Warnings)
 	return nil
+}
+
+// readToken reads the DNS token: hidden on a terminal, else all of stdin.
+func readToken(provider string) (string, error) {
+	var raw []byte
+	var err error
+	if f, ok := stdin.(*os.File); ok && term.IsTerminal(int(f.Fd())) {
+		fmt.Fprintf(stderr, "%s API token (hidden): ", provider)
+		raw, err = term.ReadPassword(int(f.Fd()))
+		fmt.Fprintln(stderr)
+	} else {
+		raw, err = io.ReadAll(io.LimitReader(stdin, 64<<10))
+	}
+	if err != nil {
+		return "", fmt.Errorf("read the %s token: %w", provider, err)
+	}
+	token := strings.TrimSpace(string(raw))
+	if token == "" {
+		return "", errors.New("no token: give the " + provider + " token at the prompt, or pipe it on stdin")
+	}
+	return token, nil
 }

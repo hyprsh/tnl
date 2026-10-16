@@ -181,6 +181,7 @@ func (s *Server) routeAdd(ctx context.Context, actor api.Actor, req api.RouteAdd
 		warnings = append(warnings, s.testDialWarnings(ctx, r)...)
 	}
 	warnings = append(warnings, s.hostnameDNSWarnings(ctx, host)...)
+	warnings = append(warnings, s.coverageWarnings(host)...)
 	warnings = append(warnings, s.certificateWarnings(ctx, host)...)
 	s.warn(actor, warnings, "route", r.Hostname)
 	return api.RouteAddReply{RouteInfo: routeInfo(r), Warnings: api.Warnings{Warnings: warnings}}, nil

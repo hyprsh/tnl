@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net"
 	"net/netip"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -44,6 +45,10 @@ type Web struct {
 	// DrainTimeout is how long stopping lets in-flight requests finish; zero
 	// is the spec's 10 s. The harness shrinks it.
 	DrainTimeout time.Duration
+	// DNSPropagationTimeout is how long a DNS-01 challenge waits for its TXT
+	// record to show in DNS; zero is Caddy's 2 min and -1 skips the check. The
+	// harness skips it, as its records are not in DNS.
+	DNSPropagationTimeout time.Duration
 }
 
 // certsRef gives the API server the certificate manager, which only exists
@@ -59,6 +64,14 @@ func (r *certsRef) Obtain(ctx context.Context, hostname string) error {
 	return nil
 }
 
+// Wait implements the certificate wait of server.Wildcards.
+func (r *certsRef) Wait(ctx context.Context, name string) error {
+	if c := r.p.Load(); c != nil {
+		return c.Wait(ctx, name)
+	}
+	return nil
+}
+
 // drainTimeout is how long the Edge lets requests finish on SIGTERM (spec
 // section 6).
 const drainTimeout = 10 * time.Second
@@ -69,12 +82,20 @@ const drainTimeout = 10 * time.Second
 //
 // The Routes are never Caddy config (ADR 0002): a change in the state swaps
 // the table the router reads, and Caddy is loaded once, here.
-func startWeb(w *Web, stateDir string, wgPort int, store *state.Store, tun *tunnel.Tunnel, conns *conntrack.Tracker, live *liveness.Liveness, certs *certsRef, testDial *lateTestDialer, log *slog.Logger) (stop func(), err error) {
+func startWeb(w *Web, stateDir string, wgPort int, store *state.Store, tun *tunnel.Tunnel, conns *conntrack.Tracker, live *liveness.Liveness, certs *certsRef, testDial *lateTestDialer, wild *wildcards, dnsResolvers []string, log *slog.Logger) (stop func(), err error) {
 	table := new(routes.Mem)
 	outposts := new(routes.MemOutposts)
 	rt := &caddyx.Runtime{
 		AccessLog: w.AccessLog, InZone: func(host string) bool { return store.Snapshot().InZone(host) },
 		Table: table, Outposts: outposts, Log: log, Conns: conns, ServiceRoots: w.ServiceRoots, Liveness: live,
+		Zones: func(zone string) (string, string, bool) {
+			for _, z := range store.Snapshot().Zones {
+				if z.Name == zone && z.Mode == state.Wildcard {
+					return z.Provider, z.Token, true
+				}
+			}
+			return "", "", false
+		},
 		Dialer: func(ctx context.Context, a netip.AddrPort) (net.Conn, error) {
 			return tun.Net.DialContextTCPAddrPort(ctx, a)
 		},
@@ -95,6 +116,9 @@ func startWeb(w *Web, stateDir string, wgPort int, store *state.Store, tun *tunn
 			})
 		}
 		table.Swap(rs)
+		// The wildcard Zones come first: a Hostname they cover gets no certificate
+		// of its own.
+		manager.SetWildcards(wildcardZones(st)...)
 		// Every Route Hostname goes to Caddy's TLS app, now and for every new
 		// Route, and a Hostname whose Route is gone, by whatever command,
 		// stops renewing. Retain only queues work, so it is safe under the
@@ -128,18 +152,33 @@ func startWeb(w *Web, stateDir string, wgPort int, store *state.Store, tun *tunn
 	if noHTTP3 {
 		log.Info("HTTP/3 is off: WireGuard is on the HTTPS port over UDP", "port", httpsPort)
 	}
-	err = caddyx.Start(caddyx.Config{
+	base := caddyx.Config{
 		NoHTTP3: noHTTP3,
 		EdgeID:  edgeID, StateDir: stateDir,
 		HTTPListen: w.HTTPListen, HTTPSListen: w.HTTPSListen,
 		HTTPPort: w.HTTPPort, HTTPSPort: w.HTTPSPort,
-		ACME: &caddyx.ACME{CA: w.ACMECA, Email: w.ACMEEmail, TrustedRoots: w.ACMETrustedRoots},
-	})
+		ACME:                  &caddyx.ACME{CA: w.ACMECA, Email: w.ACMEEmail, TrustedRoots: w.ACMETrustedRoots},
+		DNSPropagationTimeout: w.DNSPropagationTimeout,
+		DNSResolvers:          dnsResolvers,
+	}
+	// A reload loads the same config with the wildcard Zones as they now stand.
+	// Reloads run one at a time, and each loads the state as it is then.
+	var reloadMu sync.Mutex
+	reload := func() error {
+		reloadMu.Lock()
+		defer reloadMu.Unlock()
+		c := base
+		c.Wildcards = wildcardZones(store.Snapshot())
+		return caddyx.Start(c)
+	}
+	err = reload()
 	if err != nil {
 		unregister()
 		return nil, fmt.Errorf("start the web side (Caddy): %w", err)
 	}
+	wild.reload.Store(&reload)
 	return func() {
+		wild.reload.Store(nil)
 		// Caddy's own Stop waits for nothing, so the drain is ours: it closes the
 		// listeners and starts Caddy's shutdown, then Drain ends the streams, waits
 		// for the other requests and closes what remains.

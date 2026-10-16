@@ -48,6 +48,11 @@ type Runtime struct {
 	// Clock drives the certificate reminders; nil is the wall clock.
 	Clock remind.Clock
 
+	// Zones gives a wildcard Zone's DNS provider and current token, read when a
+	// challenge runs, so a changed token needs no reload. The token lives in
+	// the state and nowhere in Caddy's config (ADR 0005). Nil knows no Zone.
+	Zones func(zone string) (provider, token string, ok bool)
+
 	// AccessLog adds a request line for every successful request and for
 	// whatever the Service answered (--access-log).
 	AccessLog bool

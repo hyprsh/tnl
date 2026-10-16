@@ -83,9 +83,13 @@ type Info struct {
 	Revision string `json:"revision"` // the VCS revision
 }
 
-// ZoneAddRequest asks for a per-Hostname Zone. Wildcard options come in slice 5.
+// ZoneAddRequest asks for a Zone. With a Provider it is a wildcard Zone, whose
+// certificate is obtained through that DNS provider with Token. The token
+// travels here once and is never shown again.
 type ZoneAddRequest struct {
-	Name string `json:"name"`
+	Name     string `json:"name"`
+	Provider string `json:"provider,omitempty"`
+	Token    string `json:"token,omitempty"`
 }
 
 // ZoneInfo is a Zone as the API shows it. It never carries a token.

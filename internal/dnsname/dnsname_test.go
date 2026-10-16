@@ -80,3 +80,21 @@ func TestLongestZone(t *testing.T) {
 		}
 	}
 }
+
+func TestWildcardCovers(t *testing.T) {
+	zones := []string{"example.com", "lab.example.com"}
+	for host, want := range map[string]bool{
+		"example.com":         true, // the certificate names the apex too
+		"app.example.com":     true,
+		"lab.example.com":     true,
+		"app.lab.example.com": true,
+		"a.b.example.com":     false, // two labels deep: its own certificate
+		"a.b.lab.example.com": false,
+		"evilexample.com":     false,
+		"app.other.org":       false,
+	} {
+		if got := WildcardCovers(host, zones); got != want {
+			t.Errorf("WildcardCovers(%q) = %v, want %v", host, got, want)
+		}
+	}
+}

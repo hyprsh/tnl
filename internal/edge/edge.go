@@ -49,6 +49,10 @@ type Config struct {
 	OfflineAfter, LivenessPoll time.Duration
 	// CertWait bounds the certificate wait at `route add`; zero is 60 s.
 	CertWait time.Duration
+	// DNSResolvers are the DNS servers ("host:port") the SOA lookup and the
+	// DNS-01 challenges ask; none means the system's. The harness points them
+	// at its own server.
+	DNSResolvers []string
 }
 
 // Running is what a started Edge exposes.
@@ -96,8 +100,12 @@ func Run(ctx context.Context, cfg Config) error {
 		return refuse(err)
 	}
 	defer os.Remove(filepath.Join(cfg.StateDir, api.SocketName))
+	if err := checkProviders(store.Snapshot()); err != nil {
+		return refuse(err)
+	}
 	conns := conntrack.New()
 	certs := new(certsRef)
+	wild := &wildcards{resolvers: cfg.DNSResolvers, certs: certs}
 	hooks := livenessHooks{
 		Version: cfg.Version, OfflineAfter: cfg.OfflineAfter, Poll: cfg.LivenessPoll, Log: cfg.Log,
 		CloseOutpost: conns.CloseOutpost,
@@ -105,7 +113,7 @@ func Run(ctx context.Context, cfg Config) error {
 	live := newLiveness(hooks, store.Snapshot())
 	testDial := new(lateTestDialer)
 	srv := server.New(server.Config{
-		Conns: conns, Liveness: live, Certs: certs, TestDialer: testDial,
+		Conns: conns, Liveness: live, Certs: certs, TestDialer: testDial, Wildcards: wild,
 		Store: store, Log: cfg.Log, Version: cfg.Version, Build: cfg.Build, Revision: cfg.Revision, Role: api.RoleEdge,
 		Address: cfg.Address, WireGuardPort: wgPort, Resolver: cfg.Resolver, StateDir: cfg.StateDir, CertWait: cfg.CertWait,
 		PreparePeer: peers.prepare,
@@ -125,7 +133,7 @@ func Run(ctx context.Context, cfg Config) error {
 	}
 
 	if cfg.Web != nil {
-		stopWeb, err := startWeb(cfg.Web, cfg.StateDir, wgPort, store, tun, conns, live, certs, testDial, cfg.Log)
+		stopWeb, err := startWeb(cfg.Web, cfg.StateDir, wgPort, store, tun, conns, live, certs, testDial, wild, cfg.DNSResolvers, cfg.Log)
 		if err != nil {
 			return refuse(err)
 		}

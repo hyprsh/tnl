@@ -251,6 +251,18 @@ func (s *State) ZoneOf(host string) (Zone, bool) {
 	return Zone{}, false
 }
 
+// WildcardZones returns the names of the wildcard Zones, sorted.
+func (s *State) WildcardZones() []string {
+	var out []string
+	for _, z := range s.Zones {
+		if z.Mode == Wildcard {
+			out = append(out, z.Name)
+		}
+	}
+	slices.Sort(out)
+	return out
+}
+
 // RoutesStrandedBy returns the Hostnames of the Routes that only the named Zone
 // contains: removing it would leave them outside every Zone.
 func (s *State) RoutesStrandedBy(zone string) []string {

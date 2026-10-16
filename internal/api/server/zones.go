@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"sort"
 	"strings"
@@ -33,6 +34,14 @@ func (s *Server) zoneAdd(ctx context.Context, actor api.Actor, req api.ZoneAddRe
 		return api.ZoneAddReply{}, err
 	}
 	z := state.Zone{Name: name, Mode: state.PerHostname}
+	var dnsZone string
+	wildcard := req.Provider != "" || req.Token != ""
+	if wildcard {
+		if dnsZone, err = s.checkWildcard(ctx, name, req); err != nil {
+			return api.ZoneAddReply{}, err
+		}
+		z = state.Zone{Name: name, Mode: state.Wildcard, Provider: req.Provider, Token: req.Token}
+	}
 	err = s.cfg.Store.Update(actor, func(st *state.State) error {
 		for _, have := range st.Zones {
 			if have.Name == name {
@@ -45,11 +54,72 @@ func (s *Server) zoneAdd(ctx context.Context, actor api.Actor, req api.ZoneAddRe
 	if err != nil {
 		return api.ZoneAddReply{}, err
 	}
-	s.cfg.Log.Info("zone added", "actor", actor.String(), "zone", z.Name, "mode", z.Mode)
+	s.cfg.Log.Info("zone added", "actor", actor.String(), "zone", z.Name, "mode", z.Mode, "provider", z.Provider) // never the token
 	// After the lock: a slow resolver must not delay another change.
-	warnings := s.zoneDNSWarnings(ctx, z.Name)
+	var warnings []string
+	reply := api.ZoneAddReply{ZoneInfo: zoneInfo(z), DNSZone: dnsZone}
+	if wildcard {
+		reply.Covers = []string{"*." + z.Name, z.Name}
+		warnings = append(warnings, s.wildcardCertificate(ctx, z.Name)...)
+	}
+	warnings = append(warnings, s.zoneDNSWarnings(ctx, z.Name)...)
 	s.warn(actor, warnings, "zone", z.Name)
-	return api.ZoneAddReply{ZoneInfo: zoneInfo(z), Warnings: api.Warnings{Warnings: warnings}}, nil
+	reply.Warnings = api.Warnings{Warnings: warnings}
+	return reply, nil
+}
+
+// checkWildcard validates a wildcard Zone's request and runs its one hard
+// gate: the token must be able to read the DNS zone. Nothing is saved before.
+func (s *Server) checkWildcard(ctx context.Context, name string, req api.ZoneAddRequest) (dnsZone string, err error) {
+	switch {
+	case req.Provider == "":
+		return "", api.Errorf(http.StatusBadRequest, "a DNS token needs its provider: pass --wildcard PROVIDER")
+	case req.Token == "":
+		return "", api.Errorf(http.StatusBadRequest, "the wildcard Zone needs the %s token: give it on stdin, or at the prompt on a terminal", req.Provider)
+	case s.cfg.Wildcards == nil:
+		return "", api.Errorf(http.StatusBadRequest, "this Edge cannot get wildcard certificates")
+	}
+	for _, have := range s.cfg.Store.Snapshot().Zones {
+		if have.Name == name {
+			return "", api.Errorf(http.StatusConflict, "Zone %s already exists", name)
+		}
+	}
+	dnsZone, err = s.cfg.Wildcards.Check(ctx, req.Provider, req.Token, name)
+	if err != nil {
+		return "", api.Errorf(http.StatusBadRequest, "refusing Zone %s: %s", name, redact(err.Error(), req.Token))
+	}
+	return dnsZone, nil
+}
+
+// redact is the last line of defence: whatever produced msg, the token is not
+// in what leaves.
+func redact(msg, token string) string {
+	if token == "" {
+		return msg
+	}
+	return strings.ReplaceAll(msg, token, "[redacted]")
+}
+
+// wildcardCertificate reloads Caddy so the new Zone's policy takes effect, then
+// waits for its certificate, up to CertWait. Failing only warns: Caddy keeps
+// trying.
+func (s *Server) wildcardCertificate(ctx context.Context, zone string) []string {
+	if err := s.cfg.Wildcards.Reload(); err != nil {
+		return []string{fmt.Sprintf("couldn't reload Caddy for the wildcard certificate of %s: %v", zone, err)}
+	}
+	wait := s.cfg.CertWait
+	if wait <= 0 {
+		wait = DefaultCertWait
+	}
+	ctx, cancel := context.WithTimeout(ctx, wait)
+	defer cancel()
+	// Caddy obtains one certificate per name, the wildcard's and the apex's.
+	for _, name := range []string{"*." + zone, zone} {
+		if err := s.cfg.Wildcards.Wait(ctx, name); err != nil {
+			return []string{fmt.Sprintf("no certificate for %s yet: %v; Caddy keeps retrying", name, err)}
+		}
+	}
+	return nil
 }
 
 // zoneName normalises a Zone name (lower case, no trailing dot) and refuses

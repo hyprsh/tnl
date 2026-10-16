@@ -71,6 +71,37 @@ type Config struct {
 	// RenewCheckInterval is how often Caddy scans for certificates to renew;
 	// zero keeps Caddy's 10 min. The Caddy suite shortens it.
 	RenewCheckInterval time.Duration
+	// Wildcards names the wildcard Zones: each gets a TLS automation policy for
+	// "*.zone" and "zone" whose DNS-01 challenge goes through the tnl DNS
+	// provider module. The config names the Zone, never a token (ADR 0005).
+	Wildcards []string
+	// DNSPropagationTimeout is how long a challenge waits for its TXT record to
+	// appear; zero keeps Caddy's 2 min and -1 skips the check, which the harness
+	// does because its records are not in DNS.
+	DNSPropagationTimeout time.Duration
+	// DNSResolvers are the DNS servers the challenges and their SOA lookups ask;
+	// none means the system's.
+	DNSResolvers []string
+}
+
+// wildcardNames are the names a wildcard Zone's certificate covers.
+func wildcardNames(zone string) []string { return []string{"*." + zone, zone} }
+
+// wildcardPolicy is the TLS automation policy of a wildcard Zone. It is not
+// on-demand, so certmagic renews its certificate in the background.
+func (c Config) wildcardPolicy(zone string) map[string]any {
+	iss := c.issuer()
+	if c.ACME != nil {
+		dns := map[string]any{"provider": map[string]any{"name": "tnl", "edge": c.EdgeID, "zone": zone}}
+		if len(c.DNSResolvers) > 0 {
+			dns["resolvers"] = c.DNSResolvers
+		}
+		if c.DNSPropagationTimeout != 0 {
+			dns["propagation_timeout"] = int64(c.DNSPropagationTimeout)
+		}
+		iss["challenges"] = map[string]any{"dns": dns}
+	}
+	return map[string]any{"subjects": wildcardNames(zone), "issuers": []any{iss}}
 }
 
 // issuer is the issuer module every automation policy uses.
@@ -127,12 +158,19 @@ func (c Config) JSON() ([]byte, error) {
 	}
 	location += "{http.request.uri}"
 
-	automation := map[string]any{
-		// The catch-all is the on-demand fallback. Route Hostnames the certificate
-		// manager hands over get a policy of their own that isn't on-demand,
-		// because certmagic's maintenance loop skips on-demand certificates.
-		"policies": []any{map[string]any{"on_demand": true, "issuers": []any{c.issuer()}}},
+	// The wildcard Zones' policies come first, then the catch-all, which is the
+	// on-demand fallback. Route Hostnames the certificate manager hands over get
+	// a policy of their own that isn't on-demand, because certmagic's
+	// maintenance loop skips on-demand certificates.
+	var policies, automate []any
+	for _, z := range c.Wildcards {
+		policies = append(policies, c.wildcardPolicy(z))
+		for _, n := range wildcardNames(z) {
+			automate = append(automate, n)
+		}
 	}
+	policies = append(policies, map[string]any{"on_demand": true, "issuers": []any{c.issuer()}})
+	automation := map[string]any{"policies": policies}
 	if c.ACME != nil {
 		// Issuance on demand only for Hostnames that have a Route.
 		automation["on_demand"] = map[string]any{"permission": map[string]any{"module": "tnl", "edge": c.EdgeID}}
@@ -144,6 +182,12 @@ func (c Config) JSON() ([]byte, error) {
 	protocols := []string{"h1", "h2", "h3"}
 	if c.NoHTTP3 {
 		protocols = []string{"h1", "h2"}
+	}
+
+	tlsApp := map[string]any{"automation": automation}
+	if len(automate) > 0 {
+		// A policy's subjects don't start issuance; automating the names does.
+		tlsApp["certificates"] = map[string]any{"automate": automate}
 	}
 
 	cfg := map[string]any{
@@ -196,7 +240,7 @@ func (c Config) JSON() ([]byte, error) {
 			"pki": map[string]any{"certificate_authorities": map[string]any{
 				"local": map[string]any{"install_trust": false},
 			}},
-			"tls": map[string]any{"automation": automation},
+			"tls": tlsApp,
 			// The certificate manager records both events and returns.
 			"events": map[string]any{"subscriptions": []any{map[string]any{
 				"events":   []string{"cert_obtained", "cert_failed"},
@@ -207,7 +251,19 @@ func (c Config) JSON() ([]byte, error) {
 	return json.Marshal(cfg)
 }
 
-var loads atomic.Int64
+var (
+	loads    atomic.Int64
+	lastLoad atomic.Pointer[[]byte]
+)
+
+// LoadedConfig is the JSON of the config Start last loaded, for tests that
+// show what Caddy was given (the token is not in it).
+func LoadedConfig() []byte {
+	if p := lastLoad.Load(); p != nil {
+		return *p
+	}
+	return nil
+}
 
 // Loads counts how many times Start has loaded a config in this process. Tests
 // use it to show that a new Route reloads nothing.
@@ -244,6 +300,7 @@ func Start(c Config) error {
 	if err := caddy.Load(b, true); err != nil {
 		return err
 	}
+	lastLoad.Store(&b)
 	certs.start()
 	// The new TLS app knows none of the Hostnames handed over before.
 	return certs.loaded()
