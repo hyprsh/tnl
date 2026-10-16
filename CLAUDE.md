@@ -1,3 +1,7 @@
+## Checks
+
+`scripts/check.sh` runs every check CI runs. Run it before reporting work done, and report its exit status.
+
 ## Agent skills
 
 ### Issue tracker
