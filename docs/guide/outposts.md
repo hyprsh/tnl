@@ -2,7 +2,7 @@
 
 An Outpost is a tnl process on the network where your Services live. It dials the Edge, and the Edge sends Visitors' requests down that connection. You manage Outposts on the Edge host. Run the commands below with `sudo tnl ...` on a host, or `docker exec tnl tnl ...` when the Edge runs in a container.
 
-An Edge that declares its Outposts in its settings refuses `outpost add`, `rekey` and `rm`.
+An Edge that declares its Outposts in its settings refuses `outpost add`, `rekey` and `rm`: see [Declaring the Edge](declaring-the-edge.md). The rest of this page is the token flow.
 
 ## Add an Outpost
 

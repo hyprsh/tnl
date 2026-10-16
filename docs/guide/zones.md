@@ -1,6 +1,6 @@
 # Zones
 
-A Zone is a domain the Edge serves Hostnames under. Add one on the Edge host before its first Route:
+A Zone is a domain the Edge serves Hostnames under. Add one on the Edge host before its first Route, or declare it in the Edge's settings ([Declaring the Edge](declaring-the-edge.md)), which refuses `zone add`, `edit` and `rm` while it does:
 
 ```
 sudo tnl zone add example.com
