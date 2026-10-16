@@ -143,7 +143,7 @@ func TestJoinBringsTheTunnelUpAndWritesTheState(t *testing.T) {
 	tok, edgeKey := newToken(t, "127.0.0.1")
 	edge := newFakeEdge(t, edgeKey, 0, tok.OneTimeKey)
 	tok.Port = edge.port
-	dir := filepath.Join(t.TempDir(), "state")
+	dir := shortStateDir(t)
 
 	r, err := start(t, Config{Token: tok.Encode(), StateDir: dir})
 	if err != nil {
@@ -205,7 +205,7 @@ func TestJoinBringsTheTunnelUpAndWritesTheState(t *testing.T) {
 }
 
 func TestUnknownMarkerIsRefusedBeforeTheStateIsTouched(t *testing.T) {
-	dir := filepath.Join(t.TempDir(), "state")
+	dir := shortStateDir(t)
 	_, err := start(t, Config{Token: "tnl2.whatever", StateDir: dir})
 	var ce *ConfigError
 	if !errors.As(err, &ce) || !strings.Contains(err.Error(), "newer tnl") {
@@ -217,7 +217,7 @@ func TestUnknownMarkerIsRefusedBeforeTheStateIsTouched(t *testing.T) {
 }
 
 func TestNoTokenAndNoStateIsAConfigError(t *testing.T) {
-	_, err := start(t, Config{StateDir: filepath.Join(t.TempDir(), "state")})
+	_, err := start(t, Config{StateDir: shortStateDir(t)})
 	var ce *ConfigError
 	if !errors.As(err, &ce) || !strings.Contains(err.Error(), "--token") {
 		t.Fatalf("err = %v", err)
@@ -228,7 +228,7 @@ func TestRestartWithNoTokenReconnectsFromState(t *testing.T) {
 	tok, edgeKey := newToken(t, "127.0.0.1")
 	edge := newFakeEdge(t, edgeKey, 0, tok.OneTimeKey)
 	tok.Port = edge.port
-	dir := filepath.Join(t.TempDir(), "state")
+	dir := shortStateDir(t)
 	r, err := start(t, Config{Token: tok.Encode(), StateDir: dir})
 	if err != nil {
 		t.Fatal(err)
@@ -261,7 +261,7 @@ func TestADifferentTokenJoinsAgainAndReplacesTheState(t *testing.T) {
 	tok, edgeKey := newToken(t, "127.0.0.1")
 	edge := newFakeEdge(t, edgeKey, 0, tok.OneTimeKey)
 	tok.Port = edge.port
-	dir := filepath.Join(t.TempDir(), "state")
+	dir := shortStateDir(t)
 	r, err := start(t, Config{Token: tok.Encode(), StateDir: dir})
 	if err != nil {
 		t.Fatal(err)
@@ -287,7 +287,7 @@ func TestATokenTheEdgeRefusesLeavesTheStateUntouched(t *testing.T) {
 	tok, _ := newToken(t, "127.0.0.1")
 	// No Edge answers on this port, so the join times out.
 	tok.Port = 1
-	dir := filepath.Join(t.TempDir(), "state")
+	dir := shortStateDir(t)
 	_, err := start(t, Config{Token: tok.Encode(), StateDir: dir, JoinTimeout: 300 * time.Millisecond})
 	var ce *ConfigError
 	if !errors.As(err, &ce) {
@@ -312,7 +312,7 @@ func TestTheEdgeAddressIsResolvedByTheOutpost(t *testing.T) {
 	tok, edgeKey := newToken(t, "edge.example.test")
 	edge := newFakeEdge(t, edgeKey, 0, tok.OneTimeKey)
 	tok.Port = edge.port
-	r, err := start(t, Config{Token: tok.Encode(), StateDir: filepath.Join(t.TempDir(), "state"), Resolve: resolveTo("127.0.0.1")})
+	r, err := start(t, Config{Token: tok.Encode(), StateDir: shortStateDir(t), Resolve: resolveTo("127.0.0.1")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -326,7 +326,7 @@ func TestTheEdgeAddressIsResolvedByTheOutpost(t *testing.T) {
 func TestAnUnresolvableEdgeAddressLeavesNoState(t *testing.T) {
 	tok, _ := newToken(t, "no-such-host.invalid")
 	tok.Port = 51820
-	dir := filepath.Join(t.TempDir(), "state")
+	dir := shortStateDir(t)
 	_, err := start(t, Config{Token: tok.Encode(), StateDir: dir})
 	if err == nil || !strings.Contains(err.Error(), "no-such-host.invalid") {
 		t.Fatalf("err = %v", err)
@@ -334,4 +334,15 @@ func TestAnUnresolvableEdgeAddressLeavesNoState(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "state.json")); !os.IsNotExist(err) {
 		t.Errorf("state written: %v", err)
 	}
+}
+
+// shortStateDir is a state directory whose tnl.sock path fits a Unix socket.
+func shortStateDir(t *testing.T) string {
+	t.Helper()
+	d, err := os.MkdirTemp("", "tnlo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(d) })
+	return filepath.Join(d, "state")
 }

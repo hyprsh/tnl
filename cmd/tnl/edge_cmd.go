@@ -83,10 +83,3 @@ func envInt(name string, def int) (int, error) {
 	}
 	return n, nil
 }
-
-// flagGiven reports whether the flag was set on the command line.
-func flagGiven(fs *flag.FlagSet, name string) bool {
-	given := false
-	fs.Visit(func(f *flag.Flag) { given = given || f.Name == name })
-	return given
-}

@@ -195,8 +195,9 @@ func TestUnknownFieldRefusesTheWholeRequest(t *testing.T) {
 func TestClientRefusesADifferentVersion(t *testing.T) {
 	f := start(t, "1.2.3", api.ActorLocal)
 	c := &api.Client{StateDir: f.dir, Version: "1.2.4"}
-	_, err := api.Call[api.Info](context.Background(), c, http.MethodGet, api.PathInfo, nil)
-	if err == nil || !strings.Contains(err.Error(), "1.2.3") || !strings.Contains(err.Error(), "1.2.4") {
+	_, err := api.Call[api.ZoneList](context.Background(), c, http.MethodGet, api.PathZones, nil)
+	want := "this `tnl` is 1.2.4 but the running Edge is 1.2.3; restart it (`sudo systemctl restart tnl-edge`)"
+	if err == nil || err.Error() != want {
 		t.Fatalf("err=%v", err)
 	}
 }
