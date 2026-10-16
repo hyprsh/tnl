@@ -112,23 +112,10 @@ func (s *State) applyZones(want []DeclaredZone, res *DeclaredResult) error {
 		if _, keep := wanted[z.Name]; keep {
 			continue
 		}
-		stranded := s.RoutesStrandedBy(z.Name)
-		var removed, waiting int
-		for _, r := range s.Routes {
-			if slices.Contains(stranded, r.Hostname) {
-				if s.Declares(r.Outpost) {
-					waiting++
-					res.Waiting = append(res.Waiting, r.Hostname)
-				} else {
-					removed++
-					res.Removed = append(res.Removed, r.Hostname)
-				}
-			}
-		}
-		// Routes a parent Zone still contains stay, and belong to it.
-		s.Zones = slices.DeleteFunc(slices.Clone(s.Zones), func(o Zone) bool { return o.Name == z.Name })
-		s.RemoveRoutes(func(r Route) bool { return slices.Contains(stranded, r.Hostname) })
-		res.log(slog.LevelWarn, "zone removed: it is no longer declared", "zone", z.Name, "routes_removed", removed, "routes_waiting", waiting)
+		gone := s.RemoveZone(z.Name)
+		res.Removed = append(res.Removed, gone.Removed...)
+		res.Waiting = append(res.Waiting, gone.Waiting...)
+		res.log(slog.LevelWarn, "zone removed: it is no longer declared", "zone", z.Name, "routes_removed", len(gone.Removed), "routes_waiting", len(gone.Waiting))
 	}
 
 	for _, d := range want {
@@ -197,9 +184,7 @@ func (s *State) applyOutposts(want []DeclaredOutpost, res *DeclaredResult) {
 		if _, keep := wanted[o.Name]; keep {
 			continue
 		}
-		hosts := s.RemoveRoutesVia(o.Name)
-		s.RemoveDeclaration(o.Name)
-		s.Outposts = slices.DeleteFunc(slices.Clone(s.Outposts), func(x Outpost) bool { return x.Name == o.Name })
+		_, hosts := s.RemoveOutpost(o.Name)
 		res.Removed = append(res.Removed, hosts...)
 		res.log(slog.LevelWarn, "outpost removed: it is no longer declared", "outpost", o.Name, "routes_removed", len(hosts))
 	}

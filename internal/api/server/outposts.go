@@ -79,17 +79,13 @@ func (s *Server) outpostRm(_ context.Context, actor api.Actor, req api.OutpostRm
 	var gone state.Outpost
 	var hosts []string
 	handed, err := s.cfg.Store.UpdateReport(actor, func(st *state.State) error {
-		i := slices.IndexFunc(st.Outposts, func(o state.Outpost) bool { return o.Name == req.Name })
-		if i < 0 {
+		if !slices.ContainsFunc(st.Outposts, func(o state.Outpost) bool { return o.Name == req.Name }) {
 			return api.Errorf(http.StatusNotFound, "no Outpost %s", req.Name)
 		}
 		if via := st.RoutesVia(req.Name); len(via) > 0 && !req.WithRoutes {
 			return api.Errorf(http.StatusConflict, "Routes still point at Outpost %s: %s; remove them first, or pass --with-routes", req.Name, strings.Join(via, ", "))
 		}
-		hosts = st.RemoveRoutesVia(req.Name)
-		st.RemoveDeclaration(req.Name)
-		gone = st.Outposts[i]
-		st.Outposts = slices.Delete(slices.Clone(st.Outposts), i, i+1)
+		gone, hosts = st.RemoveOutpost(req.Name)
 		return nil
 	})
 	if err != nil {

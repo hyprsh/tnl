@@ -40,19 +40,9 @@ func (s *Server) zoneRm(ctx context.Context, actor api.Actor, req api.ZoneRmRequ
 			slices.Sort(stranded)
 			return api.Errorf(http.StatusConflict, "Routes would be left outside every Zone: %s; remove them first, or pass --with-routes", strings.Join(stranded, ", "))
 		}
-		for _, r := range st.Routes {
-			if z, in := st.ZoneOf(r.Hostname); in && z.Name == name && !slices.Contains(stranded, r.Hostname) {
-				moved = append(moved, r.Hostname)
-			}
-		}
-		for _, r := range st.Routes {
-			if slices.Contains(stranded, r.Hostname) && st.Declares(r.Outpost) {
-				waiting = append(waiting, r.Hostname)
-			}
-		}
 		wasWildcard = st.Zones[i].Mode == state.Wildcard
-		removed = st.RemoveRoutes(func(r state.Route) bool { return slices.Contains(stranded, r.Hostname) })
-		st.Zones = slices.Delete(slices.Clone(st.Zones), i, i+1)
+		res := st.RemoveZone(name)
+		removed, waiting, moved = append(res.Removed, res.Waiting...), res.Waiting, res.Moved
 		return nil
 	})
 	if err != nil {
