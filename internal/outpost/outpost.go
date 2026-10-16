@@ -3,8 +3,8 @@
 // forwarder. It runs as a plain user and imports nothing from the Edge or
 // Caddy, so the Outpost-only build links it.
 //
-// In slice 1 the Outpost joins by keeping the token's key. Slice 3 swaps it
-// inside the Tunnel.
+// An Outpost joins by swapping the token's one-time key for its own inside the
+// Tunnel (ADR 0003): the token is worthless once used.
 package outpost
 
 import (
@@ -13,12 +13,14 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"net/http"
 	"net/netip"
 	"time"
 
 	"github.com/hyprsh/tnl/internal/addr"
 	"github.com/hyprsh/tnl/internal/api"
 	"github.com/hyprsh/tnl/internal/forwarder"
+	"github.com/hyprsh/tnl/internal/keys"
 	"github.com/hyprsh/tnl/internal/logx"
 	"github.com/hyprsh/tnl/internal/token"
 	"github.com/hyprsh/tnl/internal/tunnel"
@@ -36,6 +38,10 @@ type Config struct {
 	// Resolve turns the Edge's address into an IP, because wireguard-go takes
 	// only IPs. Nil uses the system resolver.
 	Resolve func(ctx context.Context, host string) (netip.Addr, error)
+	// JoinTimeout bounds the join exchange; zero is 30 s. A used or revoked
+	// token never gets an answer, so the join gives up where a joined Outpost
+	// never does.
+	JoinTimeout time.Duration
 	// Started, if set, is called once the Tunnel is up and the forwarder listens.
 	Started func(*Running)
 	// Revision is the VCS revision, logged beside the build.
@@ -46,6 +52,7 @@ type Config struct {
 type Running struct {
 	Tunnel  *tunnel.Tunnel
 	Address netip.Addr // the Outpost's Tunnel address
+	Name    string     // the Outpost's name
 	// API calls the Edge's API through the Tunnel, as this Outpost.
 	API *api.Client
 }
@@ -74,21 +81,21 @@ func Run(ctx context.Context, cfg Config) error {
 		return configErr("state in %s: %w", cfg.StateDir, err)
 	}
 
+	// A state made from the token that is passed again is kept; a different
+	// token joins again and replaces the state.
 	joining := false
 	switch {
 	case st == nil && tok == nil:
 		return configErr("no state in %s and no join token: pass --token (TNL_TOKEN) from `tnl outpost add` on the Edge host", cfg.StateDir)
-	case st == nil:
+	case st != nil && tok != nil && token.Hash(cfg.Token) == st.TokenSHA256:
+		cfg.Log.Info("ignoring the join token: this state was made from it", "state_dir", cfg.StateDir)
+	case tok != nil:
 		joining = true
 		st = &State{
 			PrivateKey: tok.OneTimeKey, Address: tok.TunnelAddr,
 			EdgeAddress: tok.Address, EdgePort: tok.Port, EdgeKey: tok.EdgeKey,
 			TokenSHA256: token.Hash(cfg.Token),
 		}
-	case tok != nil && token.Hash(cfg.Token) == st.TokenSHA256:
-		cfg.Log.Info("ignoring the join token: this state was made from it", "state_dir", cfg.StateDir)
-	case tok != nil:
-		return configErr("%s already holds an Outpost made from another token; joining again with a different token is not supported yet", cfg.StateDir)
 	}
 
 	edgeIP, err := resolve(ctx, cfg, st.EdgeAddress)
@@ -109,6 +116,25 @@ func Run(ctx context.Context, cfg Config) error {
 	if err != nil {
 		return err
 	}
+	edgeAPI := &api.Client{
+		Version: cfg.Version,
+		Dial: func(ctx context.Context, _, address string) (net.Conn, error) {
+			ap, err := netip.ParseAddrPort(address)
+			if err != nil {
+				return nil, err
+			}
+			return tun.Net.DialContextTCPAddrPort(ctx, ap)
+		},
+	}
+
+	var edgeVersion string
+	if joining {
+		edgeVersion, err = joinExchange(ctx, cfg, edgeAPI, tun, st)
+		if err != nil {
+			return err
+		}
+	}
+
 	ln, err := tun.Net.ListenTCPAddrPort(netip.AddrPortFrom(st.Address, wire.DataPort))
 	if err != nil {
 		return fmt.Errorf("listen on the Tunnel address: %w", err)
@@ -118,12 +144,8 @@ func Run(ctx context.Context, cfg Config) error {
 	go func() { defer close(served); fw.Serve(ln) }()
 	defer func() { ln.Close(); <-served }()
 
-	if joining {
-		if err := saveState(cfg.StateDir, st); err != nil {
-			return fmt.Errorf("save the state: %w", err)
-		}
-	}
-	cfg.Log.Info("outpost started",
+	fields := []any{
+		"name", st.Name,
 		"version", cfg.Version,
 		"build", cfg.Build,
 		"revision", cfg.Revision,
@@ -133,21 +155,58 @@ func Run(ctx context.Context, cfg Config) error {
 		"edge_port", st.EdgePort,
 		"state_dir", cfg.StateDir,
 		"joined", joining,
-	)
+	}
+	if joining {
+		fields = append(fields, "edge_version", edgeVersion)
+	}
+	cfg.Log.Info("outpost started", fields...)
 	if cfg.Started != nil {
-		cfg.Started(&Running{Tunnel: tun, Address: st.Address, API: &api.Client{
-			Version: cfg.Version,
-			Dial: func(ctx context.Context, _, address string) (net.Conn, error) {
-				ap, err := netip.ParseAddrPort(address)
-				if err != nil {
-					return nil, err
-				}
-				return tun.Net.DialContextTCPAddrPort(ctx, ap)
-			},
-		}})
+		cfg.Started(&Running{Tunnel: tun, Address: st.Address, Name: st.Name, API: edgeAPI})
 	}
 	<-ctx.Done()
 	return nil
+}
+
+// joinExchange is the Outpost's half of the join: it asks the Edge to swap the
+// one-time key for a new key pair's public half, writes the state (name
+// included) and switches to the new key. It leaves st holding the new key and
+// the name. Nothing is written unless the Edge accepted.
+func joinExchange(ctx context.Context, cfg Config, edgeAPI *api.Client, tun *tunnel.Tunnel, st *State) (edgeVersion string, err error) {
+	priv, pub, err := keys.Generate()
+	if err != nil {
+		return "", err
+	}
+	timeout := cfg.JoinTimeout
+	if timeout == 0 {
+		timeout = 30 * time.Second
+	}
+	jctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	resp, err := api.Call[api.JoinResponse](jctx, edgeAPI, http.MethodPost, api.PathJoin, api.JoinRequest{PublicKey: pub, Version: cfg.Version})
+	if err != nil {
+		var ae *api.Error
+		if errors.As(err, &ae) {
+			return "", &ConfigError{fmt.Errorf("the Edge refused the join: %s", ae.Message)}
+		}
+		if ctx.Err() != nil {
+			return "", ctx.Err()
+		}
+		return "", &ConfigError{fmt.Errorf("could not join through the Tunnel (waited up to %s; is the token already used or revoked, or the Edge unreachable?): %w", timeout, err)}
+	}
+	st.Name, st.PrivateKey = resp.Name, priv
+	if err := saveState(cfg.StateDir, st); err != nil {
+		return "", fmt.Errorf("save the state: %w", err)
+	}
+	if err := tun.SetPrivateKey(priv); err != nil {
+		return "", fmt.Errorf("switch to the Outpost's own key: %w", err)
+	}
+	// The Edge learns the new key's endpoint from a first packet, so start one.
+	pctx, pcancel := context.WithTimeout(ctx, timeout)
+	defer pcancel()
+	if _, err := api.Call[api.Info](pctx, edgeAPI, http.MethodGet, api.PathInfo, nil); err != nil {
+		cfg.Log.Warn("the Edge did not answer after the key swap yet", "error", err)
+	}
+	return resp.EdgeVersion, nil
 }
 
 // resolve returns the Edge's IP: the address itself if it is one, else the

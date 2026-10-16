@@ -6,15 +6,18 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"net/http"
 	"net/netip"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/hyprsh/tnl/internal/addr"
+	"github.com/hyprsh/tnl/internal/api"
 	"github.com/hyprsh/tnl/internal/keys"
 	"github.com/hyprsh/tnl/internal/logx"
 	"github.com/hyprsh/tnl/internal/token"
@@ -30,11 +33,16 @@ type syncBuf struct {
 func (s *syncBuf) Write(p []byte) (int, error) { s.mu.Lock(); defer s.mu.Unlock(); return s.b.Write(p) }
 func (s *syncBuf) String() string              { s.mu.Lock(); defer s.mu.Unlock(); return s.b.String() }
 
-// fakeEdge is just the Edge's end of the Tunnel, with one Outpost as a peer.
+// fakeEdge is just the Edge's end of the Tunnel, with one Outpost as a peer,
+// and a stub of the join path: it swaps the peer's key as the real Edge does,
+// and answers with the name "laptop". The real exchange is tested in the
+// harness.
 type fakeEdge struct {
-	tun  *tunnel.Tunnel
-	port int
-	key  keys.Key // private
+	tun     *tunnel.Tunnel
+	port    int
+	key     keys.Key // private
+	oneTime keys.Key // the peer's public key at the start
+	joins   chan api.JoinRequest
 }
 
 func newFakeEdge(t *testing.T, edgeKey keys.Key, port int, oneTime keys.Key) *fakeEdge {
@@ -51,7 +59,36 @@ func newFakeEdge(t *testing.T, edgeKey keys.Key, port int, oneTime keys.Key) *fa
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &fakeEdge{tun: tun, port: port, key: edgeKey}
+	e := &fakeEdge{tun: tun, port: port, key: edgeKey, oneTime: oneTime.Public(), joins: make(chan api.JoinRequest, 4)}
+	ln, err := tun.Net.ListenTCPAddrPort(netip.AddrPortFrom(addr.Edge, api.TunnelPort))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST "+api.PathJoin, func(w http.ResponseWriter, r *http.Request) {
+		var req api.JoinRequest
+		json.NewDecoder(r.Body).Decode(&req)
+		tun.AddPeer(tunnel.Peer{PublicKey: req.PublicKey}) // can handshake, owns no address yet
+		w.Header().Set(api.VersionHeader, "v9.9.9")
+		b, _ := json.Marshal(api.JoinResponse{Name: "laptop", EdgeVersion: "v9.9.9"})
+		w.Header().Set("Content-Length", strconv.Itoa(len(b)))
+		w.Write(b)
+		w.(http.Flusher).Flush()
+		e.joins <- req
+		go func() {
+			time.Sleep(150 * time.Millisecond)
+			tun.AddPeer(tunnel.Peer{PublicKey: req.PublicKey, AllowedIP: addr.Outpost(0)})
+			tun.RemovePeer(e.oneTime)
+		}()
+	})
+	mux.HandleFunc("GET "+api.PathInfo, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set(api.VersionHeader, "v9.9.9")
+		json.NewEncoder(w).Encode(api.Info{Role: api.RoleEdge, Version: "v9.9.9", Build: "x"})
+	})
+	hs := &http.Server{Handler: mux}
+	go hs.Serve(ln)
+	t.Cleanup(func() { hs.Close() })
+	return e
 }
 
 func newToken(t *testing.T, address string) (token.Token, keys.Key) {
@@ -143,10 +180,14 @@ func TestJoinBringsTheTunnelUpAndWritesTheState(t *testing.T) {
 	if err := json.Unmarshal(raw, &got); err != nil {
 		t.Fatal(err)
 	}
-	priv, _ := tok.OneTimeKey.MarshalText()
+	oneTime, _ := tok.OneTimeKey.MarshalText()
+	if got["private_key"] == string(oneTime) || got["private_key"] == "" {
+		t.Errorf("the Outpost kept the token's key: %v", got["private_key"])
+	}
+	delete(got, "private_key")
 	edgePub, _ := tok.EdgeKey.MarshalText()
 	want := map[string]any{
-		"version": 1.0, "private_key": string(priv), "address": "100.64.0.2",
+		"version": 2.0, "name": "laptop", "address": "100.64.0.2",
 		"edge_address": "127.0.0.1", "edge_port": float64(edge.port), "edge_public_key": string(edgePub),
 		"token_sha256": token.Hash(tok.Encode()),
 	}
@@ -198,8 +239,10 @@ func TestRestartWithNoTokenReconnectsFromState(t *testing.T) {
 	}
 	edge.tun.Close()
 
-	// The Edge comes back on the same port; the Outpost has only its state.
-	edge2 := newFakeEdge(t, edgeKey, edge.port, tok.OneTimeKey)
+	// The Edge comes back on the same port, knowing the Outpost's own key; the
+	// Outpost has only its state.
+	own := ownKey(t, dir)
+	edge2 := newFakeEdge(t, edgeKey, edge.port, own)
 	for name, token := range map[string]string{"no token": "", "the same token": tok.Encode()} {
 		r, err = start(t, Config{Token: token, StateDir: dir})
 		if err != nil {
@@ -210,11 +253,11 @@ func TestRestartWithNoTokenReconnectsFromState(t *testing.T) {
 			t.Fatal(err)
 		}
 		edge2.tun.Close()
-		edge2 = newFakeEdge(t, edgeKey, edge.port, tok.OneTimeKey)
+		edge2 = newFakeEdge(t, edgeKey, edge.port, own)
 	}
 }
 
-func TestADifferentTokenIsRefusedAndTheStateKept(t *testing.T) {
+func TestADifferentTokenJoinsAgainAndReplacesTheState(t *testing.T) {
 	tok, edgeKey := newToken(t, "127.0.0.1")
 	edge := newFakeEdge(t, edgeKey, 0, tok.OneTimeKey)
 	tok.Port = edge.port
@@ -224,19 +267,45 @@ func TestADifferentTokenIsRefusedAndTheStateKept(t *testing.T) {
 		t.Fatal(err)
 	}
 	r.stop()
-	before, _ := os.ReadFile(filepath.Join(dir, "state.json"))
+	before := ownKey(t, dir)
 
-	other, _ := newToken(t, "127.0.0.1")
-	other.Port = edge.port
-	_, err = start(t, Config{Token: other.Encode(), StateDir: dir})
+	other, otherEdgeKey := newToken(t, "127.0.0.1")
+	otherEdge := newFakeEdge(t, otherEdgeKey, 0, other.OneTimeKey)
+	other.Port = otherEdge.port
+	r, err = start(t, Config{Token: other.Encode(), StateDir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.stop()
+	st, err := loadState(dir)
+	if err != nil || st.TokenSHA256 != token.Hash(other.Encode()) || st.EdgePort != otherEdge.port || st.PrivateKey == before {
+		t.Errorf("the state was not replaced: %+v, %v", st, err)
+	}
+}
+
+func TestATokenTheEdgeRefusesLeavesTheStateUntouched(t *testing.T) {
+	tok, _ := newToken(t, "127.0.0.1")
+	// No Edge answers on this port, so the join times out.
+	tok.Port = 1
+	dir := filepath.Join(t.TempDir(), "state")
+	_, err := start(t, Config{Token: tok.Encode(), StateDir: dir, JoinTimeout: 300 * time.Millisecond})
 	var ce *ConfigError
 	if !errors.As(err, &ce) {
 		t.Fatalf("err = %v", err)
 	}
-	after, _ := os.ReadFile(filepath.Join(dir, "state.json"))
-	if !bytes.Equal(before, after) {
-		t.Error("the state changed")
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		t.Errorf("the state directory was touched: %v", err)
 	}
+}
+
+// ownKey is the private key a joined Outpost saved.
+func ownKey(t *testing.T, dir string) keys.Key {
+	t.Helper()
+	st, err := loadState(dir)
+	if err != nil || st == nil {
+		t.Fatalf("state: %v, %v", st, err)
+	}
+	return st.PrivateKey
 }
 
 func TestTheEdgeAddressIsResolvedByTheOutpost(t *testing.T) {

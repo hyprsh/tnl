@@ -150,6 +150,9 @@ func (s *State) Validate() error {
 			return invalid(e, "Tunnel address %s is also outpost %q's", o.Address, prev)
 		}
 		addrs[o.Address] = o.Name
+		if (o.OneTimeKey != nil) != !o.TokenExpires.IsZero() {
+			return invalid(e, "a one-time key and a token expiry go together")
+		}
 		idx, ok := addr.OutpostIndex(o.Address)
 		if !ok {
 			return invalid(e, "Tunnel address %s is not an Outpost address in %s", o.Address, addr.Range)

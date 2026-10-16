@@ -7,7 +7,10 @@
 // (one call to endpoint in routes), and a command in cmd/tnl that uses Call.
 package api
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 const (
 	// VersionHeader is on every request and every response.
@@ -43,6 +46,11 @@ const ActorLocal Actor = "local"
 
 // OutpostActor is a caller on the Tunnel listener (slice 3).
 func OutpostActor(name string) Actor { return Actor("outpost:" + name) }
+
+// OutpostName is the Outpost's name, if the caller is one.
+func (a Actor) OutpostName() (string, bool) {
+	return strings.CutPrefix(string(a), "outpost:")
+}
 
 // Local reports whether the caller has full rights.
 func (a Actor) Local() bool { return a == ActorLocal }
@@ -90,6 +98,9 @@ type ZoneInfo struct {
 // OutpostAddRequest asks for a new Outpost.
 type OutpostAddRequest struct {
 	Name string `json:"name"`
+	// TTL is the token's lifetime as a Go duration such as "30m"; empty is
+	// DefaultTokenTTL.
+	TTL string `json:"ttl,omitempty"`
 }
 
 // OutpostAddResponse carries the join token, which is shown once and never stored.

@@ -35,3 +35,15 @@ func TestOutpostAddRefusalsExitOne(t *testing.T) {
 		}
 	}
 }
+
+func TestOutpostAddTakesATTLAndRefusesABadOne(t *testing.T) {
+	runningEdge(t)
+	if _, code, err := tnl("outpost", "add", "laptop", "--ttl", "2h"); err != nil || code != 0 {
+		t.Fatalf("--ttl 2h: %v %d", err, code)
+	}
+	for _, ttl := range []string{"soon", "0", "-5m"} {
+		if out, code, err := tnl("outpost", "add", "nas", "--ttl", ttl); err == nil || code != 1 || out != "" {
+			t.Errorf("--ttl %s: out=%q err=%v code=%d", ttl, out, err, code)
+		}
+	}
+}
