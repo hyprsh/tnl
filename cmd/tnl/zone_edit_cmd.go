@@ -52,10 +52,7 @@ func zoneEdit(args []string) error {
 	if err != nil {
 		return err
 	}
-	headline := fmt.Sprintf("Zone %s is now %s", z.Name, z.Mode)
-	if z.Provider != "" {
-		headline += " (" + z.Provider + ")"
-	}
+	headline := fmt.Sprintf("Zone %s is now %s", z.Name, zoneMode(z.ZoneInfo))
 	if *token {
 		headline = fmt.Sprintf("replaced the token of Zone %s", z.Name)
 	}

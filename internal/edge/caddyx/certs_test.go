@@ -18,7 +18,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/certmagic"
 )
 
@@ -204,29 +203,110 @@ func TestWaitTimeoutNamesTheLastError(t *testing.T) {
 func TestAnExpiredCertificateFromBeforeARestartEscalatesToError(t *testing.T) {
 	c, clock, buf := certsFixture()
 	dir := t.TempDir()
-	old := caddy.DefaultStorage
-	caddy.DefaultStorage = &certmagic.FileStorage{Path: dir}
-	t.Cleanup(func() { caddy.DefaultStorage = old })
+	c.storage.Store(&certmagic.FileStorage{Path: dir})
 
-	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	tmpl := &x509.Certificate{
-		SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "app.test"}, DNSNames: []string{"app.test"},
-		NotBefore: clock.Now().Add(-100 * 24 * time.Hour), NotAfter: clock.Now().Add(-10 * time.Hour),
-	}
-	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
-	if err != nil {
-		t.Fatal(err)
-	}
-	crtDir := filepath.Join(dir, "certificates", "acme-v02.api.letsencrypt.org-directory", "app.test")
-	if err := os.MkdirAll(crtDir, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(crtDir, "app.test.crt"), pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	writeCert(t, dir, "app.test", clock.Now().Add(-10*time.Hour))
 
 	c.process(failed("app.test", "boom"))
 	clock.advance(24 * time.Hour)
 	c.Tick()
 	want(t, buf.lines(), "level=ERROR", `msg="certificate still failing"`, "expired_for=")
+}
+
+// writeCert stores a certificate for the name the way Caddy does, under any
+// issuer.
+func writeCert(t *testing.T, root, name string, notAfter time.Time) {
+	t.Helper()
+	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	tmpl := &x509.Certificate{
+		SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: name}, DNSNames: []string{name},
+		NotBefore: notAfter.Add(-90 * 24 * time.Hour), NotAfter: notAfter,
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := certDir(name)
+	crtDir := filepath.Join(root, "certificates", "acme-v02.api.letsencrypt.org-directory", dir)
+	if err := os.MkdirAll(crtDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(crtDir, dir+".crt"), pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A certificate already expired at start, with a failure being reminded of but
+// no NotAfter in memory (no failure event fills it), escalates on the reminder.
+func TestTheReminderReadsAnExpiredCertificatesExpiryFromStorage(t *testing.T) {
+	c, clock, buf := certsFixture()
+	dir := t.TempDir()
+	c.storage.Store(&certmagic.FileStorage{Path: dir})
+	writeCert(t, dir, "app.test", clock.Now().Add(-10*time.Hour))
+	c.mu.Lock()
+	c.statusFor("app.test").LastError = "boom"
+	c.mu.Unlock()
+	c.failing.Begin("app.test")
+	clock.advance(24 * time.Hour)
+	c.Tick()
+	want(t, buf.lines(), "level=ERROR", `msg="certificate still failing"`, "expired_for=")
+}
+
+// A wildcard certificate in storage counts as held before Caddy has loaded, so a
+// restart orders nothing for the Hostnames it covers.
+func TestAWildcardInStorageCoversItsHostnamesBeforeCaddyLoads(t *testing.T) {
+	c, clock, _ := certsFixture()
+	dir := t.TempDir()
+	c.storage.Store(&certmagic.FileStorage{Path: dir})
+	writeCert(t, dir, "*.z.test", clock.Now().Add(30*24*time.Hour))
+	c.SetWildcards("z.test")
+	if err := c.Retain("a.z.test", "z.test", "deep.a.z.test"); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := c.names["a.z.test"]; ok {
+		t.Error("a covered Hostname was handed over")
+	}
+	if _, ok := c.names["z.test"]; ok {
+		t.Error("the apex was handed over")
+	}
+	if _, ok := c.names["deep.a.z.test"]; !ok {
+		t.Error("a deeper name is not covered and needs its own")
+	}
+}
+
+// The apex's own certificate does not make the wildcard held.
+func TestAnApexCertificateAloneDoesNotHoldTheWildcard(t *testing.T) {
+	c, clock, _ := certsFixture()
+	dir := t.TempDir()
+	c.storage.Store(&certmagic.FileStorage{Path: dir})
+	writeCert(t, dir, "z.test", clock.Now().Add(30*24*time.Hour))
+	c.SetWildcards("z.test")
+	if got := c.heldWildcards(); len(got) != 0 {
+		t.Fatalf("held %v", got)
+	}
+	if err := c.Retain("a.z.test"); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := c.names["a.z.test"]; !ok {
+		t.Error("a.z.test must keep its own certificate until the wildcard is in")
+	}
+}
+
+// The apex's certificate arriving after the wildcard's settles at once too.
+func TestTheApexArrivingLastSettlesTheCoveredHostnames(t *testing.T) {
+	c, clock, _ := certsFixture()
+	dir := t.TempDir()
+	c.storage.Store(&certmagic.FileStorage{Path: dir})
+	c.SetWildcards("z.test")
+	if err := c.Retain("a.z.test"); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := c.names["a.z.test"]; !ok {
+		t.Fatal("not handed over")
+	}
+	writeCert(t, dir, "*.z.test", clock.Now().Add(30*24*time.Hour))
+	c.process(certEvent{obtained: true, name: "z.test", notAfter: clock.Now().Add(30 * 24 * time.Hour)})
+	if _, ok := c.names["a.z.test"]; ok {
+		t.Error("a.z.test still renews its own certificate")
+	}
 }

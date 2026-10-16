@@ -13,8 +13,7 @@ import (
 // sees it (server.Wildcards). The Caddy parts exist only once Caddy's side is
 // built, after the server is; without Caddy they do nothing.
 type wildcards struct {
-	// certsRef answers Wait, WaitOwn and Settle.
-	*certsRef
+	certs *certsRef
 	// resolvers are the DNS servers the SOA lookup asks; none means the system's.
 	resolvers []string
 	reload    late[func() error]
@@ -34,6 +33,14 @@ func (w *wildcards) Check(ctx context.Context, provider, token, zone string) (st
 	}
 	return dnsZone, nil
 }
+
+func (w *wildcards) Wait(ctx context.Context, name string) error { return w.certs.Wait(ctx, name) }
+
+func (w *wildcards) WaitOwn(ctx context.Context, name string) error {
+	return w.certs.WaitOwn(ctx, name)
+}
+
+func (w *wildcards) Settle() { w.certs.Settle() }
 
 // Reload loads Caddy's config for the Zones as they now stand.
 func (w *wildcards) Reload() error {

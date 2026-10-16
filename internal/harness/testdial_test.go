@@ -10,15 +10,6 @@ import (
 	"github.com/hyprsh/tnl/internal/api"
 )
 
-func routeAdd(t *testing.T, re *RealEdge, host, service string, extra ...func(*api.RouteAddRequest)) api.RouteAddReply {
-	t.Helper()
-	req := api.RouteAddRequest{Hostname: host, Service: service, Outpost: "nas"}
-	for _, f := range extra {
-		f(&req)
-	}
-	return re.AddRouteRequest(t, req)
-}
-
 func routeEditWarnings(t *testing.T, re *RealEdge, req api.RouteEditRequest) []string {
 	t.Helper()
 	r, err := api.Call[api.RouteEditReply](ctx(t), re.API, http.MethodPost, api.PathRouteEdit, req)
@@ -48,7 +39,7 @@ func TestRouteAddForAServiceThatRefusesSavesTheRouteAndWarnsAtWarn(t *testing.T)
 	re.JoinOutpost(t, "nas")
 	addr := closedAddr(t)
 
-	r := routeAdd(t, re, "app.test", "http://"+addr)
+	r := re.AddRouteReply(t, "app.test", "http://"+addr, "nas")
 	if !hasWarning(r.Warnings.Warnings, addr, "doesn't answer", "refused") {
 		t.Fatalf("warnings %q", r.Warnings.Warnings)
 	}
@@ -67,7 +58,7 @@ func TestRouteAddForAServiceThatRefusesSavesTheRouteAndWarnsAtWarn(t *testing.T)
 
 	// A Service that answers draws no warning.
 	svc := NewHTTPService(t, echoHost())
-	if r := routeAdd(t, re, "ok.test", "http://"+svc.Addr()); len(r.Warnings.Warnings) != 0 {
+	if r := re.AddRouteReply(t, "ok.test", "http://"+svc.Addr(), "nas"); len(r.Warnings.Warnings) != 0 {
 		t.Fatalf("warnings %q", r.Warnings.Warnings)
 	}
 }
@@ -79,15 +70,15 @@ func TestVerifiedHTTPSServiceWithABadCertificateWarnsWithTheHint(t *testing.T) {
 	re.AddZone(t, "test")
 	re.JoinOutpost(t, "nas")
 
-	if r := routeAdd(t, re, "ok.test", "https://"+trusted.Addr()); len(r.Warnings.Warnings) != 0 {
+	if r := re.AddRouteReply(t, "ok.test", "https://"+trusted.Addr(), "nas"); len(r.Warnings.Warnings) != 0 {
 		t.Fatalf("trusted certificate: warnings %q", r.Warnings.Warnings)
 	}
-	r := routeAdd(t, re, "bad.test", "https://"+untrusted.Addr())
+	r := re.AddRouteReply(t, "bad.test", "https://"+untrusted.Addr(), "nas")
 	if !hasWarning(r.Warnings.Warnings, "certificate", "--insecure-skip-verify") {
 		t.Fatalf("warnings %q", r.Warnings.Warnings)
 	}
 	skip := func(r *api.RouteAddRequest) { r.InsecureSkipVerify = true }
-	if r := routeAdd(t, re, "skip.test", "https://"+untrusted.Addr(), skip); len(r.Warnings.Warnings) != 0 {
+	if r := re.AddRouteReply(t, "skip.test", "https://"+untrusted.Addr(), "nas", skip); len(r.Warnings.Warnings) != 0 {
 		t.Fatalf("with --insecure-skip-verify: warnings %q", r.Warnings.Warnings)
 	}
 }
@@ -96,7 +87,7 @@ func TestRouteEditTestDialsOnlyWhenTheServiceChanged(t *testing.T) {
 	re := StartEdgeWith(t, EdgeOptions{Pebble: StartPebble(t, PebbleOptions{})})
 	re.AddZone(t, "test")
 	re.JoinOutpost(t, "nas")
-	routeAdd(t, re, "app.test", "http://"+closedAddr(t))
+	re.AddRouteReply(t, "app.test", "http://"+closedAddr(t), "nas")
 
 	if ws := routeEditWarnings(t, re, api.RouteEditRequest{Hostname: "app.test", HostHeader: ptr("internal.lan")}); len(ws) != 0 {
 		t.Fatalf("an option-only edit test-dialed: %q", ws)
@@ -126,7 +117,7 @@ func TestAllowlistRefusesAServiceOutsideItAndTheRequestIsNotRetried(t *testing.T
 		t.Fatalf("the Outpost did not log its allowlist at start:\n%s", outLog.String())
 	}
 
-	r := routeAdd(t, re, "app.test", "http://"+svc.Addr())
+	r := re.AddRouteReply(t, "app.test", "http://"+svc.Addr(), "nas")
 	if !hasWarning(r.Warnings.Warnings, "allowlist", svc.Addr()) {
 		t.Fatalf("warnings %q", r.Warnings.Warnings)
 	}

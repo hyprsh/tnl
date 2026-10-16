@@ -202,15 +202,14 @@ func (e *RealEdge) AddRoute(t testing.TB, hostname, serviceURL, outpost string) 
 	e.AddRouteReply(t, hostname, serviceURL, outpost)
 }
 
-// AddRouteReply is AddRoute that returns the reply, warnings included.
-func (e *RealEdge) AddRouteReply(t testing.TB, hostname, serviceURL, outpost string) api.RouteAddReply {
+// AddRouteReply is AddRoute that returns the reply, warnings included. Each
+// option adjusts the request, as a flag does.
+func (e *RealEdge) AddRouteReply(t testing.TB, hostname, serviceURL, outpost string, opts ...func(*api.RouteAddRequest)) api.RouteAddReply {
 	t.Helper()
-	return e.AddRouteRequest(t, api.RouteAddRequest{Hostname: hostname, Service: serviceURL, Outpost: outpost})
-}
-
-// AddRouteRequest is AddRouteReply for a request with options.
-func (e *RealEdge) AddRouteRequest(t testing.TB, req api.RouteAddRequest) api.RouteAddReply {
-	t.Helper()
+	req := api.RouteAddRequest{Hostname: hostname, Service: serviceURL, Outpost: outpost}
+	for _, f := range opts {
+		f(&req)
+	}
 	r, err := api.Call[api.RouteAddReply](context.Background(), e.API, http.MethodPost, api.PathRoutes, req)
 	if err != nil {
 		t.Fatal(err)

@@ -3,6 +3,7 @@ package harness
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 	"testing"
@@ -52,7 +53,7 @@ func eventService(t *testing.T) *Service {
 func TestStoppingAnOutpostTurnsItsRoutesTo503AndItComesBack(t *testing.T) {
 	svc := eventService(t)
 	log := new(lockedBuf)
-	re := StartEdgeWith(t, EdgeOptions{Pebble: StartPebble(t, PebbleOptions{}), OfflineAfter: testOfflineAfter, LogOut: log})
+	re := StartEdgeWith(t, EdgeOptions{Pebble: StartPebble(t, PebbleOptions{}), OfflineAfter: testOfflineAfter, LogOut: log, LogLevel: slog.LevelInfo})
 	re.AddZone(t, "test")
 	o := re.JoinOutpost(t, "nas")
 	re.AddRoute(t, "app.test", "http://"+svc.Addr(), "nas")
@@ -143,7 +144,7 @@ func TestAfterAnEdgeRestartOutpostsCountAsOnlineBeforeTheirFirstPing(t *testing.
 // logged at info.
 func TestPingsCarryTheVersionAndANewEndpointIsLogged(t *testing.T) {
 	log := new(lockedBuf)
-	re := StartEdgeWith(t, EdgeOptions{LogOut: log})
+	re := StartEdgeWith(t, EdgeOptions{LogOut: log, LogLevel: slog.LevelInfo})
 	re.JoinOutpost(t, "nas")
 	waitFor(t, "the Outpost's version", 5*time.Second, func() bool { return re.Liveness.Info("nas").Version == harnessVersion })
 	waitFor(t, "the endpoint line", 5*time.Second, func() bool { return strings.Contains(log.String(), "new public endpoint") })

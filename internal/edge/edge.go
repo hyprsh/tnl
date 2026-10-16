@@ -105,7 +105,7 @@ func Run(ctx context.Context, cfg Config) error {
 	}
 	conns := conntrack.New()
 	certs := new(certsRef)
-	wild := &wildcards{resolvers: cfg.DNSResolvers, certsRef: certs}
+	wild := &wildcards{resolvers: cfg.DNSResolvers, certs: certs}
 	hooks := livenessHooks{
 		Version: cfg.Version, OfflineAfter: cfg.OfflineAfter, Poll: cfg.LivenessPoll, Log: cfg.Log,
 		CloseOutpost: conns.CloseOutpost,
