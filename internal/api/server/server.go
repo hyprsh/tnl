@@ -52,6 +52,9 @@ type Config struct {
 	// PreparePeer, if set, adds the new key as a peer with no Tunnel address
 	// yet, before the join replies, so its handshake can complete early.
 	PreparePeer func(new keys.Key) error
+
+	// StateDir is where backup finds Caddy's storage.
+	StateDir string
 }
 
 // ConnCloser is the connection tracker as the handlers see it, in the
@@ -84,6 +87,7 @@ func (s *Server) routes() {
 	endpoint(s, http.MethodPost, api.PathRouteRm, s.routeRm)
 	endpoint(s, http.MethodPost, api.PathJoin, s.join)
 	endpoint(s, http.MethodPost, api.PathRouteEdit, s.routeEdit)
+	s.mux.HandleFunc("GET "+api.PathBackup, s.backup) // streams a tar, so not endpoint
 }
 
 // afterReplyGrace is how long after a reply is written the functions queued

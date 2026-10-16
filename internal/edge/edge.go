@@ -89,7 +89,7 @@ func Run(ctx context.Context, cfg Config) error {
 	srv := server.New(server.Config{
 		Conns: conns,
 		Store: store, Log: cfg.Log, Version: cfg.Version, Build: cfg.Build, Revision: cfg.Revision, Role: api.RoleEdge,
-		Address: cfg.Address, WireGuardPort: wgPort, Resolver: cfg.Resolver,
+		Address: cfg.Address, WireGuardPort: wgPort, Resolver: cfg.Resolver, StateDir: cfg.StateDir,
 		PreparePeer: peers.prepare,
 		SwapPeer:    func(old, new keys.Key, a netip.Addr) { peers.swap(old, new, a, cfg.Log) },
 	})

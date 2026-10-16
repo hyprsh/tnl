@@ -34,6 +34,14 @@ type Store struct {
 	subs []func(*State)
 }
 
+// Raw returns a copy of state.json as the store last wrote it, taken under the
+// lock: never a file caught mid-change. It is what a backup holds.
+func (s *Store) Raw() []byte {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return bytes.Clone(s.last)
+}
+
 // Open loads the state in dir, or creates a new Edge there when the directory
 // is missing or empty. It refuses, naming the bad entry, a state that fails
 // its checks, and never loads part of one.

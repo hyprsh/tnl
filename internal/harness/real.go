@@ -56,6 +56,9 @@ type EdgeOptions struct {
 	// ServiceRoots are the roots the Edge trusts for https:// Services, in place
 	// of the system's. Needs Pebble (Caddy).
 	ServiceRoots *x509.CertPool
+	// WireGuardPort fixes the UDP port, as a restored Edge keeps the one its
+	// Outposts' credentials name. Zero picks a free one.
+	WireGuardPort int
 }
 
 // atEdge answers every name with the Edge's address.
@@ -87,7 +90,7 @@ func StartEdgeWith(t testing.TB, opts EdgeOptions) *RealEdge {
 	cfg := edge.Config{
 		Address: "127.0.0.1", StateDir: dir, Version: harnessVersion, Build: "full", Revision: "test",
 		Log:      logx.New(logx.Options{Level: slog.LevelWarn, Out: testWriter{t}}),
-		Resolver: opts.Resolver,
+		Resolver: opts.Resolver, WireGuardPort: opts.WireGuardPort,
 	}
 	if cfg.Resolver == nil {
 		cfg.Resolver = atEdge{}
