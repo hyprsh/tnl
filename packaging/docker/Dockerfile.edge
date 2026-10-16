@@ -7,7 +7,7 @@ RUN mkdir -m 0700 /state
 FROM gcr.io/distroless/static-debian12:nonroot
 ARG TARGETPLATFORM
 COPY ${TARGETPLATFORM}/tnl /usr/local/bin/tnl
-COPY --from=state --chown=65532:65532 /state /var/lib/tnl
+COPY --from=state --chown=65532:65532 --chmod=0700 /state /var/lib/tnl
 ENV TNL_STATE_DIR=/var/lib/tnl
 ENTRYPOINT ["tnl"]
 CMD ["edge"]
