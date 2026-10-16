@@ -6,6 +6,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/hyprsh/tnl/internal/api"
 	"github.com/hyprsh/tnl/internal/declare"
 )
 
@@ -55,32 +56,24 @@ func (s *State) Route(host string) (Route, bool) {
 	return Route{}, false
 }
 
-// WaitKind is why a declared line is not a Route.
-type WaitKind int
-
-const (
-	NotWaiting      WaitKind = iota // the line is a Route
-	WaitHeld                        // another Outpost holds the Hostname
-	WaitOutsideZone                 // the Hostname is in no Zone
-	WaitNotApplied                  // free and inside a Zone: it waits for the change that makes it a Route
-)
-
 // Wait is why a declared line is not a Route, with who holds the Hostname
 // where another Outpost does. Every surface words it from this.
 type Wait struct {
-	Kind   WaitKind
-	Holder string // the Outpost holding the Hostname, for WaitHeld
+	Kind   api.WaitKind
+	Holder string // the Outpost holding the Hostname, for api.WaitHeld
+}
+
+// logWords is the Edge's log wording of each kind of wait.
+var logWords = map[api.WaitKind]func(holder string) string{
+	api.WaitHeld:        func(holder string) string { return "held by Outpost " + holder },
+	api.WaitOutsideZone: func(string) string { return "outside every Zone" },
+	api.WaitNotApplied:  func(string) string { return "not applied yet" },
 }
 
 // String is the Edge's log wording; the zero Wait is "".
 func (w Wait) String() string {
-	switch w.Kind {
-	case WaitHeld:
-		return "held by Outpost " + w.Holder
-	case WaitOutsideZone:
-		return "outside every Zone"
-	case WaitNotApplied:
-		return "not applied yet"
+	if f, ok := logWords[w.Kind]; ok {
+		return f(w.Holder)
 	}
 	return ""
 }
@@ -92,12 +85,12 @@ func (s *State) Waiting(outpost, host string) Wait {
 		if r.Outpost == outpost {
 			return Wait{}
 		}
-		return Wait{Kind: WaitHeld, Holder: r.Outpost}
+		return Wait{Kind: api.WaitHeld, Holder: r.Outpost}
 	}
 	if !s.InZone(host) {
-		return Wait{Kind: WaitOutsideZone}
+		return Wait{Kind: api.WaitOutsideZone}
 	}
-	return Wait{Kind: WaitNotApplied}
+	return Wait{Kind: api.WaitNotApplied}
 }
 
 // WaitingReason is Waiting in the Edge's log wording, or "" when the line is a Route.
@@ -227,7 +220,7 @@ func (s *State) ApplyDeclaration(outpost string, lines []declare.Line, now time.
 				res.Dial = append(res.Dial, want)
 			}
 		case !s.InZone(l.Hostname):
-			res.Waiting = append(res.Waiting, WaitingLine{l.Hostname, "outside every Zone"})
+			res.Waiting = append(res.Waiting, WaitingLine{l.Hostname, Wait{Kind: api.WaitOutsideZone}.String()})
 		default:
 			s.Routes = append(s.Routes, want)
 			res.Added = append(res.Added, l.Hostname)

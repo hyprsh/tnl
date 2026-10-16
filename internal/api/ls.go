@@ -90,15 +90,6 @@ const (
 // StatusWaiting is the status of a row that waits for the reason.
 func StatusWaiting(reason string) RouteStatus { return RouteStatus("waiting: " + reason) }
 
-// The reasons a declared line waits, in the words of `ls` and `status`.
-const (
-	WaitingOutsideEveryZone = "outside every Zone"
-	WaitingNotAppliedYet    = "not applied yet"
-)
-
-// WaitingTakenBy is the reason of a line whose Hostname another Outpost holds.
-func WaitingTakenBy(outpost string) string { return "taken by " + outpost }
-
 // RouteList answers GET PathRoutes, sorted by Hostname.
 type RouteList struct {
 	Routes []RouteRow `json:"routes"`

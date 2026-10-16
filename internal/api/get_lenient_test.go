@@ -42,14 +42,14 @@ func serve(t *testing.T, path, body string) *Client {
 // A newer Edge may add a field to any reply. An older tnl still reads the rest
 // of an `ls` or status reply and keeps the bytes for --json, where Call, which
 // refuses what it doesn't know, would fail.
-func TestFetchReadsAReplyWithFieldsItDoesNotKnow(t *testing.T) {
+func TestGetLenientReadsAReplyWithFieldsItDoesNotKnow(t *testing.T) {
 	body := `{"zones":[{"name":"example.com","mode":"per-hostname","from_the_future":1}],"also":true}`
 	c := serve(t, PathZones, body)
 	ctx := context.Background()
 	if _, err := Call[ZoneList](ctx, c, http.MethodGet, PathZones, nil); err == nil {
 		t.Fatal("Call read a field it doesn't know")
 	}
-	list, raw, err := Fetch[ZoneList](ctx, c, PathZones)
+	list, raw, err := GetLenient[ZoneList](ctx, c, PathZones)
 	if err != nil {
 		t.Fatal(err)
 	}
