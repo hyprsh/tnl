@@ -31,12 +31,13 @@ func routeAdd(args []string) error {
 	if *outpost == "" {
 		return fmt.Errorf("--outpost is required on the Edge host: which Outpost's network is %s on?", pos[1])
 	}
-	r, err := api.Call[api.RouteInfo](context.Background(), c.client(), http.MethodPost, api.PathRoutes,
+	r, err := api.Call[api.RouteAddReply](context.Background(), c.client(), http.MethodPost, api.PathRoutes,
 		api.RouteAddRequest{Hostname: pos[0], Service: pos[1], Outpost: *outpost,
 			HostHeader: *hostHeader, InsecureSkipVerify: *insecure})
 	if err != nil {
 		return err
 	}
 	fmt.Fprintf(stdout, "added Route %s to %s through Outpost %s\n", r.Hostname, r.Service, r.Outpost)
+	printWarnings(r.Warnings)
 	return nil
 }

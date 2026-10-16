@@ -8,6 +8,7 @@
 package outpost
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -46,6 +47,9 @@ type Config struct {
 	Started func(*Running)
 	// Revision is the VCS revision, logged beside the build.
 	Revision string
+	// PingInterval is how often the Outpost pings the Edge; 0 is 10 s. The
+	// harness shrinks it.
+	PingInterval time.Duration
 }
 
 // Running is what a started Outpost exposes.
@@ -143,6 +147,12 @@ func Run(ctx context.Context, cfg Config) error {
 	served := make(chan struct{})
 	go func() { defer close(served); fw.Serve(ln) }()
 	defer func() { ln.Close(); <-served }()
+
+	pingCtx, stopPinging := context.WithCancel(ctx)
+	defer stopPinging()
+	if err := runPinger(pingCtx, tun, st.Address, cfg.Version, cmp.Or(cfg.PingInterval, DefaultPingInterval), cfg.Log); err != nil {
+		return fmt.Errorf("start pinging the Edge: %w", err)
+	}
 
 	fields := []any{
 		"name", st.Name,
