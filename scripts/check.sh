@@ -19,6 +19,8 @@ done
 # Includes the Caddy suite (internal/harness/caddy_suite_test.go, about 40 s).
 # Caddy is upgraded only in a PR of its own, so that suite can vouch for it.
 go test -timeout 15m -tags nomysql "$@" ./...
+# The Outpost build's own CLI tests (its refusals).
+go test -tags nomysql,outpost "$@" ./cmd/tnl
 
 scripts/check-outpost-deps.sh
 echo "ok: every check passed"

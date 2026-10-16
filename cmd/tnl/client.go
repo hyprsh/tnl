@@ -52,7 +52,8 @@ func (g *group) names() []string {
 }
 
 // clientCommand is the flag set every API command shares: --state-dir picks
-// the process to talk to. Socket discovery comes in slice 2.
+// the process to talk to. Without it, and without TNL_STATE_DIR, parse
+// discovers the one live socket (see discoverStateDir).
 type clientCommand struct {
 	fs       *flag.FlagSet
 	stateDir string
@@ -60,7 +61,7 @@ type clientCommand struct {
 
 func newClientCommand(name string) *clientCommand {
 	c := &clientCommand{fs: flag.NewFlagSet("tnl "+name, flag.ContinueOnError)}
-	c.fs.StringVar(&c.stateDir, "state-dir", envOr("TNL_STATE_DIR", "/var/lib/tnl"),
+	c.fs.StringVar(&c.stateDir, "state-dir", os.Getenv("TNL_STATE_DIR"),
 		"the state directory of the process to talk to (TNL_STATE_DIR)")
 	return c
 }
@@ -73,7 +74,8 @@ func (c *clientCommand) parse(args []string) (positional []string, err error) {
 			return nil, err
 		}
 		if c.fs.NArg() == 0 {
-			return positional, nil
+			c.stateDir, err = discoverStateDir(c.stateDir)
+			return positional, err
 		}
 		positional = append(positional, c.fs.Arg(0))
 		args = c.fs.Args()[1:]

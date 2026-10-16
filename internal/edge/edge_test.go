@@ -32,7 +32,7 @@ func run(t *testing.T, dir string) (*syncBuf, error) {
 	defer cancel()
 	done := make(chan error, 1)
 	go func() {
-		done <- Run(ctx, Config{Address: "tnl.example.com", StateDir: dir, Version: "v9.9.9", Build: "abc123", Log: lg})
+		done <- Run(ctx, Config{Address: "tnl.example.com", StateDir: dir, Version: "v9.9.9", Build: "full", Log: lg})
 	}()
 	deadline := time.Now().Add(2 * time.Second)
 	for !strings.Contains(buf.String(), "edge started") && time.Now().Before(deadline) {
@@ -59,7 +59,7 @@ func TestStartLogsVersionAddressFingerprintAndCounts(t *testing.T) {
 		t.Fatal(err)
 	}
 	log := buf.String()
-	for _, want := range []string{"created a new Edge", "key_fingerprint=SHA256:", "version=v9.9.9", "build=abc123", "address=tnl.example.com", "outposts=0", "routes=0", "zones=0"} {
+	for _, want := range []string{"created a new Edge", "key_fingerprint=SHA256:", "version=v9.9.9", "build=full", "address=tnl.example.com", "outposts=0", "routes=0", "zones=0"} {
 		if !strings.Contains(log, want) {
 			t.Errorf("log lacks %q:\n%s", want, log)
 		}
@@ -104,7 +104,7 @@ func TestZonesSurviveARestart(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		done := make(chan error, 1)
 		go func() {
-			done <- Run(ctx, Config{Address: "tnl.example.com", StateDir: dir, Version: "v9.9.9", Build: "abc123", Log: lg})
+			done <- Run(ctx, Config{Address: "tnl.example.com", StateDir: dir, Version: "v9.9.9", Build: "full", Log: lg})
 		}()
 		deadline := time.Now().Add(2 * time.Second)
 		for !strings.Contains(buf.String(), "edge started") && time.Now().Before(deadline) {
