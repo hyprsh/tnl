@@ -268,14 +268,3 @@ func parseOutpost(text string) (state.DeclaredOutpost, error) {
 	}
 	return o, nil
 }
-
-// Redact removes each secret from msg. It is the last line of defence for text
-// that leaves the process.
-func Redact(msg string, secrets ...string) string {
-	for _, s := range secrets {
-		if s != "" {
-			msg = strings.ReplaceAll(msg, s, "[redacted]")
-		}
-	}
-	return msg
-}

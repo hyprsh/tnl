@@ -69,6 +69,19 @@ func TestUnknownMarkerSaysANewerTnlIsNeeded(t *testing.T) {
 	}
 }
 
+func TestAnUnknownMarkerErrorEchoesNothingButTnlMarkers(t *testing.T) {
+	_, err := Decode("tnl2.abcd")
+	if err == nil || !strings.Contains(err.Error(), `"tnl2"`) {
+		t.Fatalf("a tnl marker is named: %v", err)
+	}
+	for in, needle := range map[string]string{"hunter2hunter2.rest": "hunter", "wg1.abcd": "wg1", "nonsense-secret": "nonsense", "tnl2secretsecret.x": "secret"} {
+		_, err := Decode(in)
+		if err == nil || strings.Contains(err.Error(), needle) {
+			t.Errorf("%q: the error echoes the input: %v", in, err)
+		}
+	}
+}
+
 func TestMalformedTokensAreRefused(t *testing.T) {
 	good := sample(t).Encode()
 	for name, in := range map[string]string{
