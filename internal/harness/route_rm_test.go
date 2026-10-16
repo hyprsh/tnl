@@ -38,18 +38,7 @@ func TestRouteRmEndsItsStreamsAndLeavesOtherRoutesFlowing(t *testing.T) {
 			fmt.Fprint(w, "ok")
 			return
 		}
-		w.Header().Set("Content-Type", "text/event-stream")
-		rc := http.NewResponseController(w)
-		for {
-			if _, err := fmt.Fprint(w, "data: x\n\n"); err != nil || rc.Flush() != nil {
-				return
-			}
-			select {
-			case <-time.After(20 * time.Millisecond):
-			case <-r.Context().Done():
-				return
-			}
-		}
+		sseHandler(w, r)
 	}))
 	re := StartEdgeWith(t, EdgeOptions{Pebble: StartPebble(t, PebbleOptions{})})
 	re.AddZone(t, "test")
@@ -112,6 +101,22 @@ func TestRouteRmHostnameAnswers404AndUnknownIsRefused(t *testing.T) {
 	err := routeRm(t, re, "a.test")
 	if e, ok := err.(*api.Error); !ok || e.Status != http.StatusNotFound {
 		t.Fatalf("removing an unknown Hostname: %v", err)
+	}
+}
+
+// sseHandler streams events until the Visitor or the connection goes away.
+func sseHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/event-stream")
+	rc := http.NewResponseController(w)
+	for {
+		if _, err := fmt.Fprint(w, "data: x\n\n"); err != nil || rc.Flush() != nil {
+			return
+		}
+		select {
+		case <-time.After(20 * time.Millisecond):
+		case <-r.Context().Done():
+			return
+		}
 	}
 }
 

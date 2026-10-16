@@ -1,6 +1,7 @@
 package harness
 
 import (
+	"crypto/x509"
 	"io"
 	"net"
 	"net/http"
@@ -36,6 +37,8 @@ type Service struct {
 	ln    net.Listener
 	conns atomic.Int64
 	live  atomic.Int64
+	// CA is the CA that signed an HTTPS Service's certificate; nil otherwise.
+	CA *x509.CertPool
 }
 
 // NewEchoService starts a Service that echoes every byte back.

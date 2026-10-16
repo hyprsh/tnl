@@ -39,7 +39,7 @@ func TestRouteAddNeedsOutpostAndRefusalsExitOne(t *testing.T) {
 	for _, args := range [][]string{
 		{"route", "add", "app.example.com", "http://x:1"},
 		{"route", "add", "app.example.com", "http://x:1", "--outpost", "ghost"},
-		{"route", "add", "app.example.com", "https://x:1", "--outpost", "nas"},
+		{"route", "add", "app.example.com", "ftp://x:1", "--outpost", "nas"},
 		{"route", "add", "app.example.com", "--outpost", "nas"},
 		{"route", "ls", "extra"},
 	} {

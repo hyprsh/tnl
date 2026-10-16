@@ -2,6 +2,8 @@ package caddyx
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"log/slog"
 	"net"
@@ -32,6 +34,9 @@ type Runtime struct {
 	Log *slog.Logger
 	// Conns tracks every connection the transport opens. Nil tracks none.
 	Conns *conntrack.Tracker
+	// ServiceRoots are the roots an https:// Service's certificate is verified
+	// against. Nil means the system's. The harness sets it; no flag does.
+	ServiceRoots *x509.CertPool
 
 	pool pool
 }
@@ -114,6 +119,14 @@ func (p *pool) transport(rt *Runtime, route routes.Route, addr netip.AddrPort) *
 		IdleConnTimeout:     poolIdleTimeout,
 		// No ResponseHeaderTimeout and no ExpectContinueTimeout: the Service may
 		// take as long as it likes (spec section 6).
+	}
+	if route.TLS {
+		// The transport handshakes over the connection DialContext returns. The
+		// name is the Service URL's host, not the Visitor's Hostname.
+		tr.TLSClientConfig = &tls.Config{
+			ServerName: route.ServerName, RootCAs: rt.ServiceRoots,
+			InsecureSkipVerify: route.InsecureSkipVerify,
+		}
 	}
 	if p.m == nil {
 		p.m = map[string]*poolEntry{}
