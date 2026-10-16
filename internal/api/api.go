@@ -61,7 +61,29 @@ func (a Actor) String() string { return string(a) }
 type Error struct {
 	Status  int
 	Message string
+	// UnknownField, when set, is the request field the Edge refused for not
+	// knowing it. It travels in the UnknownFieldHeader header, not the body.
+	UnknownField string
 }
+
+// UnknownFieldHeader carries the name of the request field the Edge doesn't
+// know, on the 400 that refuses it. A header, because a body field would be
+// one more thing an older client refuses.
+const UnknownFieldHeader = "Tnl-Unknown-Field"
+
+// FieldNote is what the newer side knows about a request field that an older
+// Edge may not: the flag or name to show, and the version that added it.
+type FieldNote struct {
+	Name  string // as the caller knows it, such as "--new-opt"
+	Since string // the version that added the field, such as "1.5.0"
+}
+
+// FieldAdded lists, by JSON field name, the request fields added after 1.0.
+// An Edge that refuses one of them says only that it doesn't know the field;
+// the client composes "it needs 1.5 or newer" from this table, the one place
+// that knows. v1 has none: a field added in a later version is listed here in
+// the change that adds it.
+var FieldAdded = map[string]FieldNote{}
 
 func (e *Error) Error() string { return e.Message }
 

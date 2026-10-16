@@ -159,8 +159,13 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	id, _ := caddyhttp.GetVar(ctx, varRequestID).(string)
 	// Step 3 of a request: an Offline Outpost gets 503 at once. One the Edge has
 	// not heard from yet (it joined a moment ago) is waited for like an online one.
-	if t.rt.Liveness != nil && t.rt.Liveness.State(route.Outpost) == liveness.Offline {
-		return t.rt.fail(req, id, http.StatusServiceUnavailable, "outpost offline")
+	if t.rt.Liveness != nil {
+		switch t.rt.Liveness.State(route.Outpost) {
+		case liveness.Offline:
+			return t.rt.fail(req, id, http.StatusServiceUnavailable, "outpost offline")
+		case liveness.Incompatible:
+			return t.rt.fail(req, id, http.StatusServiceUnavailable, "outpost incompatible")
+		}
 	}
 	addr, ok := t.rt.Outposts.Addr(route.Outpost)
 	if !ok {

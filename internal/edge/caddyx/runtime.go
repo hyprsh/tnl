@@ -199,6 +199,18 @@ func (e *ReplyError) Error() string {
 	return "outpost " + e.Reply.Version + " refused the tnl header"
 }
 
+// headerFormat is the tnl header format for the Outpost, picked from the
+// version its pings reported, so no field is sent that its version lacks.
+func (rt *Runtime) headerFormat(outpost string) int {
+	v := ""
+	if l, ok := rt.Liveness.(interface {
+		Info(string) liveness.Info
+	}); ok {
+		v = l.Info(outpost).Version
+	}
+	return wire.FormatFor(v)
+}
+
 // dialOutpostOnce opens a Tunnel connection to the Outpost's data port, sends the tnl
 // header and reads the reply. On ok the connection is ready for request bytes.
 func (rt *Runtime) dialOutpostOnce(ctx context.Context, addr netip.AddrPort, outpost string, h wire.Header) (net.Conn, error) {
@@ -232,7 +244,7 @@ func (rt *Runtime) dialOutpostOnce(ctx context.Context, addr netip.AddrPort, out
 		}
 		return nil, err
 	}
-	if err := wire.WriteHeader(c, h); err != nil {
+	if err := wire.WriteHeaderFormat(c, h, rt.headerFormat(outpost)); err != nil {
 		return fail(err)
 	}
 	rp, err := wire.ReadReply(c)
