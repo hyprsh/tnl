@@ -236,9 +236,31 @@ type recorder struct {
 	http.ResponseWriter
 	status int
 	bytes  atomic.Int64
+	// hsts is set for a Route's reply: the Edge adds HSTS unless the Service
+	// sent its own.
+	hsts   bool
+	edited bool
+}
+
+// hstsValue is what the Edge sends: a year, no includeSubDomains, no preload.
+const hstsValue = "max-age=31536000"
+
+// edit changes the headers of the final response, once: Via goes (the Edge's
+// name is not for Visitors) and HSTS is added if the Service sent none.
+func (r *recorder) edit(code int) {
+	if r.edited || (code < 200 && code != http.StatusSwitchingProtocols) {
+		return
+	}
+	r.edited = true
+	h := r.ResponseWriter.Header()
+	h.Del("Via")
+	if r.hsts && h.Get("Strict-Transport-Security") == "" {
+		h.Set("Strict-Transport-Security", hstsValue)
+	}
 }
 
 func (r *recorder) WriteHeader(code int) {
+	r.edit(code)
 	if r.status == 0 && code >= 200 {
 		r.status = code
 	}
@@ -246,6 +268,7 @@ func (r *recorder) WriteHeader(code int) {
 }
 
 func (r *recorder) Write(b []byte) (int, error) {
+	r.edit(http.StatusOK)
 	if r.status == 0 {
 		r.status = http.StatusOK
 	}
@@ -255,6 +278,7 @@ func (r *recorder) Write(b []byte) (int, error) {
 }
 
 func (r *recorder) Flush() {
+	r.edit(http.StatusOK)
 	if r.status == 0 {
 		r.status = http.StatusOK
 	}
