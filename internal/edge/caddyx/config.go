@@ -414,6 +414,12 @@ func Start(c Config) error {
 	certs.SetStateDir(c.StateDir)
 	c.Hostnames = certs.configure()
 	if activeTLS() == nil {
+		// Caddy's "redirected default logger" line is written at the first load
+		// through its initial stderr logger. Buffered, Caddy replays it into the
+		// new default logger, which is tnl's core. A load that fails first never
+		// replays it, so the buffer goes to the original logger then.
+		_, orig, buffered := caddy.BufferedLog()
+		defer buffered.FlushTo(orig) // empty once Caddy replayed it
 		rt.warming.Store(true)
 		err := c.warmCache(rt, certs.log)
 		rt.warming.Store(false)
