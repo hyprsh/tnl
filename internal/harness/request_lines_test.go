@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/hyprsh/tnl/internal/edge/routes"
+	"github.com/hyprsh/tnl/internal/logx"
 )
 
 // requestLines returns the log lines the Edge wrote about requests.
@@ -123,6 +124,12 @@ func successfulRequests(t *testing.T, access bool) {
 		}
 		if !strings.Contains(got[1], "status=404") {
 			t.Errorf("what the Service answered: %s", got[1])
+		}
+		// The access log stays on stderr and out of what `tnl logs` serves.
+		for _, e := range logx.RingOf(log).Snapshot() {
+			if strings.Contains(e.Text, "msg=request") {
+				t.Errorf("an access-log line is in the ring: %s", e.Text)
+			}
 		}
 		for _, never := range []string{"hunter2", "token", "agent-007", "?"} {
 			if strings.Contains(strings.Join(got, "\n"), never) {
