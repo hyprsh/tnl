@@ -48,7 +48,7 @@ func (s *State) Handover() []Handed {
 			continue
 		}
 		taken[w.line.Hostname] = true
-		r := routeOf(w.outpost, w.line.Line)
+		r := RouteOf(w.outpost, w.line.Line)
 		routes = append(routes, r)
 		out = append(out, Handed{Outpost: w.outpost, Route: r})
 	}

@@ -163,7 +163,7 @@ func waitingLines(st *state.State) []declaredWait {
 			if why.Kind == api.NotWaiting {
 				continue // it is a Route, already listed
 			}
-			line := state.Route{Hostname: l.Hostname, Outpost: d.Outpost, Service: l.Service, HostHeader: l.HostHeader, InsecureSkipVerify: l.InsecureSkipVerify, NoHSTS: l.NoHSTS, Headers: l.Headers}
+			line := state.RouteOf(d.Outpost, l.Line)
 			out = append(out, declaredWait{line, why})
 		}
 	}
