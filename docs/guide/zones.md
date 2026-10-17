@@ -71,9 +71,10 @@ Create it in the Cloudflare dashboard under My Profile, API Tokens, Create Token
 
 ## Log lines that look stray
 
-Two lines in the logs are not Edge messages and are expected:
+Three lines in the logs are not Edge messages and are expected:
 
 - One `redirected default logger` line from Caddy at each start.
+- One JSON line, `unable to determine directory for user configuration`, when you run the binary by hand with neither `XDG_CONFIG_HOME` nor `HOME` set. Caddy writes it before tnl starts. The systemd unit sets `XDG_CONFIG_HOME`, so it does not appear there.
 - certmagic's stale-lock messages, which go to raw stderr rather than the log. They appear only after a crash, while the lock files it left are cleared.
 
 ## What a Hostname costs in public
