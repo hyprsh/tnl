@@ -37,12 +37,18 @@ type livenessHooks struct {
 }
 
 // newLiveness makes the Edge's Liveness and counts its own start as hearing
-// from every Outpost the state holds.
+// from every Outpost the state holds that has connected before. The saved
+// endpoint is the sign of that: it is written on the first handshake. One
+// without it has never connected, and is not counted online.
 func newLiveness(h livenessHooks, st *state.State) *liveness.Liveness {
 	l := liveness.New(liveness.Config{EdgeVersion: h.Version, OfflineAfter: h.OfflineAfter, Log: h.Log, OnOffline: h.CloseOutpost})
 	for _, o := range st.Outposts {
-		if o.OneTimeKey == nil {
+		switch {
+		case o.OneTimeKey != nil:
+		case o.Endpoint.IsValid():
 			l.Seed(o.Name)
+		default:
+			l.SeedNever(o.Name)
 		}
 	}
 	return l

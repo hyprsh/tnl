@@ -183,7 +183,7 @@ func (s *Server) routeAdd(ctx context.Context, actor api.Actor, req api.RouteAdd
 		warnings = append(warnings, fmt.Sprintf("Outpost %s is Offline: %s answers 503 until it is back", r.Outpost, r.Hostname))
 	case liveness.Incompatible:
 		warnings = append(warnings, fmt.Sprintf("Outpost %s is Incompatible with this Edge: %s answers 503 until it is upgraded", r.Outpost, r.Hostname))
-	case liveness.Unknown:
+	case liveness.Unknown, liveness.NeverConnected:
 		warnings = append(warnings, fmt.Sprintf("Outpost %s has not connected yet, so there was no test dial of %s", r.Outpost, r.Service))
 	default:
 		warnings = append(warnings, s.testDialWarnings(ctx, r)...)

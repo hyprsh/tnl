@@ -11,6 +11,7 @@ import (
 
 	"github.com/hyprsh/tnl/internal/api"
 	"github.com/hyprsh/tnl/internal/edge/liveness"
+	"github.com/hyprsh/tnl/internal/state"
 )
 
 const testOfflineAfter = 600 * time.Millisecond
@@ -132,11 +133,71 @@ func lineWith(log, sub string) string {
 func TestAfterAnEdgeRestartOutpostsCountAsOnlineBeforeTheirFirstPing(t *testing.T) {
 	re := StartEdge(t)
 	re.JoinOutpost(t, "nas")
+	waitForEndpointSaved(t, re, "nas")
 	re.Stop()
 
 	again := StartEdgeWith(t, EdgeOptions{StateDir: re.StateDir})
 	if s := again.Liveness.State("nas"); s != liveness.Online {
 		t.Fatalf("state %v right after the restart", s)
+	}
+	o := lsOutpost(t, again, "nas")
+	if o.State != api.StateOnline || o.LastSeen != nil {
+		t.Fatalf("outpost ls after the restart: %+v", o)
+	}
+}
+
+// The endpoint is saved a poll after the first handshake, and is the sign that
+// the Outpost has connected before.
+func waitForEndpointSaved(t *testing.T, re *RealEdge, name string) {
+	t.Helper()
+	waitFor(t, "the endpoint to be saved", 5*time.Second, func() bool {
+		for _, o := range re.Store.Snapshot().Outposts {
+			if o.Name == name {
+				return o.Endpoint.IsValid()
+			}
+		}
+		return false
+	})
+}
+
+func lsOutpost(t *testing.T, re *RealEdge, name string) api.OutpostInfo {
+	t.Helper()
+	l, err := api.Call[api.OutpostList](ctx(t), re.API, http.MethodGet, api.PathOutposts, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, o := range l.Outposts {
+		if o.Name == name {
+			return o
+		}
+	}
+	t.Fatalf("no Outpost %s in %+v", name, l)
+	return api.OutpostInfo{}
+}
+
+// A declared Outpost that has never connected is not online after the Edge
+// starts, not counted online by `tnl status`, and Offline once the window
+// passes. It is online once it connects.
+func TestADeclaredOutpostThatNeverConnectedIsNotOnlineAfterTheEdgeStarts(t *testing.T) {
+	d := newDeclaredEdge(t)
+	line, _ := d.outpost(t, "nas")
+	re := StartEdgeWith(t, d.options(EdgeOptions{OfflineAfter: 3 * time.Second, Outposts: []state.DeclaredOutpost{line}}))
+
+	if o := lsOutpost(t, re, "nas"); o.State != api.StateNeverConnected || o.LastSeen != nil || o.Endpoint != "" {
+		t.Fatalf("outpost ls: %+v", o)
+	}
+	s, text := edgeStatus(t, re)
+	if s.Outposts.Online != 0 || s.Outposts.NeverConnected != 1 || len(s.Attention) != 0 {
+		t.Fatalf("status: %+v %+v", s.Outposts, s.Attention)
+	}
+	if !strings.Contains(text, "1 never connected") {
+		t.Fatalf("no never connected in\n%s", text)
+	}
+
+	waitFor(t, "the Outpost to be Offline", 10*time.Second, func() bool { return lsOutpost(t, re, "nas").State == api.StateOffline })
+	s, _ = edgeStatus(t, re)
+	if s.Outposts.Offline != 1 || s.Outposts.NeverConnected != 0 || len(s.Attention) != 1 || s.Attention[0].Kind != api.AttentionOutpostOffline {
+		t.Fatalf("status past the window: %+v %+v", s.Outposts, s.Attention)
 	}
 }
 

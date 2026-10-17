@@ -24,6 +24,9 @@ const (
 	StateOffline      OutpostState = "offline"
 	StateIncompatible OutpostState = "incompatible"
 	StateNotJoined    OutpostState = "not joined"
+	// StateNeverConnected is a joined or declared Outpost the Edge has no record
+	// of ever hearing from, within the Offline window of its start.
+	StateNeverConnected OutpostState = "never connected"
 )
 
 // OutpostList answers GET PathOutposts, sorted by name.
@@ -78,13 +81,14 @@ type RouteStatus string
 
 // Route statuses, in the order `route ls` looks for them.
 const (
-	StatusOK                  RouteStatus = "ok"
-	StatusOutpostNotJoined    RouteStatus = "outpost not joined"
-	StatusOutpostOffline      RouteStatus = "outpost offline"
-	StatusOutpostIncompatible RouteStatus = "outpost incompatible"
-	StatusNoCertificate       RouteStatus = "no certificate"
-	StatusCertExpired         RouteStatus = "certificate expired"
-	StatusRenewalFailing      RouteStatus = "renewal failing"
+	StatusOK                    RouteStatus = "ok"
+	StatusOutpostNotJoined      RouteStatus = "outpost not joined"
+	StatusOutpostOffline        RouteStatus = "outpost offline"
+	StatusOutpostIncompatible   RouteStatus = "outpost incompatible"
+	StatusOutpostNeverConnected RouteStatus = "outpost never connected"
+	StatusNoCertificate         RouteStatus = "no certificate"
+	StatusCertExpired           RouteStatus = "certificate expired"
+	StatusRenewalFailing        RouteStatus = "renewal failing"
 )
 
 // StatusWaiting is the status of a row that waits for the reason.
