@@ -97,7 +97,9 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request, next caddyh
 		return nil
 	}
 	caddyhttp.SetVar(ctx, varRoute, route)
-	rec.hsts = true
+	rec.hsts = !route.NoHSTS
+	rec.headers = route.Headers
+	rec.ownReply = func() bool { return caddyhttp.GetVar(ctx, varReason) != nil }
 	err = next.ServeHTTP(rec, req)
 	if a.wasCut() {
 		// The drain cut the request. Aborting the handler resets the stream

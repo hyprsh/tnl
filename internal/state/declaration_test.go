@@ -171,3 +171,19 @@ func TestSnapshotsKeepTheirDeclarations(t *testing.T) {
 		t.Fatal("an old snapshot was mutated")
 	}
 }
+
+func TestAChangedHeaderOrNoHSTSEditsTheRouteAndClosesItsConnections(t *testing.T) {
+	st := declState(t)
+	st.ApplyDeclaration("nas", []declare.Line{line("a.example.com", "http://localhost:2")}, time.Unix(100, 0))
+	next := []declare.Line{{Hostname: "a.example.com", Service: "http://localhost:2", NoHSTS: true, Headers: []string{"X-A: b"}}}
+	res := st.ApplyDeclaration("nas", next, time.Unix(200, 0))
+	if !reflect.DeepEqual(res.Changed, []string{"a.example.com"}) || !reflect.DeepEqual(res.Close, []string{"a.example.com"}) || len(res.Dial) != 0 {
+		t.Fatalf("%+v", res)
+	}
+	if r, _ := st.Route("a.example.com"); !r.NoHSTS || !reflect.DeepEqual(r.Headers, []string{"X-A: b"}) {
+		t.Fatalf("%+v", r)
+	}
+	if res = st.ApplyDeclaration("nas", next, time.Unix(300, 0)); !reflect.DeepEqual(res.Unchanged, []string{"a.example.com"}) {
+		t.Fatalf("the same line again: %+v", res)
+	}
+}

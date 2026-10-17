@@ -16,6 +16,7 @@ import (
 	"github.com/hyprsh/tnl/internal/dnsname"
 	"github.com/hyprsh/tnl/internal/edge/conntrack"
 	"github.com/hyprsh/tnl/internal/edge/liveness"
+	"github.com/hyprsh/tnl/internal/edge/routes"
 	"github.com/hyprsh/tnl/internal/logx"
 )
 
@@ -273,15 +274,21 @@ type recorder struct {
 	bytes  atomic.Int64
 	// hsts is set for a Route's reply: the Edge adds HSTS unless the Service
 	// sent its own.
-	hsts   bool
-	edited bool
+	hsts bool
+	// headers are the Route's extra headers, for the Service's replies only;
+	// ownReply says the Edge made this reply itself.
+	headers  []routes.Header
+	ownReply func() bool
+	edited   bool
 }
 
 // hstsValue is what the Edge sends: a year, no includeSubDomains, no preload.
 const hstsValue = "max-age=31536000"
 
 // edit changes the headers of the final response, once: Via goes (the Edge's
-// name is not for Visitors) and HSTS is added if the Service sent none.
+// name is not for Visitors), HSTS is added if the Service sent none, and so is
+// each of the Route's extra headers the Service did not send. The Edge's own
+// replies get HSTS but no extra headers.
 func (r *recorder) edit(code int) {
 	if r.edited || (code < 200 && code != http.StatusSwitchingProtocols) {
 		return
@@ -291,6 +298,13 @@ func (r *recorder) edit(code int) {
 	h.Del("Via")
 	if r.hsts && h.Get("Strict-Transport-Security") == "" {
 		h.Set("Strict-Transport-Security", hstsValue)
+	}
+	if len(r.headers) > 0 && (r.ownReply == nil || !r.ownReply()) {
+		for _, x := range r.headers {
+			if h.Get(x.Name) == "" {
+				h.Set(x.Name, x.Value)
+			}
+		}
 	}
 }
 

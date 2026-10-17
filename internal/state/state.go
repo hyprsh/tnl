@@ -19,7 +19,7 @@ import (
 )
 
 // Version is the schema version this tnl reads and writes.
-const Version = 2
+const Version = 3
 
 // Mode is a Zone's certificate mode.
 type Mode string
@@ -69,6 +69,9 @@ type Route struct {
 	Service            string
 	InsecureSkipVerify bool
 	HostHeader         string
+	NoHSTS             bool
+	// Headers are the extra response headers as "Name: value", canonical (CheckHeaders).
+	Headers []string
 }
 
 // Zone is a domain the Edge serves Hostnames under, with its certificate mode.
@@ -254,6 +257,9 @@ func (s *State) Validate() error {
 		if err := CheckHostHeader(r.HostHeader); err != nil {
 			return invalid(e, "%v", err)
 		}
+		if err := CheckHeaders(r.Headers); err != nil {
+			return invalid(e, "%v", err)
+		}
 	}
 	return s.validateDeclarations(names)
 }
@@ -336,6 +342,8 @@ type diskLine struct {
 	Service            string    `json:"service"`
 	InsecureSkipVerify bool      `json:"insecure_skip_verify,omitempty"`
 	HostHeader         string    `json:"host_header,omitempty"`
+	NoHSTS             bool      `json:"no_hsts,omitempty"`
+	Headers            []string  `json:"headers,omitempty"`
 	Declared           time.Time `json:"declared"`
 }
 
@@ -351,11 +359,13 @@ type diskOutpost struct {
 
 // diskRoute and diskZone are the on-disk spellings of Route and Zone.
 type diskRoute struct {
-	Hostname           string `json:"hostname"`
-	Outpost            string `json:"outpost"`
-	Service            string `json:"service"`
-	InsecureSkipVerify bool   `json:"insecure_skip_verify,omitempty"`
-	HostHeader         string `json:"host_header,omitempty"`
+	Hostname           string   `json:"hostname"`
+	Outpost            string   `json:"outpost"`
+	Service            string   `json:"service"`
+	InsecureSkipVerify bool     `json:"insecure_skip_verify,omitempty"`
+	HostHeader         string   `json:"host_header,omitempty"`
+	NoHSTS             bool     `json:"no_hsts,omitempty"`
+	Headers            []string `json:"headers,omitempty"`
 }
 
 type diskZone struct {
@@ -393,7 +403,7 @@ func encode(s *State) ([]byte, error) {
 		dd := diskDeclaration{Outpost: decl.Outpost, Routes: []diskLine{}}
 		for _, l := range decl.Lines {
 			dd.Routes = append(dd.Routes, diskLine{Hostname: l.Hostname, Service: l.Service, InsecureSkipVerify: l.InsecureSkipVerify,
-				HostHeader: l.HostHeader, Declared: l.Declared})
+				HostHeader: l.HostHeader, NoHSTS: l.NoHSTS, Headers: l.Headers, Declared: l.Declared})
 		}
 		d.Declarations = append(d.Declarations, dd)
 	}
@@ -458,7 +468,7 @@ func decode(raw []byte) (*State, error) {
 		decl := Declaration{Outpost: dd.Outpost}
 		for _, l := range dd.Routes {
 			decl.Lines = append(decl.Lines, DeclaredLine{
-				Line:     declare.Line{Hostname: l.Hostname, Service: l.Service, InsecureSkipVerify: l.InsecureSkipVerify, HostHeader: l.HostHeader},
+				Line:     declare.Line{Hostname: l.Hostname, Service: l.Service, InsecureSkipVerify: l.InsecureSkipVerify, HostHeader: l.HostHeader, NoHSTS: l.NoHSTS, Headers: l.Headers},
 				Declared: l.Declared,
 			})
 		}

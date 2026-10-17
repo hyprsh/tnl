@@ -144,10 +144,19 @@ type pool struct {
 	m  map[string]*poolEntry
 }
 
+// transportKey is what a transport depends on: the response headers are no part
+// of it.
+type transportKey struct {
+	Hostname, Outpost, Service string
+	TLS                        bool
+	ServerName                 string
+	InsecureSkipVerify         bool
+}
+
 type poolEntry struct {
-	route routes.Route
-	addr  netip.AddrPort
-	tr    *http.Transport
+	key  transportKey
+	addr netip.AddrPort
+	tr   *http.Transport
 }
 
 type ctxKey int
@@ -155,11 +164,12 @@ type ctxKey int
 const requestIDKey ctxKey = 0
 
 func (p *pool) transport(rt *Runtime, route routes.Route, addr netip.AddrPort) *http.Transport {
+	k := transportKey{route.Hostname, route.Outpost, route.Service, route.TLS, route.ServerName, route.InsecureSkipVerify}
 	key := routes.Normalize(route.Hostname)
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if e, ok := p.m[key]; ok {
-		if e.route == route && e.addr == addr {
+		if e.key == k && e.addr == addr {
 			return e.tr
 		}
 		e.tr.CloseIdleConnections()
@@ -189,7 +199,7 @@ func (p *pool) transport(rt *Runtime, route routes.Route, addr netip.AddrPort) *
 	if p.m == nil {
 		p.m = map[string]*poolEntry{}
 	}
-	p.m[key] = &poolEntry{route: route, addr: addr, tr: tr}
+	p.m[key] = &poolEntry{key: k, addr: addr, tr: tr}
 	return tr
 }
 

@@ -71,7 +71,7 @@ func ParseService(raw string) (Service, error) {
 	}, nil
 }
 
-// Options are the Route's options as name=value words, in a fixed order, with
+// Options are the Route's options as name=value words (a header word is header=Name: value, so it may hold spaces), in a fixed order, with
 // the unset ones left out.
 func (r Route) Options() []string {
 	var out []string
@@ -80,6 +80,12 @@ func (r Route) Options() []string {
 	}
 	if r.InsecureSkipVerify {
 		out = append(out, "insecure-skip-verify=true")
+	}
+	if r.NoHSTS {
+		out = append(out, "no-hsts=true")
+	}
+	for _, h := range r.Headers {
+		out = append(out, "header="+h)
 	}
 	return out
 }

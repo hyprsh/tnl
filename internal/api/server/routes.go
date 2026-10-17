@@ -39,8 +39,8 @@ func (s *Server) routeEdit(ctx context.Context, actor api.Actor, req api.RouteEd
 	if err != nil {
 		return api.RouteEditReply{}, err
 	}
-	if req.Service == nil && req.Outpost == nil && req.HostHeader == nil && req.InsecureSkipVerify == nil {
-		return api.RouteEditReply{}, api.Errorf(http.StatusBadRequest, "nothing to change: pass --service, --outpost, --host-header or --insecure-skip-verify")
+	if req.Service == nil && req.Outpost == nil && req.HostHeader == nil && req.InsecureSkipVerify == nil && req.NoHSTS == nil && req.Headers == nil {
+		return api.RouteEditReply{}, api.Errorf(http.StatusBadRequest, "nothing to change: pass --service, --outpost, --host-header, --insecure-skip-verify, --no-hsts or --header")
 	}
 	var service state.Service
 	if req.Service != nil {
@@ -50,6 +50,12 @@ func (s *Server) routeEdit(ctx context.Context, actor api.Actor, req api.RouteEd
 	}
 	if req.HostHeader != nil {
 		if err := state.CheckHostHeader(*req.HostHeader); err != nil {
+			return api.RouteEditReply{}, api.Errorf(http.StatusBadRequest, "%v", err)
+		}
+	}
+	var headers []string
+	if req.Headers != nil {
+		if headers, err = state.CanonHeaders(*req.Headers); err != nil {
 			return api.RouteEditReply{}, api.Errorf(http.StatusBadRequest, "%v", err)
 		}
 	}
@@ -84,6 +90,12 @@ func (s *Server) routeEdit(ctx context.Context, actor api.Actor, req api.RouteEd
 			if req.InsecureSkipVerify != nil {
 				after.InsecureSkipVerify = *req.InsecureSkipVerify
 			}
+			if req.NoHSTS != nil {
+				after.NoHSTS = *req.NoHSTS
+			}
+			if req.Headers != nil {
+				after.Headers = headers
+			}
 			st.Routes = append([]state.Route(nil), st.Routes...)
 			st.Routes[i] = after
 			return nil
@@ -94,7 +106,8 @@ func (s *Server) routeEdit(ctx context.Context, actor api.Actor, req api.RouteEd
 		return api.RouteEditReply{}, err
 	}
 	s.cfg.Log.Info("route edited", "actor", actor.String(), "hostname", after.Hostname, "outpost", after.Outpost, "service", after.Service,
-		"host_header", after.HostHeader, "insecure_skip_verify", after.InsecureSkipVerify)
+		"host_header", after.HostHeader, "insecure_skip_verify", after.InsecureSkipVerify,
+		"no_hsts", after.NoHSTS, "headers", after.Headers)
 	s.afterRouteChange(&before, after)
 	// After the lock. Only a changed Service is test-dialed: an option can't
 	// change whether the Service answers.
@@ -146,8 +159,12 @@ func (s *Server) routeAdd(ctx context.Context, actor api.Actor, req api.RouteAdd
 	if err := state.CheckHostHeader(req.HostHeader); err != nil {
 		return api.RouteAddReply{}, api.Errorf(http.StatusBadRequest, "%v", err)
 	}
+	headers, err := state.CanonHeaders(req.Headers)
+	if err != nil {
+		return api.RouteAddReply{}, api.Errorf(http.StatusBadRequest, "%v", err)
+	}
 	r := state.Route{Hostname: host, Outpost: req.Outpost, Service: service.Canonical,
-		HostHeader: req.HostHeader, InsecureSkipVerify: req.InsecureSkipVerify}
+		HostHeader: req.HostHeader, InsecureSkipVerify: req.InsecureSkipVerify, NoHSTS: req.NoHSTS, Headers: headers}
 	err = s.cfg.Store.Update(actor, func(st *state.State) error {
 		for _, have := range st.Routes {
 			if have.Hostname == host {

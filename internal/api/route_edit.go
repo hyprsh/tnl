@@ -13,4 +13,8 @@ type RouteEditRequest struct {
 	Outpost            *string `json:"outpost,omitempty"`
 	HostHeader         *string `json:"host_header,omitempty"`
 	InsecureSkipVerify *bool   `json:"insecure_skip_verify,omitempty"`
+	// NoHSTS false puts HSTS back on.
+	NoHSTS *bool `json:"no_hsts,omitempty"`
+	// Headers replaces the whole list of extra headers; an empty list clears it.
+	Headers *[]string `json:"headers,omitempty"`
 }

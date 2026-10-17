@@ -46,6 +46,9 @@ func checkLines(lines []declare.Line) error {
 		if err := state.CheckHostHeader(l.HostHeader); err != nil {
 			return api.Errorf(http.StatusBadRequest, "%s: %v", host, err)
 		}
+		if err := state.CheckHeaders(l.Headers); err != nil {
+			return api.Errorf(http.StatusBadRequest, "%s: %v", host, err)
+		}
 	}
 	return nil
 }

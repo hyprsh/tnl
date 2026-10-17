@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"io"
 	"sort"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 
@@ -131,7 +132,7 @@ func Routes(w io.Writer, l api.RouteList) error {
 	extra := false
 	var rows [][]string
 	for _, r := range l.Routes {
-		row := []string{r.Hostname, r.Outpost, r.Service, orDash(strings.Join(r.Options, " ")), orDash(string(r.Status))}
+		row := []string{r.Hostname, r.Outpost, r.Service, orDash(optionWords(r.Options)), orDash(string(r.Status))}
 		if len(r.Extra) > 0 {
 			extra = true
 		}
@@ -145,6 +146,19 @@ func Routes(w io.Writer, l api.RouteList) error {
 		}
 	}
 	return table(w, header, rows)
+}
+
+// optionWords joins the options with spaces. A header word has spaces in it,
+// so its value is quoted: header="Name: value".
+func optionWords(opts []string) string {
+	words := make([]string, len(opts))
+	for i, o := range opts {
+		words[i] = o
+		if name, v, ok := strings.Cut(o, "="); ok && strings.ContainsAny(v, " \t\"") {
+			words[i] = name + "=" + strconv.Quote(v)
+		}
+	}
+	return strings.Join(words, " ")
 }
 
 func unknownFields(extra map[string]json.RawMessage) string {

@@ -66,7 +66,7 @@ func parseConnectFlags(args []string, usageOut io.Writer) (connectSettings, erro
 		fs.StringVar(&allowSpec, "allow", os.Getenv("TNL_ALLOW"),
 			"the Services the Edge may name: CIDRs and host:port, comma-separated (TNL_ALLOW); default none, so any")
 		fs.Var(&routes, "route",
-			"a Route to declare: `\"<hostname> <service-url> [--host-header V] [--insecure-skip-verify]\"`, repeatable; or set TNL_ROUTE_<LABEL> (not both)")
+			"a Route to declare: `\"<hostname> <service-url> [--host-header V] [--insecure-skip-verify] [--no-hsts] [--header Name=value]...\"`, repeatable; or set TNL_ROUTE_<LABEL> (not both)")
 	}, func(fs *flag.FlagSet) (err error) {
 		if err := settings.CheckEnv(os.Environ(), connectEnvVars, settings.RoutePrefix); err != nil {
 			return err
