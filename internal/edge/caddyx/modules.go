@@ -7,7 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/http/httptrace"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/caddyserver/caddy/v2"
@@ -181,8 +183,27 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 		out.Host = route.HostHeader
 	}
 
+	// A request sent on a pooled connection does not dial, so the Tunnel wait
+	// does not bound it; watchReused does.
+	rctx, giveUp := context.WithCancelCause(out.Context())
+	answered := make(chan struct{})
+	var once sync.Once
+	markAnswered := func() { once.Do(func() { close(answered) }) }
+	defer markAnswered()
+	out = out.WithContext(httptrace.WithClientTrace(rctx, &httptrace.ClientTrace{
+		GotConn: func(i httptrace.GotConnInfo) {
+			if i.Reused {
+				go t.rt.watchReused(rctx, addr, answered, giveUp)
+			}
+		},
+		GotFirstResponseByte: markAnswered,
+	}))
+
 	resp, err := t.rt.pool.transport(t.rt, route, addr).RoundTrip(out)
 	if err != nil {
+		if errors.Is(context.Cause(rctx), errTunnelWait) {
+			err = errTunnelWait
+		}
 		if errors.Is(err, errTunnelWait) {
 			// Not Offline (that answers at once): the Tunnel didn't come back in time.
 			return t.rt.fail(req, id, http.StatusServiceUnavailable, "tunnel not up")
