@@ -110,6 +110,9 @@ func TestCompletionCompletesCommandsSubcommandsAndFlags(t *testing.T) {
 			if got := complete(t, shell, "tnl", "edge", "--"); !has(got, "--address", "--log-level", "--zone") {
 				t.Errorf("daemon flags: %v", got)
 			}
+			if got := complete(t, shell, "tnl", "logs", "-"); !has(got, "-f", "-n") || contains(got, "--f") || contains(got, "--n") {
+				t.Errorf("one-letter flags: %v", got)
+			}
 			if got := complete(t, shell, "tnl", "completion", ""); !has(got, "bash", "zsh", "fish") {
 				t.Errorf("shells: %v", got)
 			}
