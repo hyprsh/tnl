@@ -10,12 +10,15 @@ An Edge that declares its Outposts in its settings refuses `outpost add`, `rekey
 sudo tnl outpost add laptop
 ```
 
-The name is one DNS label, is unique, and never changes. The command prints two lines:
+The name is one DNS label, is unique, and never changes. The command prints three lines:
 
 ```
 <token>
 curl -fsSL https://github.com/hyprsh/tnl/releases/download/v1.4.2/install.sh | sudo sh -s -- outpost --token <token>
+curl -fsSL https://github.com/hyprsh/tnl/releases/download/v1.4.2/install.sh | sh -s -- outpost --token <token>
 ```
+
+The Edge doesn't know the Outpost's OS, so it prints both install lines. Run the first (with `sudo`) on Linux, which installs the systemd unit. Run the second (without) on macOS, where the install is per-user and `sudo` would make the binary root's. A note on stderr says which is which.
 
 - **The token works once** and expires after one hour. `--ttl 30m` or `--ttl 2h` changes that.
 - **The install line is pinned to the Edge's version.** The Outpost installs the same release as the Edge, which is the one the Edge accepts. A build with no release version (`dev`) can't pin: it prints the `releases/latest` line and a note on stderr that the line is not pinned.
@@ -23,7 +26,7 @@ curl -fsSL https://github.com/hyprsh/tnl/releases/download/v1.4.2/install.sh | s
 
 ## Join
 
-Run the install line on the Outpost host. Without root or systemd, install the binary and run `tnl connect --token <token>` yourself.
+Run the install line for the Outpost host's OS. Without root or systemd, install the binary and run `tnl connect --token <token>` yourself.
 
 ### Under systemd
 
