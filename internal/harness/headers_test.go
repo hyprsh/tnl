@@ -106,3 +106,28 @@ func TestRedirectHasNoHSTSNoServerAndHardenedHeaders(t *testing.T) {
 	}
 	assertOwn(t, "redirect", resp.Header)
 }
+
+// A connection that drops before the Service's response headers is the Edge's
+// own reply, with the hardened headers and no Server header, not Caddy's 502; an
+// event stream gets 200 and retry: (ADR 0013).
+func TestADroppedConnectionIsAnEdgeReplyNotCaddys502(t *testing.T) {
+	h := edgeWithService(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c, _, err := w.(http.Hijacker).Hijack()
+		if err == nil {
+			c.Close()
+		}
+	}))
+	for _, proto := range Protos {
+		resp, body := getAccepting(t, h.Edge.Caddy, proto, "app.test", "text/html")
+		if resp.StatusCode != 502 || !strings.Contains(body, "<style>") {
+			t.Errorf("%s: got %d %q, want the Edge's 502 page", proto, resp.StatusCode, body)
+		}
+		assertOwn(t, string(proto)+" 502", resp.Header)
+
+		resp, body = getAccepting(t, h.Edge.Caddy, proto, "app.test", "text/event-stream")
+		if resp.StatusCode != 200 || !strings.Contains(body, "retry: ") {
+			t.Errorf("%s: event stream got %d %q, want 200 and retry:", proto, resp.StatusCode, body)
+		}
+		assertOwn(t, string(proto)+" event stream", resp.Header)
+	}
+}

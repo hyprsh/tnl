@@ -213,7 +213,14 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 		if errors.As(err, &re) {
 			return t.rt.fail(req, id, http.StatusBadGateway, replyReason(re))
 		}
-		return nil, err
+		if ctx.Err() != nil {
+			// The Visitor went away or the drain cut the request: nobody to answer.
+			return nil, err
+		}
+		// The Outpost's connection dropped before the response headers, or the
+		// Service sent something that isn't HTTP: still the Edge's reply, never
+		// Caddy's own 502.
+		return t.rt.fail(req, id, http.StatusBadGateway, "connection lost")
 	}
 	if a, ok := caddyhttp.GetVar(ctx, varActive).(*active); ok {
 		a.attach(resp)
