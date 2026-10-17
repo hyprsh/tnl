@@ -41,7 +41,8 @@ type livenessHooks struct {
 // newLiveness makes the Edge's Liveness and counts its own start as hearing
 // from every Outpost the state holds that has connected before. The saved
 // endpoint is the sign of that: it is written when the Edge first hears from
-// the Outpost, before it counts it online. One without it has never connected, and is not counted online.
+// the Outpost, before it counts it online. One without it has never connected,
+// and is not counted online.
 func newLiveness(h livenessHooks, st *state.State) *liveness.Liveness {
 	l := liveness.New(liveness.Config{EdgeVersion: h.Version, OfflineAfter: h.OfflineAfter, SilentAfter: h.SilentAfter, Log: h.Log, OnOffline: h.CloseOutpost, OnSilent: h.CloseSilent})
 	for _, o := range st.Outposts {
@@ -101,13 +102,14 @@ func serveLiveness(ctx context.Context, bg *sync.WaitGroup, l *liveness.Liveness
 			}
 			// The first time an Outpost is heard from, save its endpoint before
 			// counting it online, so a crash after that still shows it connected.
-			if !hasEndpoint(store.Snapshot(), name) {
-				keep.remember(scanPeers(tun, store.Snapshot()).endpoints())
+			st := store.Snapshot()
+			if !hasEndpoint(st, name) {
+				keep.remember(scanPeers(tun, st).endpoints())
 			}
 			l.Heard(name)
 			l.SetVersion(name, ping.Version)
 			inside := l.State(name) != liveness.Incompatible
-			if pong, err := wire.AppendPong(nil, answerPing(h.Version, inside, store.Snapshot(), name, ping)); err == nil {
+			if pong, err := wire.AppendPong(nil, answerPing(h.Version, inside, st, name, ping)); err == nil {
 				conn.WriteTo(pong, from)
 			}
 		}
@@ -181,7 +183,7 @@ func scanPeers(tun *tunnel.Tunnel, st *state.State) peers {
 	}
 	var out peers
 	cur := -1
-	err := tun.Each(func(key, value string) {
+	err := tun.EachStateLine(func(key, value string) {
 		switch key {
 		case "public_key":
 			cur = -1
@@ -205,6 +207,10 @@ func scanPeers(tun *tunnel.Tunnel, st *state.State) peers {
 	return out
 }
 
+// hasEndpoint reports whether st holds an endpoint for the Outpost name. It
+// answers true for a name that isn't an Outpost in st (one removed since the
+// ping came in), because there is no endpoint to save for it and the caller
+// saves one only on a false.
 func hasEndpoint(st *state.State, name string) bool {
 	for _, o := range st.Outposts {
 		if o.Name == name {
