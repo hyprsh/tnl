@@ -344,7 +344,7 @@ var coldCacheWait = 10 * time.Second
 // certificate available" as a TLS internal error. So the first load is the TLS
 // app alone, with no listener, and the real config follows once the stored
 // certificates are in the cache, which a reload keeps.
-func (c Config) warmCache(log func() *slog.Logger) error {
+func (c Config) warmCache(rt *Runtime, log func() *slog.Logger) error {
 	names := c.storedNames()
 	if len(names) == 0 {
 		return nil
@@ -354,7 +354,10 @@ func (c Config) warmCache(log func() *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	if err := caddy.Load(b, true); err != nil {
+	rt.warming.Store(true)
+	err = caddy.Load(b, true)
+	rt.warming.Store(false)
+	if err != nil {
 		return err
 	}
 	deadline := time.Now().Add(coldCacheWait)
@@ -414,7 +417,7 @@ func Start(c Config) error {
 	certs.SetStateDir(c.StateDir)
 	c.Hostnames = certs.configure()
 	if activeTLS() == nil {
-		if err := c.warmCache(certs.log); err != nil {
+		if err := c.warmCache(rt, certs.log); err != nil {
 			return err
 		}
 	}

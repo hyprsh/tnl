@@ -37,7 +37,14 @@ func (l *LogCore) Provision(ctx caddy.Context) error {
 	if err != nil {
 		return err
 	}
-	l.Core = newSlogCore(rt.logger)
+	core := &slogCore{logger: rt.logger}
+	if rt.warming.Load() {
+		// The first load of a cold start (warmCache) is the TLS app alone and a
+		// second load follows at once, repeating every startup line. Only the
+		// cache's own line is new, because the second load keeps the cache.
+		core.only = "tls.cache.maintenance"
+	}
+	l.Core = core
 	return nil
 }
 
@@ -48,6 +55,8 @@ var _ zapcore.Core = (*LogCore)(nil)
 type slogCore struct {
 	logger func() *slog.Logger
 	fields []zapcore.Field
+	// only, if set, is the one logger name this core writes.
+	only string
 }
 
 func newSlogCore(logger func() *slog.Logger) zapcore.Core { return &slogCore{logger: logger} }
@@ -63,6 +72,9 @@ func (c *slogCore) With(fields []zapcore.Field) zapcore.Core {
 }
 
 func (c *slogCore) Check(ent zapcore.Entry, ce *zapcore.CheckedEntry) *zapcore.CheckedEntry {
+	if c.only != "" && ent.LoggerName != c.only {
+		return ce
+	}
 	if !c.logger().Enabled(context.Background(), slogLevel(ent)) {
 		return ce
 	}

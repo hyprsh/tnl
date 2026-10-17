@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/netip"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/hyprsh/tnl/internal/edge/conntrack"
@@ -59,6 +60,9 @@ type Runtime struct {
 	// InZone says whether a Hostname lies inside a Zone, which decides the level
 	// of a 404's line. Nil treats every Hostname as inside one.
 	InZone func(host string) bool
+
+	// warming is set while warmCache's TLS-only config loads.
+	warming atomic.Bool
 
 	pool pool
 	reqs requests
