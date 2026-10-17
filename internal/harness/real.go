@@ -27,6 +27,7 @@ import (
 	"github.com/hyprsh/tnl/internal/outpost"
 	"github.com/hyprsh/tnl/internal/remind"
 	"github.com/hyprsh/tnl/internal/state"
+	"github.com/hyprsh/tnl/internal/udpbuf"
 )
 
 // RealEdge is the Edge as `tnl edge` runs it, built by edge.Run on a real state
@@ -145,7 +146,7 @@ func TryStartEdgeWith(t testing.TB, opts EdgeOptions) (*RealEdge, error) {
 		Address: cmp.Or(opts.Address, "127.0.0.1"), StateDir: dir, Version: cmp.Or(opts.Version, harnessVersion), Build: "full", Revision: "test",
 		Log:      logx.New(logx.Options{Level: slog.LevelWarn, Out: testWriter{t}}),
 		Resolver: opts.Resolver, WireGuardPort: opts.WireGuardPort, CertWait: opts.CertWait,
-		DNSResolvers: []string{fakeDNSServer(t)},
+		DNSResolvers: []string{fakeDNSServer(t)}, UDPBuffers: grantedInFull,
 	}
 	if cfg.Resolver == nil {
 		cfg.Resolver = atEdge{}
@@ -380,7 +381,7 @@ func (e *RealEdge) TryConnectWith(t testing.TB, name, tok, stateDir string, opts
 			Started:      func(r *outpost.Running) { up <- r },
 			PingInterval: e.pingInterval,
 			Resolve:      opts.Resolve, NoAnswerAfter: opts.NoAnswerAfter, Reminders: opts.Reminders,
-			Declaration: opts.Declaration, Credential: opts.Credential,
+			Declaration: opts.Declaration, Credential: opts.Credential, UDPBuffers: grantedInFull,
 		})
 	}()
 	stop := func() error { cancel(); return <-done }
@@ -461,3 +462,8 @@ func (w testWriter) Write(p []byte) (int, error) {
 	w.t.Log(strings.TrimRight(string(p), "\n"))
 	return len(p), nil
 }
+
+// grantedInFull answers the UDP buffer measurement as fully granted, so the
+// host's own limits (low on a CI runner) put no warn line into tests that count
+// warnings. internal/edge and internal/outpost test the warn itself.
+func grantedInFull() (recv, send int, err error) { return udpbuf.Request, udpbuf.Request, nil }
