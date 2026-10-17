@@ -40,3 +40,21 @@ func TestLogsFiltersAndPrintsJSON(t *testing.T) {
 		t.Errorf("a bad level: %d %v", code, err)
 	}
 }
+
+// A usage error names the flag as it was typed, not the API's field.
+func TestLogsUsageErrorsNameTheFlagsAsTyped(t *testing.T) {
+	runningEdge(t)
+	for _, tc := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"-n", "-1"}, `-n -1: can't be negative`},
+		{[]string{"--since", "-1s"}, `--since -1s: can't be negative`},
+		{[]string{"--level", "loud"}, `--level "loud": want error, warn, info or debug`},
+	} {
+		_, code, err := tnl(append([]string{"logs"}, tc.args...)...)
+		if err == nil || !strings.Contains(err.Error(), tc.want) || code == 0 || code == 2 {
+			t.Errorf("tnl logs %v: %d %v, want %q", tc.args, code, err, tc.want)
+		}
+	}
+}

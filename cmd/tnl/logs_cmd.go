@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"fmt"
 	"io"
 	"os"
 	"os/signal"
@@ -12,6 +13,18 @@ import (
 )
 
 func init() { commands["logs"] = logsCmd }
+
+// logsFlagError words what q.Validate refused with the flags as typed. Validate
+// stays the one check; this only says which flag it was.
+func logsFlagError(q api.LogsQuery) string {
+	switch {
+	case q.N < 0:
+		return fmt.Sprintf("-n %d: can't be negative", q.N)
+	case q.Since < 0:
+		return fmt.Sprintf("--since %s: can't be negative", q.Since)
+	}
+	return fmt.Sprintf("--level %q: want error, warn, info or debug", q.Level)
+}
 
 // logsCmd prints the recent log lines the running Edge or Outpost holds in its
 // ring, in the format it logs in, or follows new ones. It exits 2 when no
@@ -23,7 +36,7 @@ func logsCmd(args []string) error {
 	since := c.fs.Duration("since", 0, "print only lines newer than this")
 	level := c.fs.String("level", "", "print only lines at this level or above")
 	asJSON := c.fs.Bool("json", false, "print JSON lines whatever the process logs")
-	pos, err := c.parseFindingAProcess(args)
+	pos, err := c.parseExitingNotFound(args)
 	if err != nil {
 		return err
 	}
@@ -32,7 +45,7 @@ func logsCmd(args []string) error {
 	}
 	q := api.LogsQuery{Follow: *follow, N: *n, Since: *since, Level: *level, JSON: *asJSON}
 	if err := q.Validate(); err != nil {
-		return usageErr("logs", "%s", err)
+		return usageErr("logs", "%s", logsFlagError(q))
 	}
 	if err := c.requireRunning(); err != nil {
 		return err
