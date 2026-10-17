@@ -19,6 +19,7 @@ const testSilentAfter = 1500 * time.Millisecond
 
 // silentService serves what the silence bound must not cut:
 //
+//	/upload       reads one byte, signals started, reads the rest and answers
 //	/upload-late  reads the whole body, then answers after a pause
 //	/upload-stall reads one byte, stops reading for a pause, then reads the rest
 //	/download     writes a large body
@@ -82,8 +83,16 @@ func newSilentService(t *testing.T, pause time.Duration) *silentService {
 
 func silentEdge(t *testing.T, svc *silentService) (*RealEdge, *JoinedOutpost, *lockedBuf) {
 	t.Helper()
+	return silentEdgeWith(t, svc, EdgeOptions{SilentAfter: testSilentAfter})
+}
+
+// silentEdgeWith is silentEdge with the options the test needs, over the
+// Pebble, the log and the level it always sets.
+func silentEdgeWith(t *testing.T, svc *silentService, opts EdgeOptions) (*RealEdge, *JoinedOutpost, *lockedBuf) {
+	t.Helper()
 	logs := new(lockedBuf)
-	re := StartEdgeWith(t, EdgeOptions{Pebble: StartPebble(t, PebbleOptions{}), SilentAfter: testSilentAfter, LogOut: logs, LogLevel: slog.LevelInfo})
+	opts.Pebble, opts.LogOut, opts.LogLevel = StartPebble(t, PebbleOptions{}), logs, slog.LevelInfo
+	re := StartEdgeWith(t, opts)
 	re.AddZone(t, "test")
 	o := re.JoinOutpost(t, "nas")
 	re.AddRoute(t, "app.test", "http://"+svc.Addr(), "nas")
@@ -91,9 +100,9 @@ func silentEdge(t *testing.T, svc *silentService) (*RealEdge, *JoinedOutpost, *l
 	return re, o, logs
 }
 
-// patterned is an upload body of n bytes that is read as fast as the transport
+// zeros is an upload body of n bytes that is read as fast as the transport
 // takes it.
-func patterned(n int) io.Reader {
+func zeros(n int) io.Reader {
 	return io.LimitReader(zeroReader{}, int64(n))
 }
 
@@ -206,7 +215,7 @@ func TestASlowServiceThatAnswersAfterTheBoundIsNotCut(t *testing.T) {
 func TestAServiceThatStopsReadingAnUploadLongerThanTheBoundIsNotCut(t *testing.T) {
 	svc := newSilentService(t, 3*testSilentAfter)
 	re, _, _ := silentEdge(t, svc)
-	req, _ := http.NewRequestWithContext(ctx(t), "POST", "https://app.test/upload-stall", patterned(bigBody))
+	req, _ := http.NewRequestWithContext(ctx(t), "POST", "https://app.test/upload-stall", zeros(bigBody))
 	req.ContentLength = bigBody
 	start := time.Now()
 	resp, err := re.Caddy.Client(t, H1).Do(req)

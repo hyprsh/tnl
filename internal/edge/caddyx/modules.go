@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/http/httptrace"
 	"strings"
 	"time"
 
@@ -186,6 +187,13 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	// does not bound it; the watch does.
 	rctx, answered := t.rt.watchPooled(out.Context(), addr)
 	defer answered()
+	if a, ok := caddyhttp.GetVar(ctx, varActive).(*active); ok {
+		// Note the connection the Transport picks, to tell a request the silence
+		// close cut from one it did not.
+		rctx = httptrace.WithClientTrace(rctx, &httptrace.ClientTrace{
+			GotConn: func(i httptrace.GotConnInfo) { a.setConn(i.Conn) },
+		})
+	}
 	out = out.WithContext(rctx)
 
 	resp, err := t.rt.pool.transport(t.rt, route, addr).RoundTrip(out)

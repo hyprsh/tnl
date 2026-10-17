@@ -86,3 +86,38 @@ func TestNilTrackerTracksNothing(t *testing.T) {
 	tr.CloseOutpost("laptop")
 	tr.CloseAll()
 }
+
+func TestSilenceClosesAnOutpostsConnectionsAndMarksThem(t *testing.T) {
+	tr := New()
+	a, aClosed := open(t, tr, "a.example.com", "laptop")
+	b, _ := open(t, tr, "b.example.com", "server")
+	if n := tr.Silence("laptop"); n != 1 {
+		t.Fatalf("Silence closed %d connections, want 1", n)
+	}
+	if !aClosed() {
+		t.Fatal("the Outpost's connection stayed open")
+	}
+	if !Silenced(a) {
+		t.Fatal("the closed connection is not marked as closed for silence")
+	}
+	if Silenced(b) {
+		t.Fatal("another Outpost's connection is marked")
+	}
+}
+
+func TestSilenceOfAnOutpostWithNoConnectionsClosesNothing(t *testing.T) {
+	tr := New()
+	open(t, tr, "b.example.com", "server")
+	if n := tr.Silence("laptop"); n != 0 {
+		t.Fatalf("Silence closed %d connections, want 0", n)
+	}
+}
+
+func TestAConnectionClosedForAnotherReasonIsNotMarkedSilenced(t *testing.T) {
+	tr := New()
+	a, _ := open(t, tr, "a.example.com", "laptop")
+	tr.CloseOutpost("laptop")
+	if Silenced(a) {
+		t.Fatal("marked as closed for silence")
+	}
+}

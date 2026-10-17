@@ -20,7 +20,7 @@ A WebSocket or event stream that is open when an Outpost goes offline, or when t
 
 If an Outpost stops or restarts and its closing packets are lost, the Edge still ends the streams through it within 15 s, because it probes idle Tunnel connections after 5 s and drops one after 3 unanswered probes 3 s apart. A restarted Outpost resets them at the first probe. An Outpost is only marked offline after 60 s, so a stream can end before the Outpost shows as offline.
 
-An upload with data the Outpost never acknowledged, because its link is gone, isn't covered by keepalive. When nothing has arrived from an Outpost for 20 s, the Edge closes all its Tunnel connections, uploads included, though the Outpost is not offline yet. A live Outpost is never that quiet, so a Visitor pausing a download, or a Service that is slow to read an upload or to answer, is not cut.
+An upload with data the Outpost never acknowledged, because its link is gone, isn't covered by keepalive. When nothing has arrived from an Outpost for 20 s, the Edge closes all its Tunnel connections, uploads included, though the Outpost is not Offline yet. A live Outpost is never that quiet, so a Visitor pausing a download, or a Service that is slow to read an upload or to answer, is not cut.
 
 ## Reading the logs
 

@@ -169,7 +169,8 @@ func Run(ctx context.Context, cfg Config) error {
 	wild := &wildcards{resolvers: cfg.DNSResolvers, certs: certs}
 	hooks := livenessHooks{
 		Version: cfg.Version, OfflineAfter: cfg.OfflineAfter, Poll: cfg.LivenessPoll, Log: cfg.Log,
-		SilentAfter: cfg.SilentAfter, CloseOutpost: conns.CloseOutpost, CloseSilent: conns.CloseOutpost,
+		SilentAfter: cfg.SilentAfter, CloseOutpost: conns.CloseOutpost,
+		SilenceOutpost: func(name string) bool { return conns.Silence(name) > 0 },
 	}
 	live := newLiveness(hooks, store.Snapshot())
 	testDial := new(lateTestDialer)

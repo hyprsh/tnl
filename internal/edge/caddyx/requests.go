@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -13,6 +14,7 @@ import (
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
 
 	"github.com/hyprsh/tnl/internal/dnsname"
+	"github.com/hyprsh/tnl/internal/edge/conntrack"
 	"github.com/hyprsh/tnl/internal/edge/liveness"
 	"github.com/hyprsh/tnl/internal/logx"
 )
@@ -49,6 +51,7 @@ type active struct {
 	closer io.Closer
 	stream bool
 	cut    bool
+	conn   net.Conn // what the Transport sent it on; nil before that
 	rt     *Runtime
 }
 
@@ -72,6 +75,33 @@ func (a *active) isStream() bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.stream
+}
+
+// setConn records the connection the Transport sent the request on. A retry on
+// another connection replaces it.
+func (a *active) setConn(c net.Conn) {
+	a.mu.Lock()
+	a.conn = c
+	a.mu.Unlock()
+}
+
+// wasSilenced reports whether the Edge closed the request's connection for the
+// Outpost's silence. A request that never had a connection was not.
+func (a *active) wasSilenced() bool {
+	a.mu.Lock()
+	c := a.conn
+	a.mu.Unlock()
+	for c != nil {
+		if conntrack.Silenced(c) {
+			return true
+		}
+		u, ok := c.(interface{ NetConn() net.Conn }) // a tls.Conn over the tracked one
+		if !ok {
+			return false
+		}
+		c = u.NetConn()
+	}
+	return false
 }
 
 func (a *active) wasCut() bool {
@@ -342,16 +372,18 @@ func (rt *Runtime) writeRequestLine(l requestLog) {
 	}
 	level := slog.LevelInfo
 	access := false // an access-log line, which stays out of `tnl logs`
+	// The Outpost's connection dropped under a request that was running, after
+	// the response headers (before them, the Transport set a reason), and the
+	// drain did not cut it.
+	dropped := l.failed != nil && !l.a.wasCut()
 	switch {
 	case reason != "":
 		if reason == "no route" && !l.inZone {
 			level = slog.LevelDebug
 		}
-	case l.failed != nil && !l.a.wasCut() && rt.outpostOffline(l.outpost):
-		// The Outpost's connection dropped under a request that was running,
-		// after the response headers: before them, the Transport set a reason.
+	case dropped && rt.outpostOffline(l.outpost):
 		reason = reasonOutpostOffline
-	case l.failed != nil && !l.a.wasCut() && rt.outpostSilencedSince(l.outpost, l.started):
+	case dropped && l.a.wasSilenced():
 		reason = reasonOutpostSilent
 	case rt.AccessLog:
 		access = true
@@ -390,13 +422,6 @@ func (rt *Runtime) writeRequestLine(l requestLog) {
 		ctx = logx.AccessContext(ctx)
 	}
 	log.Log(ctx, level, "request", attrs...)
-}
-
-// outpostSilencedSince reports whether the Edge closed the Outpost's
-// connections for silence after since.
-func (rt *Runtime) outpostSilencedSince(name string, since time.Time) bool {
-	l, ok := rt.Liveness.(interface{ SilencedAt(string) time.Time })
-	return ok && name != "" && l.SilencedAt(name).After(since)
 }
 
 func (rt *Runtime) outpostOffline(name string) bool {

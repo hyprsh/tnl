@@ -28,6 +28,10 @@ _Avoid_: Using "Declaration" for these, which is only an Outpost's Routes
 An Outpost the Edge has stopped hearing from, so its Routes can't be served until it's heard from again.
 _Avoid_: Down, disconnected, dead
 
+**Silence close**:
+The Edge closing all of an Outpost's Tunnel connections because nothing has arrived from it for 20 s, well before it would be Offline. It is an event, not a state: the Outpost is not Offline, stays online, and is served again as soon as it is heard from.
+_Avoid_: Calling the Outpost silent or quiet as a state, Timeout
+
 **Never connected**:
 A joined or declared Outpost the Edge has no record of ever connecting, and has not heard from since the Edge started. It isn't counted online, and after the usual window from the Edge's start it becomes Offline.
 _Avoid_: Pending, new, unreachable

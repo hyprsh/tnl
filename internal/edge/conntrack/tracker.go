@@ -9,6 +9,7 @@ package conntrack
 import (
 	"net"
 	"sync"
+	"sync/atomic"
 
 	"github.com/hyprsh/tnl/internal/edge/routes"
 )
@@ -28,6 +29,7 @@ type conn struct {
 	t        *Tracker
 	hostname string // normalised
 	outpost  string
+	silenced atomic.Bool // closed because nothing arrived from its Outpost
 	once     sync.Once
 }
 
@@ -66,6 +68,26 @@ func (t *Tracker) CloseOutpost(name string) {
 	t.closeWhere(func(c *conn) bool { return c.outpost == name })
 }
 
+// Silence closes every connection through the named Outpost because nothing has
+// arrived from it, marking each first so that the request on it can tell why it
+// was cut. It returns how many it closed.
+func (t *Tracker) Silence(name string) int {
+	return t.closeWhere(func(c *conn) bool {
+		if c.outpost != name {
+			return false
+		}
+		c.silenced.Store(true)
+		return true
+	})
+}
+
+// Silenced reports whether c is a connection of this package that Silence
+// closed.
+func Silenced(c net.Conn) bool {
+	tc, ok := c.(*conn)
+	return ok && tc.silenced.Load()
+}
+
 // CloseAll closes every connection: the drain on SIGTERM.
 func (t *Tracker) CloseAll() { t.closeWhere(func(*conn) bool { return true }) }
 
@@ -79,9 +101,9 @@ func (t *Tracker) Count() int {
 	return len(t.conns)
 }
 
-func (t *Tracker) closeWhere(match func(*conn) bool) {
+func (t *Tracker) closeWhere(match func(*conn) bool) int {
 	if t == nil {
-		return
+		return 0
 	}
 	var doomed []*conn
 	t.mu.Lock()
@@ -94,4 +116,5 @@ func (t *Tracker) closeWhere(match func(*conn) bool) {
 	for _, c := range doomed {
 		c.Close()
 	}
+	return len(doomed)
 }
