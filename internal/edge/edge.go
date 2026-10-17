@@ -48,8 +48,10 @@ type Config struct {
 	// Revision is the VCS revision, logged and reported beside the build.
 	Revision string
 	// OfflineAfter is the silence after which an Outpost is Offline (60 s), and
-	// LivenessPoll how often the Edge checks (1 s). The harness shrinks them.
-	OfflineAfter, LivenessPoll time.Duration
+	// LivenessPoll how often the Edge checks (1 s). SilentAfter is the silence
+	// after which the Edge closes an Outpost's Tunnel connections without
+	// calling it Offline (20 s). The harness shrinks them.
+	OfflineAfter, SilentAfter, LivenessPoll time.Duration
 	// LogLevel is the level the logger runs at, for `status` to report.
 	LogLevel string
 	// CertWait bounds the certificate wait at `route add`; zero is 60 s.
@@ -164,7 +166,7 @@ func Run(ctx context.Context, cfg Config) error {
 	wild := &wildcards{resolvers: cfg.DNSResolvers, certs: certs}
 	hooks := livenessHooks{
 		Version: cfg.Version, OfflineAfter: cfg.OfflineAfter, Poll: cfg.LivenessPoll, Log: cfg.Log,
-		CloseOutpost: conns.CloseOutpost,
+		SilentAfter: cfg.SilentAfter, CloseOutpost: conns.CloseOutpost, CloseSilent: conns.CloseOutpost,
 	}
 	live := newLiveness(hooks, store.Snapshot())
 	testDial := new(lateTestDialer)

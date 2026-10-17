@@ -18,6 +18,10 @@ import (
 // DefaultOfflineAfter is the silence after which an Outpost is Offline.
 const DefaultOfflineAfter = 60 * time.Second
 
+// DefaultSilentAfter is the silence after which the Edge closes an Outpost's
+// Tunnel connections: two missed 10 s pings. The Outpost is not Offline yet.
+const DefaultSilentAfter = 20 * time.Second
+
 // State is what the Edge thinks of an Outpost.
 type State int
 
@@ -52,6 +56,9 @@ func (s State) String() string {
 // Config tunes a Liveness. The zero value of each field is its default.
 type Config struct {
 	OfflineAfter time.Duration // 60 s
+	// SilentAfter is the silence after which OnSilent runs: 20 s. At or past
+	// OfflineAfter it never does.
+	SilentAfter time.Duration
 	// EdgeVersion is the Edge's own version, which the window is judged from.
 	// Empty judges nothing.
 	EdgeVersion string
@@ -59,6 +66,9 @@ type Config struct {
 	Log         *slog.Logger     // transitions; nil logs nothing
 	// OnOffline runs, with no lock held, once each time an Outpost goes Offline.
 	OnOffline func(name string)
+	// OnSilent runs, with no lock held, once per silence of SilentAfter, while
+	// the Outpost is not Offline. The Outpost's state does not change.
+	OnSilent func(name string)
 }
 
 // Info is a read of one Outpost.
@@ -90,6 +100,9 @@ type entry struct {
 	version  string
 	warned   string // the version the Incompatible warning was logged for
 	offline  bool   // the Offline transition has been taken
+	silenced bool   // OnSilent has run for the current silence
+	// silencedAt is when OnSilent last ran, kept after the Outpost is heard.
+	silencedAt time.Time
 }
 
 // outside reports whether the version the Outpost reported is outside the
@@ -102,6 +115,9 @@ func (l *Liveness) outside(version string) bool {
 func New(cfg Config) *Liveness {
 	if cfg.OfflineAfter == 0 {
 		cfg.OfflineAfter = DefaultOfflineAfter
+	}
+	if cfg.SilentAfter == 0 {
+		cfg.SilentAfter = DefaultSilentAfter
 	}
 	if cfg.Now == nil {
 		cfg.Now = time.Now
@@ -151,6 +167,7 @@ func (l *Liveness) Heard(name string) {
 	was := e.lastSeen
 	back := e.offline
 	e.offline = false
+	e.silenced = false
 	e.lastSeen, e.heard = now, true
 	l.mu.Unlock()
 	if wentOffline {
@@ -211,16 +228,39 @@ func (l *Liveness) Check() {
 		last time.Time
 	}
 	var out []gone
+	var quiet []string
 	l.mu.Lock()
 	for name, e := range l.m {
-		if l.expire(e, now) {
+		switch {
+		case l.expire(e, now):
 			out = append(out, gone{name, e.lastSeen})
+		case !e.offline && !e.silenced && now.Sub(e.lastSeen) >= l.cfg.SilentAfter:
+			e.silenced, e.silencedAt = true, now
+			quiet = append(quiet, name)
 		}
 	}
 	l.mu.Unlock()
 	for _, g := range out {
 		l.fireOffline(g.name, g.last)
 	}
+	for _, name := range quiet {
+		l.cfg.Log.Info("outpost silent, closing its connections", "outpost", name, "silent_for", l.cfg.SilentAfter)
+		if l.cfg.OnSilent != nil {
+			l.cfg.OnSilent(name)
+		}
+	}
+}
+
+// SilencedAt is when the Outpost's connections were last closed for silence;
+// zero if never. It outlasts the silence, so a request that was cut can still
+// be told from one that was not.
+func (l *Liveness) SilencedAt(name string) time.Time {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if e := l.m[name]; e != nil {
+		return e.silencedAt
+	}
+	return time.Time{}
 }
 
 // expire marks e Offline if it is due and reports whether it did. The caller

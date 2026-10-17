@@ -21,7 +21,9 @@ import (
 
 // TCP keepalive on every Tunnel connection, dialled or accepted, on both sides:
 // a connection idle for KeepaliveIdle is probed every KeepaliveInterval and
-// dropped after KeepaliveProbes unanswered probes. There is no TCP user timeout.
+// dropped after KeepaliveProbes unanswered probes. There is no TCP user timeout: gVisor's
+// also cuts a connection whose zero-window probes are acknowledged, so the Edge
+// closes an Outpost's connections on 20 s of silence from it instead.
 // They are variables so that a test can shrink them.
 var (
 	KeepaliveIdle     = 5 * time.Second

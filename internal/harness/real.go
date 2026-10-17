@@ -81,6 +81,9 @@ type EdgeOptions struct {
 	// Outposts that Connect to it. Zero keeps the spec's values, except that
 	// the Edge checks every 20 ms and Outposts ping every 100 ms by default.
 	OfflineAfter, LivenessPoll, PingInterval time.Duration
+	// SilentAfter shrinks the 20 s of Outpost silence after which the Edge
+	// closes its Tunnel connections.
+	SilentAfter time.Duration
 	// CertWait shortens the certificate wait at `route add`; zero keeps 60 s.
 	CertWait time.Duration
 	// Address is the Edge's --address, a name or an IP the Outposts resolve; empty
@@ -150,6 +153,7 @@ func TryStartEdgeWith(t testing.TB, opts EdgeOptions) (*RealEdge, error) {
 	}
 	cfg.LivenessPoll = cmp.Or(opts.LivenessPoll, 20*time.Millisecond)
 	cfg.OfflineAfter = opts.OfflineAfter // zero is the spec's 60 s
+	cfg.SilentAfter = opts.SilentAfter
 	cfg.Reminders = opts.Reminders
 	cfg.Key, cfg.KeySource, cfg.Zones, cfg.Outposts = opts.Key, cmp.Or(opts.KeySource, "TNL_KEY"), opts.Zones, opts.Outposts
 	if opts.LogOut != nil {
