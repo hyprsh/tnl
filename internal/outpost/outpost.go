@@ -31,6 +31,7 @@ import (
 	"github.com/hyprsh/tnl/internal/remind"
 	"github.com/hyprsh/tnl/internal/token"
 	"github.com/hyprsh/tnl/internal/tunnel"
+	"github.com/hyprsh/tnl/internal/udpbuf"
 	"github.com/hyprsh/tnl/internal/version"
 	"github.com/hyprsh/tnl/internal/wire"
 )
@@ -174,6 +175,7 @@ func connect(ctx context.Context, cfg Config, st *State, joining bool) error {
 	if err != nil {
 		return fmt.Errorf("resolve the Edge's address %s: %w", st.EdgeAddress, err)
 	}
+	udpbuf.Warn(cfg.Log)
 	tun, err := tunnel.New(tunnel.Config{Address: st.Address, PrivateKey: st.PrivateKey, Logger: logx.WireGuardLogger(cfg.Log)})
 	if err != nil {
 		return err
