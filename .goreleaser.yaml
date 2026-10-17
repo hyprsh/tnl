@@ -1,5 +1,6 @@
-# Release pipeline (spec section 9). The tag workflow runs this; a snapshot
-# (`goreleaser release --snapshot --clean`) builds everything but publishes nothing.
+# Release pipeline (spec section 9). The release workflow runs this on the tag
+# release-please creates; a snapshot (`goreleaser release --snapshot --clean`)
+# builds everything but publishes nothing.
 version: 2
 
 project_name: tnl
@@ -56,5 +57,10 @@ changelog:
   disable: true
 
 release:
+  # release-please has already created the release with its notes; put the
+  # compatibility line (internal/version's, as `tnl version` prints it) above them.
+  mode: prepend
+  header: |
+    {{ if eq .Major 0 }}works with Edges and Outposts 0.{{ .Minor }}.x{{ else }}works with Edges and Outposts {{ .Major }}.x{{ end }}
   extra_files:
     - glob: build/install.sh

@@ -15,3 +15,7 @@ Default vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-
 ### Domain docs
 
 Single-context: one `GLOSSARY.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+
+## Commits
+
+Commit messages are Conventional Commits. release-please builds `CHANGELOG.md`, the next version and the release notes from them, so the type decides whether a commit is listed (`feat`, `fix`, `perf`, `revert`) and how the version moves.
