@@ -54,9 +54,7 @@ func (r *relay) handler() http.Handler {
 		},
 		ErrorHandler: func(w http.ResponseWriter, req *http.Request, err error) {
 			r.log.Warn("the relay could not reach the Edge", "method", req.Method, "path", req.URL.Path, "error", err.Error())
-			r.reply(w, http.StatusServiceUnavailable, struct {
-				Error string `json:"error"`
-			}{notConnected})
+			r.reply(w, http.StatusServiceUnavailable, api.ErrorBody{Error: notConnected})
 		},
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
@@ -73,9 +71,7 @@ func (r *relay) handler() http.Handler {
 				if errors.As(err, &ae) {
 					status, msg = ae.Status, ae.Message
 				}
-				r.reply(w, status, struct {
-					Error string `json:"error"`
-				}{msg})
+				r.reply(w, status, api.ErrorBody{Error: msg})
 			}
 			return
 		}
