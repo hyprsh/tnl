@@ -301,7 +301,9 @@ func (r *recorder) edit(code int) {
 	}
 	if len(r.headers) > 0 && (r.ownReply == nil || !r.ownReply()) {
 		for _, x := range r.headers {
-			if h.Get(x.Name) == "" {
+			// The key's presence counts, not its value: a Service that sent the
+			// header empty has spoken.
+			if _, sent := h[http.CanonicalHeaderKey(x.Name)]; !sent {
 				h.Set(x.Name, x.Value)
 			}
 		}
