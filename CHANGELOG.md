@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.1.2](https://github.com/hyprsh/tnl/compare/v0.1.1...v0.1.2) (2026-10-17)
+
+
+### Features
+
+* **liveness:** close an Outpost's Tunnel connections after 20 s of silence from it, so an upload to a gone Outpost ends without a TCP user timeout that would cut zero-window pauses, and log it as outpost silent ([a4283e8](https://github.com/hyprsh/tnl/commit/a4283e80eec42faa6459a6fcb1ed902e6fd0df81))
+* **logs:** log one warn line at start naming net.core.rmem_max and wmem_max when the UDP buffer limits are low, on the Edge and on an Outpost, and switch off quic-go's own line ([d744c05](https://github.com/hyprsh/tnl/commit/d744c054bd94efe0ce01d662d22efc974ac9e3a6))
+* **outpost:** let a stopping Outpost's closes leave through WireGuard, up to 1 s, before it tears the Tunnel down ([574d14d](https://github.com/hyprsh/tnl/commit/574d14d4be00079b63dce287e9c6f4387ded5a93))
+
+
+### Bug Fixes
+
+* **edge:** route Caddy's redirected default logger line through tnl's log core by buffering Caddy's default logger before the first load, and drop it from the known stderr exceptions ([8a8fd48](https://github.com/hyprsh/tnl/commit/8a8fd483d34623eca5d129f9b6212affc798063a))
+* **liveness:** ask for a silence close once per silence and skip an Outpost heard since the list was built, let conntrack unwrap its own connections, and name the code and docs after the silence close ([5366e6e](https://github.com/hyprsh/tnl/commit/5366e6ee979f21178f3dd6ec97ea049a313f6f27))
+* **liveness:** save an Outpost's endpoint as soon as the Edge first hears from it, before counting it online, so a crash inside the poll window no longer shows it as never connected ([2c377c3](https://github.com/hyprsh/tnl/commit/2c377c36c4e9a6f2ddb088802faffa2a816f9048))
+* **liveness:** save Outpost endpoints once more as the Edge stops, so an Outpost that handshook just before a restart is not shown as never connected ([f0c7719](https://github.com/hyprsh/tnl/commit/f0c771960bb2f087e669746e24e47c22e4d1af89))
+* **liveness:** stamp the silence close on the connection it closes, so only a request it cut is logged outpost silent, and close and log only when the Outpost has Tunnel connections open; test pauses at the spec's proportions and word the spec on what keeps a pause heard ([5ef6753](https://github.com/hyprsh/tnl/commit/5ef6753b8d19c1771f51bf0344ac1e25bbf30c75))
+* **udpbuf:** measure the UDP buffer a socket is granted instead of reading net.core, so a container on a bridge network is warned too; keep the message fixed with the sizes and guide as fields; share one fake and report SilenceQuicGo's error ([c6f4957](https://github.com/hyprsh/tnl/commit/c6f4957a9c68d24d6c93c06d546afb2dfac43242))
+* **udpbuf:** report the UDP buffer a socket was granted by halving Linux's read-back, name the 7 MiB request apart from the sysctl value, and pass the measurement in on the Edge and Outpost configs instead of a package variable ([08f182c](https://github.com/hyprsh/tnl/commit/08f182c823b4a39a0ab7c919b4ec388b63fe0316))
+
 ## [0.1.1](https://github.com/hyprsh/tnl/compare/v0.1.0...v0.1.1) (2026-10-17)
 
 
