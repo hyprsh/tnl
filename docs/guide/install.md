@@ -9,7 +9,7 @@ Pick one of:
 
 ## Ports and firewall
 
-`install.sh` does not touch your firewall. Open these on the Edge host's firewall and your cloud provider's security group:
+`install.sh` does not touch your firewall (it does raise two sysctl limits, see [UDP buffers](#udp-buffers)). Open these on the Edge host's firewall and your cloud provider's security group:
 
 | Port | Protocol | For |
 |---|---|---|
@@ -57,10 +57,26 @@ macOS has Outpost builds only. The Edge runs on Linux.
 3. Swaps the binary into `/usr/local/bin/tnl` atomically.
 4. Installs the role's unit to `/etc/systemd/system/tnl-edge.service` or `tnl-outpost.service`, overwriting an older copy.
 5. Writes `/etc/tnl/edge.env` (`TNL_ADDRESS`) or `/etc/tnl/outpost.env` (`TNL_TOKEN`), mode 0600, but never overwrites an existing one.
-6. Runs `systemctl daemon-reload` and `systemctl enable --now` on the unit, and restarts whichever tnl units were already running.
-7. If the unit is not running a second later, prints its last 20 log lines and exits with an error.
+6. Writes `/etc/sysctl.d/60-tnl.conf` and applies it with `sysctl -p`, as [UDP buffers](#udp-buffers) explains. It keeps an existing file, and on an Outpost writes it only if the limits are below 7500000. It prints a line saying what it set. If it cannot apply the file, it warns and goes on.
+7. Runs `systemctl daemon-reload` and `systemctl enable --now` on the unit, and restarts whichever tnl units were already running.
+8. If the unit is not running a second later, prints its last 20 log lines and exits with an error.
 
 The script never replaces a full build with the Outpost build, so a host that runs both roles keeps the full one (an Outpost install there uses the full archive).
+
+### UDP buffers
+
+The Edge's HTTP/3 listener (quic-go) and the WireGuard socket (wireguard-go, on the Edge and on Outposts) ask Linux for 7 MiB socket buffers. Linux caps a request at `net.core.rmem_max` and `net.core.wmem_max`, which default to about 208 KiB. With a buffer that small, packets are dropped under load and HTTP/3 slows down. Without the fix the Edge logs `failed to sufficiently increase receive buffer size` at start.
+
+`install.sh` writes this to `/etc/sysctl.d/60-tnl.conf` and applies it:
+
+```
+net.core.rmem_max = 7500000
+net.core.wmem_max = 7500000
+```
+
+If you do not use `install.sh`, put those two lines in a file under `/etc/sysctl.d/` yourself and run `sudo sysctl -p <file>`, then restart tnl, since a socket takes its buffer size when it opens. This also applies to an Edge or Outpost in Docker: the limits are the host's, a container cannot set `net.core.*` itself, so set them on the Docker host and then recreate the container.
+
+macOS needs nothing.
 
 ### Upgrading
 
@@ -107,6 +123,7 @@ Things to know:
 - **Commands:** `docker exec tnl tnl …` in a container, where `sudo tnl …` is on a host. The image's `TNL_STATE_DIR` carries over into the exec.
 - **Volumes:** a named volume inherits ownership by uid 65532 from the image. A bind mount needs `chown 65532` on the directory first.
 - **Secret files** are bind-mounted as they are on the host, so each must be readable by uid 65532.
+- **UDP buffers:** set `net.core.rmem_max` and `net.core.wmem_max` to at least 7500000 on the Docker host, as [UDP buffers](#udp-buffers) says.
 - **Ports:** the Edge publishes its ports rather than using host networking. On a bridge network Docker lets a non-root process bind ports below 1024. Without Docker's IPv6 enabled, IPv6 Visitors arrive through the userland proxy and lose their address.
 - **Stopping:** `stop_grace_period: 20s` gives the Edge time to drain.
 - **The Outpost reaches Services by container name** on a shared network, such as `http://immich:2283`. Inside the Outpost's container, `localhost` is the container, not the host.
@@ -123,6 +140,7 @@ sudo rm /etc/systemd/system/tnl-edge.service /etc/systemd/system/tnl-outpost.ser
 sudo systemctl daemon-reload
 sudo rm /usr/local/bin/tnl
 sudo rm -r /etc/tnl
+sudo rm /etc/sysctl.d/60-tnl.conf   # the buffer limits; they stay in effect until a reboot or sysctl --system
 sudo rm -r /var/lib/tnl /var/lib/tnl-outpost   # the Edge's key, Routes and certificates, or the Outpost's key
 ```
 

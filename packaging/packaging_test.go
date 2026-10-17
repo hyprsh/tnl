@@ -117,6 +117,17 @@ esac
 	if err := os.WriteFile(ctl, []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
+	// A sysctl that logs its calls and reports the buffer limit in
+	// $TNL_TEST_STATE/rmem_max (the stock 212992 when that file is absent).
+	sysctl := `#!/bin/sh
+echo "$*" >> "$TNL_TEST_STATE/sysctl.log"
+case "$1" in
+-n) cat "$TNL_TEST_STATE/${2##*.}" 2>/dev/null || echo 212992 ;;
+esac
+`
+	if err := os.WriteFile(filepath.Join(bin, "sysctl"), []byte(sysctl), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	h.env = []string{
 		"HOME=" + h.home,
 		"PATH=" + bin + ":" + os.Getenv("PATH"),
@@ -312,5 +323,96 @@ func TestImageTagsAreXYZXYXAndLatestForAPlainVersionOnly(t *testing.T) {
 		if got, err := tags(v); err == nil {
 			t.Errorf("%q was accepted: %q", v, got)
 		}
+	}
+}
+
+const sysctlFile = "etc/sysctl.d/60-tnl.conf"
+const sysctlWant = "net.core.rmem_max = 7500000\nnet.core.wmem_max = 7500000\n"
+
+// quic-go and wireguard-go ask for 7 MiB socket buffers, which Linux caps at
+// net.core.rmem_max (about 208 KiB by default).
+func TestEdgeInstallRaisesTheSocketBufferLimits(t *testing.T) {
+	h := newHost(t, false)
+	stdout, stderr, err := h.run("system", "edge", "--address", "e.example.com")
+	if err != nil {
+		t.Fatalf("%v: %s", err, stderr)
+	}
+	if got := h.read(h.path(sysctlFile)); got != sysctlWant {
+		t.Errorf("sysctl file = %q", got)
+	}
+	if log := h.read(h.path("sysctl.log")); !strings.Contains(log, "-p "+h.path(sysctlFile)) {
+		t.Errorf("the file was not applied:\n%s", log)
+	}
+	if !strings.Contains(stdout, "net.core.rmem_max") {
+		t.Errorf("stdout does not say what was set: %q", stdout)
+	}
+}
+
+func TestInstallKeepsAnExistingSysctlFile(t *testing.T) {
+	h := newHost(t, false)
+	if err := os.MkdirAll(h.path("etc/sysctl.d"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(h.path(sysctlFile), []byte("net.core.rmem_max = 9999999\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stdout, stderr, err := h.run("system", "edge", "--address", "e.example.com")
+	if err != nil {
+		t.Fatalf("%v: %s", err, stderr)
+	}
+	if got := h.read(h.path(sysctlFile)); got != "net.core.rmem_max = 9999999\n" {
+		t.Errorf("sysctl file overwritten: %q", got)
+	}
+	if !strings.Contains(stdout, "Kept the existing") {
+		t.Errorf("stdout does not say it kept the file: %q", stdout)
+	}
+}
+
+func TestOutpostInstallRaisesTheLimitsOnlyWhenTheyAreLow(t *testing.T) {
+	h := newHost(t, false)
+	if _, stderr, err := h.run("system", "outpost", "--token", "t"); err != nil {
+		t.Fatalf("%v: %s", err, stderr)
+	}
+	if got := h.read(h.path(sysctlFile)); got != sysctlWant {
+		t.Errorf("sysctl file = %q", got)
+	}
+
+	h = newHost(t, false)
+	for _, n := range []string{"rmem_max", "wmem_max"} {
+		if err := os.WriteFile(h.path(n), []byte("8388608\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, stderr, err := h.run("system", "outpost", "--token", "t"); err != nil {
+		t.Fatalf("%v: %s", err, stderr)
+	}
+	if _, err := os.Stat(h.path(sysctlFile)); err == nil {
+		t.Error("the limits were already high enough, yet a sysctl file was written")
+	}
+}
+
+func TestUserInstallLeavesSysctlAlone(t *testing.T) {
+	h := newHost(t, false)
+	if _, stderr, err := h.run("user", "outpost", "--token", "t"); err != nil {
+		t.Fatalf("%v: %s", err, stderr)
+	}
+	if _, err := os.Stat(h.path("sysctl.log")); err == nil {
+		t.Error("user mode called sysctl")
+	}
+}
+
+func TestAFailingSysctlDoesNotFailTheInstall(t *testing.T) {
+	h := newHost(t, false)
+	bad := t.TempDir()
+	if err := os.WriteFile(filepath.Join(bad, "sysctl"), []byte("#!/bin/sh\nexit 1\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	h.env = append(h.env, "PATH="+bad+":"+h.env[1][len("PATH="):])
+	stdout, stderr, err := h.run("system", "edge", "--address", "e.example.com")
+	if err != nil {
+		t.Fatalf("%v: %s", err, stderr)
+	}
+	if !strings.Contains(stdout+stderr, "could not apply") {
+		t.Errorf("no warning: %q %q", stdout, stderr)
 	}
 }

@@ -190,6 +190,34 @@ else
   echo "Wrote $envfile"
 fi
 
+# 4b. Raise the socket buffer limits. quic-go (the Edge's HTTP/3) and wireguard-go
+# (both roles) ask for 7 MiB buffers, which Linux caps at net.core.rmem_max and
+# wmem_max, about 208 KiB by default. An Outpost only needs this when the limits
+# are low. Never overwrite the file; a failure to apply it is a warning.
+sysctlfile=$root/etc/sysctl.d/60-tnl.conf
+want=7500000
+low=yes
+if [ "$role" = outpost ]; then
+  low=no
+  for k in rmem_max wmem_max; do
+    cur=$(sysctl -n "net.core.$k" 2>/dev/null) || cur=
+    case $cur in
+      '' | *[!0-9]*) low=yes ;;
+      *) [ "$cur" -ge "$want" ] || low=yes ;;
+    esac
+  done
+fi
+if [ -e "$sysctlfile" ]; then
+  echo "Kept the existing $sysctlfile"
+elif [ "$low" = yes ]; then
+  mkdir -p "$(dirname "$sysctlfile")"
+  printf 'net.core.rmem_max = %s\nnet.core.wmem_max = %s\n' "$want" "$want" > "$sysctlfile"
+  chmod 644 "$sysctlfile"
+  echo "Wrote $sysctlfile: net.core.rmem_max and net.core.wmem_max set to $want, for the UDP socket buffers"
+  sysctl -p "$sysctlfile" >/dev/null 2>&1 ||
+    echo "Warning: could not apply $sysctlfile; run 'sysctl -p $sysctlfile' as root, or reboot" >&2
+fi
+
 # 5. Start the unit, and restart whichever tnl units were already running.
 systemctl daemon-reload
 systemctl enable --now "$unit"
