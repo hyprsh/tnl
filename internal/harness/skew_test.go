@@ -26,7 +26,8 @@ import (
 //	TNL_SKEW_WEB            the path the Edge builds were told to read (main.testWebFile)
 //	TNL_SKEW_DIR            holds the stamped builds tnl-a (0.1.0), tnl-b (0.1.9), tnl-c (0.2.0)
 //	TNL_SKEW_TAG_BIN        the latest release tag's build
-//	TNL_SKEW_CUR_BIN        the current tree, stamped as the tag's next patch
+//	TNL_SKEW_CUR_BIN        the current tree, stamped as release-please gives it after the tag (scripts/next-release.sh)
+//	TNL_SKEW_CUR_IN_WINDOW  "1" when that stamp is the tag's next patch, inside its window; "0" when a breaking commit made it the next minor, outside
 //	TNL_SKEW_CUR_OUT_BIN    the current tree, stamped outside the tag's window (a new 0.x minor; two majors on from 1.0)
 //	TNL_SKEW_TAG_EDGE_OK    "1" when the tag's Edge can be put on high ports
 
@@ -63,27 +64,40 @@ func TestSkewStampedBuilds(t *testing.T) {
 	}
 }
 
-// The latest release tag's build and the current tree, in both directions,
-// serve a Route; stamped outside the tag's window, the Outpost shows as
-// Incompatible with either side upgraded to it.
+// The latest release tag's build and the current tree serve a Route in both
+// directions when the current tree is stamped as the tag's next patch. A
+// breaking commit since the tag makes it the next minor instead: then the two
+// cannot join, and only the outside-window expectation runs. Stamped outside
+// the tag's window, the Outpost shows as Incompatible with either side
+// upgraded to it.
 func TestSkewAgainstTheLatestTag(t *testing.T) {
-	tag, cur := skewEnv(t, "TNL_SKEW_TAG_BIN"), skewEnv(t, "TNL_SKEW_CUR_BIN")
-	t.Run("tag Outpost on the current Edge", func(t *testing.T) { runSkew(t, skewStep{cur, tag}, nil, true) })
-	t.Run("tag Edge with the current Outpost", func(t *testing.T) {
-		if os.Getenv("TNL_SKEW_TAG_EDGE_OK") != "1" {
-			t.Skip("the tag's Edge cannot be put on high ports: its source predates the check's hook")
-		}
-		runSkew(t, skewStep{tag, cur}, nil, true)
-	})
+	tag := skewEnv(t, "TNL_SKEW_TAG_BIN")
+	edgeOK := os.Getenv("TNL_SKEW_TAG_EDGE_OK") == "1"
+	inside := os.Getenv("TNL_SKEW_CUR_IN_WINDOW") == "1"
+	if inside {
+		cur := skewEnv(t, "TNL_SKEW_CUR_BIN")
+		t.Run("tag Outpost on the current Edge", func(t *testing.T) { runSkew(t, skewStep{cur, tag}, nil, true) })
+		t.Run("tag Edge with the current Outpost", func(t *testing.T) {
+			if !edgeOK {
+				t.Skip("the tag's Edge cannot be put on high ports: its source predates the check's hook")
+			}
+			runSkew(t, skewStep{tag, cur}, nil, true)
+		})
+	}
 	out := skewEnv(t, "TNL_SKEW_CUR_OUT_BIN")
 	t.Run("the Outpost upgraded outside the window under the tag's Edge", func(t *testing.T) {
-		if os.Getenv("TNL_SKEW_TAG_EDGE_OK") != "1" {
+		if !edgeOK {
 			t.Skip("the tag's Edge cannot be put on high ports: its source predates the check's hook")
 		}
 		runSkew(t, skewStep{tag, tag}, &skewStep{tag, out}, false)
 	})
 	t.Run("the Edge upgraded outside the window over the tag's Outpost", func(t *testing.T) {
-		runSkew(t, skewStep{cur, tag}, &skewStep{out, tag}, false)
+		// Joining needs the same minor: the current tree joins only inside the window.
+		join := skewStep{tag, tag}
+		if inside {
+			join.edge = skewEnv(t, "TNL_SKEW_CUR_BIN")
+		}
+		runSkew(t, join, &skewStep{out, tag}, false)
 	})
 }
 

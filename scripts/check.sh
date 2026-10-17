@@ -24,6 +24,9 @@ go test -tags nomysql,outpost "$@" ./cmd/tnl
 
 scripts/check-outpost-deps.sh
 
+# The version the check against the latest release stamps on the current tree.
+sh scripts/next-release_test.sh
+
 # Real Edge and Outpost processes of other versions, and of the latest release tag.
 scripts/check-skew.sh
 
