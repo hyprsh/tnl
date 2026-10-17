@@ -71,6 +71,7 @@ No line ever contains the query string, a header, a cookie, the User-Agent or th
 ### Lines that are not tnl's
 
 - Caddy's own entries come through as tnl lines with `logger=...`. One "redirected default logger" line appears at every start.
+- Run by hand with neither `XDG_CONFIG_HOME` nor `HOME` set, the Edge prints one JSON line from Caddy, `unable to determine directory for user configuration`, before its first tnl line. The systemd unit sets `XDG_CONFIG_HOME`, so it never appears there.
 - certmagic's stale-lock messages go to raw stderr, and appear only after a crash.
 
 ## Stopping
