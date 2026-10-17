@@ -11,6 +11,7 @@ require (
 	github.com/miekg/dns v1.1.73
 	github.com/quic-go/quic-go v0.63.0
 	go.uber.org/zap v1.28.0
+	golang.org/x/sys v0.48.0
 	golang.org/x/term v0.46.0
 	golang.zx2c4.com/wireguard v0.0.0-20261006164505-2631ce99a06f
 	gvisor.dev/gvisor v0.0.0-20250503011706-39ed1f5ac29c
@@ -167,7 +168,6 @@ require (
 	golang.org/x/net v0.59.0 // indirect
 	golang.org/x/oauth2 v0.37.0 // indirect
 	golang.org/x/sync v0.23.0 // indirect
-	golang.org/x/sys v0.48.0 // indirect
 	golang.org/x/text v0.42.0 // indirect
 	golang.org/x/time v0.16.0 // indirect
 	golang.org/x/tools v0.51.0 // indirect
