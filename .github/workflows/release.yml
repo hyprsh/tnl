@@ -1,23 +1,42 @@
 name: release
-# A vX.Y.Z tag publishes the archives, SHA256SUMS, install.sh and both images,
-# each with a GitHub artifact attestation (check with `gh attestation verify`).
+# release-please keeps a release PR open from the Conventional Commits on main.
+# Merging it tags vX.Y.Z and creates the GitHub release; the release job then
+# publishes the archives, SHA256SUMS, install.sh and both images, each with a
+# GitHub artifact attestation (check with `gh attestation verify`). It runs here,
+# not on the tag push, because a tag made with GITHUB_TOKEN starts no workflow.
 on:
   push:
-    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
-permissions:
-  contents: write # the GitHub release
-  packages: write # ghcr.io
-  id-token: write # attestations are signed with the workflow's identity
-  attestations: write
+    branches: [main]
+permissions: {}
 jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # the tag and the GitHub release
+      pull-requests: write # the release PR
+    outputs:
+      created: ${{ steps.rp.outputs.release_created }}
+      tag: ${{ steps.rp.outputs.tag_name }}
+    steps:
+      - id: rp
+        uses: googleapis/release-please-action@v4
   release:
+    needs: release-please
+    if: needs.release-please.outputs.created == 'true'
+    permissions:
+      contents: write # the GitHub release
+      packages: write # ghcr.io
+      id-token: write # attestations are signed with the workflow's identity
+      attestations: write
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
       CGO_ENABLED: "0"
+      TAG: ${{ needs.release-please.outputs.tag }}
     steps:
       - uses: actions/checkout@v7
         with:
+          ref: ${{ needs.release-please.outputs.tag }}
           fetch-depth: 0 # GoReleaser reads the tag history
       - uses: actions/setup-go@v7
         with:
@@ -40,7 +59,7 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - run: scripts/build-images.sh "$GITHUB_REF_NAME" dist push
+      - run: scripts/build-images.sh "$TAG" dist push
       - id: digests
         run: |
           echo "tnl=$(cat dist/digest-tnl.txt)" >> "$GITHUB_OUTPUT"
