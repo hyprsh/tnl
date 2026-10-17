@@ -17,6 +17,18 @@ func TestStatusExitsTwoWithNoRunningProcess(t *testing.T) {
 	}
 }
 
+func TestLogsExitsTwoWithNoRunningProcess(t *testing.T) {
+	candidates(t, emptyDir(t))
+	out, code, err := tnl("logs")
+	if code != 2 || err == nil || out != "" {
+		t.Fatalf("%q %d %v", out, code, err)
+	}
+	t.Setenv("TNL_STATE_DIR", emptyDir(t))
+	if _, code, err := tnl("logs", "-f"); code != 2 || err == nil {
+		t.Fatalf("pinned: %d %v", code, err)
+	}
+}
+
 func TestStatusExitsTwoWhenSeveralProcessesAreRunning(t *testing.T) {
 	candidates(t, socketDir(t), socketDir(t))
 	if _, code, _ := tnl("status"); code != 2 {

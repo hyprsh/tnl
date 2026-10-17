@@ -29,17 +29,10 @@ func New(o Options) *slog.Logger {
 	lvl := new(slog.LevelVar)
 	lvl.Set(o.Level)
 	ho := &slog.HandlerOptions{Level: lvl, ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
-		if len(groups) == 0 {
-			switch a.Key {
-			case slog.TimeKey:
-				if o.Journal {
-					return slog.Attr{} // journald stamps lines itself
-				}
-			case slog.LevelKey:
-				a.Value = slog.StringValue(strings.ToLower(a.Value.String()))
-			}
+		if len(groups) == 0 && a.Key == slog.TimeKey && o.Journal {
+			return slog.Attr{} // journald stamps lines itself
 		}
-		return a
+		return lowerLevel(groups, a)
 	}}
 	mk := func(w io.Writer) slog.Handler {
 		if o.JSON {
@@ -47,10 +40,22 @@ func New(o Options) *slog.Logger {
 		}
 		return slog.NewTextHandler(w, ho)
 	}
-	if !o.Journal {
-		return slog.New(mk(o.Out))
+	var h slog.Handler
+	if o.Journal {
+		h = &journalHandler{mk: mk, lvl: lvl, out: o.Out, mu: &sync.Mutex{}}
+	} else {
+		h = mk(o.Out)
 	}
-	return slog.New(&journalHandler{mk: mk, lvl: lvl, out: o.Out, mu: &sync.Mutex{}})
+	// The ring keeps every line at this level, with its timestamp, for `tnl logs`.
+	return slog.New(newRingHandler(h, &Ring{json: o.JSON}))
+}
+
+// lowerLevel writes levels as error, warn, info and debug.
+func lowerLevel(groups []string, a slog.Attr) slog.Attr {
+	if len(groups) == 0 && a.Key == slog.LevelKey {
+		a.Value = slog.StringValue(strings.ToLower(a.Value.String()))
+	}
+	return a
 }
 
 // journalHandler renders each record with an inner handler, then writes the

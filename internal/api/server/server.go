@@ -170,6 +170,7 @@ func (s *Server) routes() {
 	endpoint(s, http.MethodPost, api.PathDeclaration, s.declare)
 	endpoint(s, http.MethodGet, api.PathDeclaration, s.myRoutes)
 	s.mux.HandleFunc("GET "+api.PathBackup, s.backup) // streams a tar, so not endpoint
+	s.mux.HandleFunc("GET "+api.PathLogs, s.logs)     // streams lines, so not endpoint
 }
 
 // afterReplyGrace is how long after a reply is written the functions queued

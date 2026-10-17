@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/hyprsh/tnl/internal/addr"
 	"github.com/hyprsh/tnl/internal/api"
+	"github.com/hyprsh/tnl/internal/logx"
 )
 
 // notConnected is what the CLI prints when the relay can't reach the Edge.
@@ -60,6 +62,21 @@ func (r *relay) handler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		if req.Method == http.MethodGet && req.URL.Path == api.PathInfo {
 			r.reply(w, http.StatusOK, r.info)
+			return
+		}
+		if req.Method == http.MethodGet && req.URL.Path == api.PathLogs {
+			// This Outpost's own ring, never the Edge's: not forwarded.
+			w.Header().Set(api.VersionHeader, r.info.Version)
+			if err := api.ServeLogs(w, req, logx.RingOf(r.log)); err != nil {
+				status, msg := http.StatusBadRequest, err.Error()
+				var ae *api.Error
+				if errors.As(err, &ae) {
+					status, msg = ae.Status, ae.Message
+				}
+				r.reply(w, status, struct {
+					Error string `json:"error"`
+				}{msg})
+			}
 			return
 		}
 		if req.Method == http.MethodGet && req.URL.Path == api.PathStatus && r.status != nil {

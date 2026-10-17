@@ -75,7 +75,7 @@ curl -v https://app.example.com/
 
 The first request for a new Hostname waits while Caddy gets its certificate from the ACME CA, usually a few seconds. Port 80 answers the CA's challenge, so it must be reachable from the internet. After that the certificate is cached in the state directory and renewed in the background. Requests to `http://app.example.com` get a 308 redirect to HTTPS.
 
-If something is wrong, the Edge logs it: `journalctl -u tnl-edge`. Add `TNL_LOG_LEVEL=debug` to `/etc/tnl/edge.env` for more.
+If something is wrong, the Edge logs it: `tnl logs` (or `journalctl -u tnl-edge`). Add `TNL_LOG_LEVEL=debug` to `/etc/tnl/edge.env` for more.
 
 ## Development
 

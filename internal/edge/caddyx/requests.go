@@ -14,6 +14,7 @@ import (
 
 	"github.com/hyprsh/tnl/internal/dnsname"
 	"github.com/hyprsh/tnl/internal/edge/liveness"
+	"github.com/hyprsh/tnl/internal/logx"
 )
 
 const (
@@ -299,6 +300,7 @@ func (rt *Runtime) writeRequestLine(l requestLog) {
 		status = st
 	}
 	level := slog.LevelInfo
+	access := false // an access-log line, which stays out of `tnl logs`
 	switch {
 	case reason != "":
 		if reason == "no route" && !l.inZone {
@@ -308,6 +310,7 @@ func (rt *Runtime) writeRequestLine(l requestLog) {
 		// The Outpost's connection dropped under a request that was running.
 		reason = "outpost offline"
 	case rt.AccessLog:
+		access = true
 	default:
 		return
 	}
@@ -338,7 +341,11 @@ func (rt *Runtime) writeRequestLine(l requestLog) {
 	if reason != "" {
 		attrs = append(attrs, "reason", reason)
 	}
-	log.Log(context.Background(), level, "request", attrs...)
+	ctx := context.Background()
+	if access {
+		ctx = logx.AccessContext(ctx)
+	}
+	log.Log(ctx, level, "request", attrs...)
 }
 
 func (rt *Runtime) outpostOffline(name string) bool {

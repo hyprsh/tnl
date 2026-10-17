@@ -94,7 +94,7 @@ Both units run as a dynamic user with a state directory (`/var/lib/tnl` for the 
 
 The Outpost's token stays in `outpost.env`. That is harmless: it works once, and a restart with it still set ignores it. To rekey, paste the new token into the file and restart.
 
-Logs: `journalctl -u tnl-edge` and `journalctl -u tnl-outpost`. To run a command against the Edge, use `sudo tnl zone add example.com`.
+Logs: `tnl logs` for the recent lines, or `journalctl -u tnl-edge` and `journalctl -u tnl-outpost` for all of them. To run a command against the Edge, use `sudo tnl zone add example.com`.
 
 An Edge and an Outpost on one host do not collide: the Edge uses `/var/lib/tnl`, an Outpost under systemd or Docker uses `/var/lib/tnl-outpost`, and any other Outpost uses `~/.local/state/tnl-outpost`.
 

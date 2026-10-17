@@ -83,6 +83,19 @@ Exit code `2` is as on the Edge. Other commands on an Outpost whose Tunnel is do
 
 `tnl status --json`, on either role, prints the same facts for a script: RFC 3339 times, durations in seconds, and `attention` as a list of `{kind, subject, message}` that is empty when nothing needs attention. On an Outpost the reply has `role` `outpost`, and `edge` (with `state` `up` or `down`), `routes` (`null` while the Tunnel is down, with `routes_unavailable`) and `declared`. Check `role` first. The fields only ever grow within a major version. The text may change in any release; match on `kind` and `subject`, not on `message`.
 
+## `tnl logs`
+
+`tnl logs` prints the recent log lines of the running Edge or Outpost, wherever its stderr goes, so it works the same under systemd, Compose and a bare `tnl connect`:
+
+```
+tnl logs                      # what the process holds
+tnl logs -f --level warn      # follow, warnings and errors only
+tnl logs -n 50 --since 1h     # the last 50 lines from the past hour
+tnl logs --json               # JSON lines
+```
+
+The process keeps its last 1000 lines or 1 MiB, whichever is smaller, in memory, at the level it logs to stderr (`--log-level`). A restart empties it, and lines older than that are in stderr or the journal only. The access log (`--access-log`) is not in it: it stays on stderr. Lines print in the format the process logs in, with a timestamp even under systemd. On an Outpost it shows that Outpost's own lines. It exits 2 when no Edge or Outpost is found, and `-f` ends with Ctrl-C. Like the rest of the logs, it is not an API.
+
 ## Which log lines to alert on
 
 Logs are not an API: the wording can change in any release. These are the lines worth an alert today.
