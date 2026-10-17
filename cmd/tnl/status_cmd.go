@@ -3,9 +3,7 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
-	"path/filepath"
 	"time"
 
 	"github.com/hyprsh/tnl/internal/api"
@@ -42,7 +40,7 @@ func (e exitError) Unwrap() error { return e.err }
 func statusCmd(args []string) error {
 	c := newClientCommand("status")
 	asJSON := c.fs.Bool("json", false, "print JSON, the stable form, instead of text")
-	pos, err := c.parseFindingAProcess(args)
+	pos, err := c.parseExitingNotFound(args)
 	if err != nil {
 		return err
 	}
@@ -75,26 +73,6 @@ func statusCmd(args []string) error {
 	}
 	if len(attention) > 0 {
 		return exitError{code: exitAttention}
-	}
-	return nil
-}
-
-// parseFindingAProcess is parse for a command that works on the running
-// process: a state directory that can't be discovered is exit 2, not a usage
-// error, as `tnl status` and `tnl logs` document.
-func (c *clientCommand) parseFindingAProcess(args []string) ([]string, error) {
-	pos, err := c.parse(args)
-	var de discoverError
-	if errors.As(err, &de) {
-		return nil, exitError{exitNotFound, err}
-	}
-	return pos, err
-}
-
-// requireRunning is exit 2 when nothing answers on the state directory's socket.
-func (c *clientCommand) requireRunning() error {
-	if sock := filepath.Join(c.stateDir, api.SocketName); probe(sock) != socketLive {
-		return exitError{exitNotFound, fmt.Errorf("can't open %s: no Edge or Outpost is running there, or this user may not open its socket (try sudo)", sock)}
 	}
 	return nil
 }
