@@ -14,7 +14,7 @@ Below the message, in small text, are the time and a short request ID. The same 
 
 ### Event streams
 
-A request whose `Accept` includes `text/event-stream` never gets the 502 or 503 page. A browser's `EventSource` would take the page for a broken stream and not retry. The Edge instead resets the stream (HTTP/2 and HTTP/3) or closes the connection (HTTP/1.1), so the browser reconnects by itself. `curl` shows an empty reply or a reset, with no status. The log line still carries the status the Edge would have sent, with `reset=true`.
+A request whose `Accept` includes `text/event-stream` never gets the 502 or 503 page. A browser's `EventSource` would take the page for a broken stream and not retry. The Edge instead answers `200 text/event-stream` with the body `retry: 5000` and closes the stream, so the browser reconnects by itself after 5 s. `curl` shows a 200 with that one line. The log line carries the status the Edge would have sent, with `event_stream=true`.
 
 A WebSocket or event stream that is open when an Outpost goes offline, or when the Edge stops, is ended the same way.
 
@@ -33,7 +33,7 @@ journalctl -u tnl-edge -p warning # only what needs attention
 
 ### Request lines
 
-The Edge writes one line for every response it makes itself: a 502 or 503, a reset event stream, a request cut because the Outpost's connection dropped, and a 404 for a Hostname inside one of your Zones, all at `info`. A 404 for a Hostname outside every Zone, which is mostly scanners, is `debug`.
+The Edge writes one line for every response it makes itself: a 502 or 503 (an event-stream request answered with `200` and `retry:` included), a request cut because the Outpost's connection dropped, and a 404 for a Hostname inside one of your Zones, all at `info`. A 404 for a Hostname outside every Zone, which is mostly scanners, is `debug`.
 
 ```
 level=INFO msg=request id=3f2a9c1d5e7b8a40 visitor=203.0.113.9:51514 host=app.example.com method=GET path=/ proto=HTTP/2.0 status=502 duration=5.012s bytes_in=0 bytes_out=162 outpost=nas reason=refused
@@ -44,7 +44,7 @@ level=INFO msg=request id=3f2a9c1d5e7b8a40 visitor=203.0.113.9:51514 host=app.ex
 | `id` | the request ID, also on the error page. The Outpost's lines about the connection that carried the request have it too. A later request over the same kept-alive connection has an ID of its own that the Outpost's lines don't carry. |
 | `visitor` | the Visitor's IP and port |
 | `host`, `method`, `path`, `proto` | what was asked. `path` has no query string |
-| `status` | what the Visitor got. `reset=true` follows it for a reset event stream, and `status` is then the one the Edge would have sent |
+| `status` | what the Visitor got. for an event-stream request `event_stream=true` follows it, and `status` is then the 502 or 503 the Edge would have sent, not the `200` the Visitor got |
 | `duration`, `bytes_in`, `bytes_out` | when the request ended, and what crossed in each direction |
 | `outpost` | the Outpost the Route uses |
 | `reason` | why, for a failure |
