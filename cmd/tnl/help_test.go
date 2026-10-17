@@ -43,6 +43,19 @@ func TestHelpForACommandExplainsIt(t *testing.T) {
 	}
 }
 
+// A one-letter flag is typed with one dash.
+func TestHelpShowsAOneLetterFlagWithOneDash(t *testing.T) {
+	out, _, _ := tnl("help", "logs")
+	for _, want := range []string{"\n  -f ", "\n  -n N "} {
+		if !strings.Contains(out, want) {
+			t.Errorf("help logs lacks %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "--f ") || strings.Contains(out, "--n ") {
+		t.Errorf("help logs shows a short flag with two dashes:\n%s", out)
+	}
+}
+
 func TestHelpForAGroupListsItsCommands(t *testing.T) {
 	out, _, _ := tnl("help", "route")
 	for _, sub := range []string{"add", "edit", "ls", "rm"} {

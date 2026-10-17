@@ -111,12 +111,12 @@ func completionNodes() []cmpNode {
 			nodes[0].subs = append(nodes[0].subs, c.path)
 		}
 		for _, f := range c.allFlags() {
-			n.flags = append(n.flags, "--"+f.name)
+			n.flags = append(n.flags, f.dashed())
 			if f.meta != "" && !strings.HasPrefix(f.meta, "=") {
-				n.valFlags = append(n.valFlags, "--"+f.name)
+				n.valFlags = append(n.valFlags, f.dashed())
 			}
 			if f.values != "" {
-				n.flagVals["--"+f.name] = f.values
+				n.flagVals[f.dashed()] = f.values
 			}
 		}
 		nodes = append(nodes, n)

@@ -220,11 +220,19 @@ func commandHelp(w io.Writer, c *cmdHelp) {
 func (f flagHelp) display() string {
 	switch {
 	case f.meta == "":
-		return "--" + f.name
+		return f.dashed()
 	case strings.HasPrefix(f.meta, "="):
-		return "--" + f.name + f.meta
+		return f.dashed() + f.meta
 	}
-	return "--" + f.name + " " + f.meta
+	return f.dashed() + " " + f.meta
+}
+
+// dashed is the flag's name as typed: -f for a one-letter flag, --ttl otherwise.
+func (f flagHelp) dashed() string {
+	if len(f.name) == 1 {
+		return "-" + f.name
+	}
+	return "--" + f.name
 }
 
 func (f flagHelp) describe() string {
