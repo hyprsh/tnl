@@ -2,6 +2,7 @@ package state
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -27,6 +28,20 @@ func TestCanonHeadersCanonicalisesSortsAndRefuses(t *testing.T) {
 	}
 	if _, err := CanonHeaders([]string{"A: 1", "a: 2"}); err == nil {
 		t.Error("a name twice was accepted")
+	}
+}
+
+func TestCanonHeadersSortsByNameNotByWholeLine(t *testing.T) {
+	got, err := CanonHeaders([]string{"X-A-B: 2", "x-a: 1"})
+	if err != nil || !reflect.DeepEqual(got, []string{"X-A: 1", "X-A-B: 2"}) {
+		t.Fatalf("%q %v", got, err)
+	}
+}
+
+func TestParseHeaderNamesAPseudoHeaderAsOne(t *testing.T) {
+	_, _, err := parseHeader(":authority: x")
+	if err == nil || !strings.Contains(err.Error(), "pseudo-header") {
+		t.Fatalf("%v", err)
 	}
 }
 

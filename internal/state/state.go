@@ -74,6 +74,14 @@ type Route struct {
 	Headers []string
 }
 
+// sameRoute reports whether two Routes are equal. A field added to Route must
+// be compared here (TestSameRouteComparesEveryField).
+func sameRoute(a, b Route) bool {
+	return a.Hostname == b.Hostname && a.Outpost == b.Outpost && a.Service == b.Service &&
+		a.InsecureSkipVerify == b.InsecureSkipVerify && a.HostHeader == b.HostHeader &&
+		a.NoHSTS == b.NoHSTS && slices.Equal(a.Headers, b.Headers)
+}
+
 // Zone is a domain the Edge serves Hostnames under, with its certificate mode.
 type Zone struct {
 	Name     string

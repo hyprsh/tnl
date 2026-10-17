@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net/textproto"
 	"slices"
-	"sort"
 	"strings"
 )
 
@@ -51,12 +50,12 @@ func validName(n string) bool {
 // parseHeader checks one "Name: value" and returns it with its name in
 // canonical form.
 func parseHeader(h string) (name, value string, err error) {
+	if strings.HasPrefix(h, ":") {
+		return "", "", fmt.Errorf("the header %q is a pseudo-header, which a Route may not set", h)
+	}
 	name, value, ok := SplitHeader(h)
 	if !ok {
 		return "", "", fmt.Errorf("the header %q must be Name: value", h)
-	}
-	if strings.HasPrefix(name, ":") {
-		return "", "", fmt.Errorf("the header %q is a pseudo-header, which a Route may not set", h)
 	}
 	if !validName(name) {
 		return "", "", fmt.Errorf("the header name %q is not a valid HTTP header name", name)
@@ -80,7 +79,8 @@ func parseHeader(h string) (name, value string, err error) {
 // returns them in the canonical form: names in canonical case, one ": " after
 // the name, no space around the value, sorted by name. A name twice is refused.
 func CanonHeaders(in []string) ([]string, error) {
-	var out []string
+	type header struct{ name, line string }
+	var all []header
 	seen := map[string]bool{}
 	for _, h := range in {
 		name, value, err := parseHeader(h)
@@ -91,9 +91,14 @@ func CanonHeaders(in []string) ([]string, error) {
 			return nil, fmt.Errorf("the header %s is given twice", name)
 		}
 		seen[name] = true
-		out = append(out, name+": "+value)
+		all = append(all, header{name, name + ": " + value})
 	}
-	sort.Strings(out)
+	// Names are unique, so the order is total.
+	slices.SortFunc(all, func(a, b header) int { return strings.Compare(a.name, b.name) })
+	var out []string
+	for _, h := range all {
+		out = append(out, h.line)
+	}
 	return out, nil
 }
 
@@ -108,11 +113,4 @@ func CheckHeaders(in []string) error {
 		return fmt.Errorf("the headers %q are not in canonical form (%q)", in, canon)
 	}
 	return nil
-}
-
-// sameRoute reports whether two Routes are equal.
-func sameRoute(a, b Route) bool {
-	return a.Hostname == b.Hostname && a.Outpost == b.Outpost && a.Service == b.Service &&
-		a.InsecureSkipVerify == b.InsecureSkipVerify && a.HostHeader == b.HostHeader &&
-		a.NoHSTS == b.NoHSTS && slices.Equal(a.Headers, b.Headers)
 }
