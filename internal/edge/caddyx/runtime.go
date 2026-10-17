@@ -163,13 +163,19 @@ type ctxKey int
 
 const requestIDKey ctxKey = 0
 
+// keyOf is the part of a Route its transport depends on. A field added to
+// routes.Route must be in it or named in TestTransportKeyCoversTheRoute.
+func keyOf(route routes.Route) transportKey {
+	return transportKey{route.Hostname, route.Outpost, route.Service, route.TLS, route.ServerName, route.InsecureSkipVerify}
+}
+
 func (p *pool) transport(rt *Runtime, route routes.Route, addr netip.AddrPort) *http.Transport {
-	k := transportKey{route.Hostname, route.Outpost, route.Service, route.TLS, route.ServerName, route.InsecureSkipVerify}
+	tkey := keyOf(route)
 	key := routes.Normalize(route.Hostname)
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if e, ok := p.m[key]; ok {
-		if e.key == k && e.addr == addr {
+		if e.key == tkey && e.addr == addr {
 			return e.tr
 		}
 		e.tr.CloseIdleConnections()
@@ -199,7 +205,7 @@ func (p *pool) transport(rt *Runtime, route routes.Route, addr netip.AddrPort) *
 	if p.m == nil {
 		p.m = map[string]*poolEntry{}
 	}
-	p.m[key] = &poolEntry{key: k, addr: addr, tr: tr}
+	p.m[key] = &poolEntry{key: tkey, addr: addr, tr: tr}
 	return tr
 }
 

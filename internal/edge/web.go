@@ -159,8 +159,10 @@ func startWeb(w *Web, d webDeps) (stop func(), err error) {
 			svc := r.Parsed()
 			var extra []routes.Header
 			for _, h := range r.Headers {
-				name, value, _ := state.SplitHeader(h)
-				extra = append(extra, routes.Header{Name: name, Value: value})
+				// The state holds only checked headers, so ok is always true.
+				if name, value, ok := state.SplitHeader(h); ok {
+					extra = append(extra, routes.Header{Name: name, Value: value})
+				}
 			}
 			rs = append(rs, routes.Route{
 				Hostname: r.Hostname, Outpost: r.Outpost, Service: svc.HostPort,

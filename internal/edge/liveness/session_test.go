@@ -18,7 +18,7 @@ func TestTheFirstSessionIdAfterTheEdgeStartsClosesNothing(t *testing.T) {
 	r, closed := newSessionRig()
 	r.Heard("home")
 	r.SetSession("home", wire.Session{1})
-	if len(*closed) != 0 || r.log.Len() != 0 && strings.Contains(r.log.String(), "restarted") {
+	if len(*closed) != 0 || strings.Contains(r.log.String(), "restarted") {
 		t.Fatalf("closed %v\n%s", *closed, r.log)
 	}
 }

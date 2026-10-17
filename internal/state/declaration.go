@@ -130,7 +130,8 @@ func lineOf(r Route) declare.Line {
 	return declare.Line{Hostname: r.Hostname, Service: r.Service, HostHeader: r.HostHeader, InsecureSkipVerify: r.InsecureSkipVerify, NoHSTS: r.NoHSTS, Headers: r.Headers}
 }
 
-func routeOf(outpost string, l declare.Line) Route {
+// RouteOf is the Route a Declaration line of the Outpost asks for.
+func RouteOf(outpost string, l declare.Line) Route {
 	return Route{Hostname: l.Hostname, Outpost: outpost, Service: l.Service, HostHeader: l.HostHeader, InsecureSkipVerify: l.InsecureSkipVerify, NoHSTS: l.NoHSTS, Headers: l.Headers}
 }
 
@@ -201,7 +202,7 @@ func (s *State) ApplyDeclaration(outpost string, lines []declare.Line, now time.
 			first = o.Declared
 		}
 		stored = append(stored, DeclaredLine{Line: l, Declared: first})
-		want := routeOf(outpost, l)
+		want := RouteOf(outpost, l)
 		have, held := s.Route(l.Hostname)
 		switch {
 		case held && have.Outpost != outpost:
