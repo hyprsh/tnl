@@ -62,7 +62,8 @@ type Runtime struct {
 	// of a 404's line. Nil treats every Hostname as inside one.
 	InZone func(host string) bool
 
-	// warming is set while warmCache's TLS-only config loads.
+	// warming is set by Start around warmCache, so a LogCore provisioned while
+	// it is set belongs to the TLS-only warm load.
 	warming atomic.Bool
 
 	pool pool
