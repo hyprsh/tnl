@@ -42,7 +42,7 @@ func (c *Client) Download(ctx context.Context, path string) (io.ReadCloser, http
 		if err != nil {
 			return nil, nil, err
 		}
-		var eb errorBody
+		var eb ErrorBody
 		msg := strings.TrimSpace(string(raw))
 		if json.Unmarshal(raw, &eb) == nil && eb.Error != "" {
 			msg = eb.Error

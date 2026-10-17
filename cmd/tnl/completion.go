@@ -53,29 +53,26 @@ func completeValues(args []string) error {
 	var names []string
 	switch args[0] {
 	case "outposts":
-		l, _, err := api.GetLenient[api.OutpostList](ctx, c, api.PathOutposts)
-		if err != nil {
-			return nil
-		}
-		for _, o := range l.Outposts {
-			names = append(names, o.Name)
-		}
+		names = fetchNames(ctx, c, api.PathOutposts, func(l api.OutpostList) (out []string) {
+			for _, o := range l.Outposts {
+				out = append(out, o.Name)
+			}
+			return out
+		})
 	case "routes":
-		l, _, err := api.GetLenient[api.RouteList](ctx, c, api.PathRoutes)
-		if err != nil {
-			return nil
-		}
-		for _, r := range l.Routes {
-			names = append(names, r.Hostname)
-		}
+		names = fetchNames(ctx, c, api.PathRoutes, func(l api.RouteList) (out []string) {
+			for _, r := range l.Routes {
+				out = append(out, r.Hostname)
+			}
+			return out
+		})
 	case "zones":
-		l, _, err := api.GetLenient[api.ZoneList](ctx, c, api.PathZones)
-		if err != nil {
-			return nil
-		}
-		for _, z := range l.Zones {
-			names = append(names, z.Name)
-		}
+		names = fetchNames(ctx, c, api.PathZones, func(l api.ZoneList) (out []string) {
+			for _, z := range l.Zones {
+				out = append(out, z.Name)
+			}
+			return out
+		})
 	}
 	sort.Strings(names)
 	for _, n := range names {
@@ -84,6 +81,16 @@ func completeValues(args []string) error {
 		}
 	}
 	return nil
+}
+
+// fetchNames reads a list reply leniently and picks the names out of it; a
+// failed read gives none.
+func fetchNames[T any](ctx context.Context, c *api.Client, path string, pick func(T) []string) []string {
+	l, _, err := api.GetLenient[T](ctx, c, path)
+	if err != nil {
+		return nil
+	}
+	return pick(l)
 }
 
 // cmpNode is what a completion script knows about one command path.
