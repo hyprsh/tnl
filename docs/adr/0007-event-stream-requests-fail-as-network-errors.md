@@ -5,3 +5,5 @@ When the Edge can't reach a Route's Outpost or Service, it answers 503 or 502 wi
 We checked this by hand on 2026-10-17 with v0.1.0 (#64), with Firefox, Chromium and Safari on macOS holding an event stream open while the Outpost was stopped. With the Outpost stopped for 150 s, every browser kept retrying the reset and resumed from its `Last-Event-ID` once the Outpost was back, so the fallback of answering `200` and closing was not needed. Two Edge problems showed up along the way: a stream cut by a stopped Outpost can stay open until TCP keepalive gives up, so the browser can't retry until then ([#79](https://github.com/hyprsh/tnl/issues/79)), and once the Outpost is Offline some browsers retry the immediate reset several times a second ([#84](https://github.com/hyprsh/tnl/issues/84)).
 
 See [Reconnects: what visitors see when an Outpost or Service is down](https://github.com/hyprsh/tnl/issues/14).
+
+Amended by [ADR 0013](0013-event-streams-get-retry-not-a-reset.md): the reset gave way to `200` with a `retry:` field and a closed stream, to bound the retry rate.

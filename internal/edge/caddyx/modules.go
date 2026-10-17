@@ -99,10 +99,9 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request, next caddyh
 	}
 	caddyhttp.SetVar(ctx, varRoute, route)
 	err = next.ServeHTTP(rec, req)
-	if errors.Is(err, errResetStream) || a.wasCut() {
-		// The Transport asked for the stream to be reset (HTTP/2, HTTP/3) or
-		// the connection closed (HTTP/1.1), or the drain cut the request.
-		// Aborting the handler does both.
+	if a.wasCut() {
+		// The drain cut the request. Aborting the handler resets the stream
+		// (HTTP/2, HTTP/3) or closes the connection (HTTP/1.1).
 		panic(http.ErrAbortHandler)
 	}
 	return err
@@ -151,7 +150,8 @@ func (t *Transport) Cleanup() error {
 }
 
 // RoundTrip implements http.RoundTripper. A Service the Edge can't reach gets a
-// 502 page, or a reset if the request is for an event stream (ADR 0007).
+// 502 page, or 200 with a retry: field if the request is for an event stream
+// (ADR 0013).
 func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	ctx := req.Context()
 	route, ok := caddyhttp.GetVar(ctx, varRoute).(routes.Route)
