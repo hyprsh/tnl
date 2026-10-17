@@ -7,9 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"net/http/httptrace"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/caddyserver/caddy/v2"
@@ -185,20 +183,10 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 
 	// A request sent on a pooled connection does not dial, so the Tunnel wait
-	// does not bound it; watchReused does.
-	rctx, giveUp := context.WithCancelCause(out.Context())
-	answered := make(chan struct{})
-	var once sync.Once
-	markAnswered := func() { once.Do(func() { close(answered) }) }
-	defer markAnswered()
-	out = out.WithContext(httptrace.WithClientTrace(rctx, &httptrace.ClientTrace{
-		GotConn: func(i httptrace.GotConnInfo) {
-			if i.Reused {
-				go t.rt.watchReused(rctx, addr, answered, giveUp)
-			}
-		},
-		GotFirstResponseByte: markAnswered,
-	}))
+	// does not bound it; the watch does.
+	rctx, answered := t.rt.watchPooled(out.Context(), addr)
+	defer answered()
+	out = out.WithContext(rctx)
 
 	resp, err := t.rt.pool.transport(t.rt, route, addr).RoundTrip(out)
 	if err != nil {

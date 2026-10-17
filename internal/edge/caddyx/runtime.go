@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/http/httptrace"
 	"net/netip"
 	"sync"
 	"sync/atomic"
@@ -246,13 +247,33 @@ func (rt *Runtime) connectOutpost(ctx context.Context, addr netip.AddrPort) (net
 	return c, nil
 }
 
+// watchPooled bounds a request sent on a pooled connection (spec: A request,
+// step 3). It returns ctx with the watch attached and a func the caller defers
+// to say the request is over; the watch starts only if the Transport picks a
+// reused connection, and ends the request through ctx's cancel cause. The
+// cause is errTunnelWait, readable with context.Cause on the returned ctx.
+func (rt *Runtime) watchPooled(ctx context.Context, addr netip.AddrPort) (context.Context, func()) {
+	rctx, giveUp := context.WithCancelCause(ctx)
+	answered := make(chan struct{})
+	var once sync.Once
+	markAnswered := func() { once.Do(func() { close(answered) }) }
+	return httptrace.WithClientTrace(rctx, &httptrace.ClientTrace{
+		GotConn: func(i httptrace.GotConnInfo) {
+			if i.Reused {
+				go rt.watchReused(rctx, addr, answered, giveUp)
+			}
+		},
+		GotFirstResponseByte: markAnswered,
+	}), markAnswered
+}
+
 // watchReused bounds the wait of a request sent on a pooled connection. Such a
 // connection is not dialed, so connectOutpost's 10 s does not apply, and one
 // whose Tunnel went down hangs until the Outpost goes Offline (60 s). If the
 // request has no answer after tunnelAttempt, the watch connects to the Outpost
 // like a new request would: a Tunnel that is up ends the watch, one that stays
 // down for tunnelWait ends the request with errTunnelWait. It returns when the
-// first byte of the answer arrives (stop is closed) or ctx ends.
+// first byte of the answer arrives (answered is closed) or ctx ends.
 func (rt *Runtime) watchReused(ctx context.Context, addr netip.AddrPort, answered <-chan struct{}, giveUp context.CancelCauseFunc) {
 	t := time.NewTimer(tunnelAttempt)
 	defer t.Stop()
