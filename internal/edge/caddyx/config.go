@@ -354,10 +354,7 @@ func (c Config) warmCache(rt *Runtime, log func() *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	rt.warming.Store(true)
-	err = caddy.Load(b, true)
-	rt.warming.Store(false)
-	if err != nil {
+	if err = caddy.Load(b, true); err != nil {
 		return err
 	}
 	deadline := time.Now().Add(coldCacheWait)
@@ -417,7 +414,10 @@ func Start(c Config) error {
 	certs.SetStateDir(c.StateDir)
 	c.Hostnames = certs.configure()
 	if activeTLS() == nil {
-		if err := c.warmCache(rt, certs.log); err != nil {
+		rt.warming.Store(true)
+		err := c.warmCache(rt, certs.log)
+		rt.warming.Store(false)
+		if err != nil {
 			return err
 		}
 	}

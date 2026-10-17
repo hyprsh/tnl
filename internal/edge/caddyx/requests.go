@@ -24,6 +24,17 @@ const (
 	varEventStream = "tnl.eventstream"
 )
 
+// The failure reasons that overlap if read loosely, each applying alone.
+const (
+	// reasonOutpostOffline: the Outpost was Offline (or had no address) when
+	// the request arrived, or its connection dropped after the response headers
+	// went out and it is Offline now.
+	reasonOutpostOffline = "outpost offline"
+	// reasonConnectionLost: the connection dropped before the response headers,
+	// whether or not the Outpost is Offline by then.
+	reasonConnectionLost = "connection lost"
+)
+
 // active is one request in flight, as the Router sees it. The drain reaches a
 // request through it: cancelling its context and closing the response body
 // ends the proxying, whatever protocol the Visitor speaks.
@@ -333,8 +344,9 @@ func (rt *Runtime) writeRequestLine(l requestLog) {
 			level = slog.LevelDebug
 		}
 	case l.failed != nil && !l.a.wasCut() && rt.outpostOffline(l.outpost):
-		// The Outpost's connection dropped under a request that was running.
-		reason = "outpost offline"
+		// The Outpost's connection dropped under a request that was running,
+		// after the response headers: before them, the Transport set a reason.
+		reason = reasonOutpostOffline
 	case rt.AccessLog:
 		access = true
 	default:
