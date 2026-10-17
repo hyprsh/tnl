@@ -1,11 +1,13 @@
 # Zones
 
-A Zone is a domain the Edge serves Hostnames under. Add one on the Edge host before its first Route, or declare it in the Edge's settings ([Declaring the Edge](declaring-the-edge.md)), which refuses `zone add`, `edit` and `rm` while it does:
+A Zone is a name the Edge serves Hostnames under, with its own certificate mode: one certificate per Hostname, or one wildcard certificate. Add one on the Edge host before its first Route, or declare it in the Edge's settings ([Declaring the Edge](declaring-the-edge.md)), which refuses `zone add`, `edit` and `rm` while it does:
 
 ```
 sudo tnl zone add example.com
 sudo tnl zone ls
 ```
+
+For a per-Hostname Zone, `zone add` prints a note on stderr: each Hostname needs its own DNS record, or a wildcard record, pointing at the Edge. It is a reminder only and not a warning; `route add` checks each Hostname's record.
 
 `tnl zone ls` ends with a CERTIFICATE column. A wildcard Zone shows its certificate: `valid until 2026-12-01`, `obtaining`, `renewal failing for 3d: <error>`, `failed: <error>` or `expired`. A per-Hostname Zone shows a summary such as `12 certificates, 1 failing`. Zones the Edge's settings declare are marked "(declared)". `--json` gives each certificate's expiry, state and full error, and is the stable form.
 

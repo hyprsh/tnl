@@ -99,7 +99,7 @@ func TestPerHostnameZoneAddPrintsNoDNSWarningWhateverTheNamesResolveTo(t *testin
 		if err != nil || code != 0 || !strings.Contains(out, "added Zone "+zone) {
 			t.Fatalf("%s: %q %v %d", zone, out, err, code)
 		}
-		if errOut != "" || strings.Contains(out, "warning") {
+		if strings.Contains(errOut, "warning") || strings.Contains(out, "warning") {
 			t.Fatalf("%s: stderr %q, stdout %q", zone, errOut, out)
 		}
 	}
@@ -112,7 +112,7 @@ func TestPerHostnameZoneAddPrintsNoDNSWarningWhateverTheNamesResolveTo(t *testin
 func TestZoneAddPrintsNoWarningWhenNamesPointAtTheEdge(t *testing.T) {
 	runningEdge(t)
 	_, errOut, code, err := tnlBoth("zone", "add", "zone.test")
-	if err != nil || code != 0 || errOut != "" {
+	if err != nil || code != 0 || strings.Contains(errOut, "warning") {
 		t.Fatalf("%q %v %d", errOut, err, code)
 	}
 }
