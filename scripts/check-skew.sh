@@ -42,7 +42,7 @@ build 0.1.0 "$tmp/tnl-a"
 build 0.1.9 "$tmp/tnl-b"
 build 0.2.0 "$tmp/tnl-c"
 TNL_SKEW_WEB="$web" TNL_SKEW_DIR="$tmp" \
-  go test -count=1 -timeout 10m -tags nomysql -run 'TestSkewStampedBuilds' ./internal/harness
+  go test -count=1 -timeout 10m -tags nomysql -run 'TestSkewStampedBuilds|TestEdgeUnderTheUnitsEnvironment' ./internal/harness
 
 # Only a plain vX.Y.Z counts: a pre-release tag releases nothing.
 tag=$(git tag -l 'v[0-9]*' --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || true)
