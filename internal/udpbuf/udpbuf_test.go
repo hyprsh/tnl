@@ -9,27 +9,22 @@ import (
 	"testing"
 )
 
-func fake(t *testing.T, recv, send int, err error) {
-	t.Helper()
-	old := Granted
-	t.Cleanup(func() { Granted = old })
-	Granted = func() (int, int, error) { return recv, send, err }
+func measured(recv, send int, err error) Measure {
+	return func() (int, int, error) { return recv, send, err }
 }
 
-func warnLog(t *testing.T) string {
-	t.Helper()
+func warnLog(m Measure) string {
 	var buf bytes.Buffer
-	Warn(slog.New(slog.NewTextHandler(&buf, nil)))
+	Warn(slog.New(slog.NewTextHandler(&buf, nil)), m)
 	return buf.String()
 }
 
 func TestSmallBuffersWarnOnceNamingTheSysctlsTheSizesAndTheGuide(t *testing.T) {
-	fake(t, 425984, 425984, nil)
-	out := warnLog(t)
+	out := warnLog(measured(425984, 425984, nil))
 	if n := strings.Count(out, "\n"); n != 1 {
 		t.Fatalf("want one line, got %d:\n%s", n, out)
 	}
-	for _, want := range []string{"level=WARN", "net.core.rmem_max", "net.core.wmem_max", "7500000", "install.md#udp-buffers", "recv_buffer=425984", "send_buffer=425984"} {
+	for _, want := range []string{"level=WARN", "net.core.rmem_max", "net.core.wmem_max", "to 7500000", "wanted=7340032", "install.md#udp-buffers", "recv_buffer=425984", "send_buffer=425984"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("line lacks %q:\n%s", want, out)
 		}
@@ -37,23 +32,27 @@ func TestSmallBuffersWarnOnceNamingTheSysctlsTheSizesAndTheGuide(t *testing.T) {
 }
 
 func TestOneSmallBufferWarns(t *testing.T) {
-	fake(t, 14680064, 425984, nil)
-	if warnLog(t) == "" {
+	if warnLog(measured(14680064, 425984, nil)) == "" {
 		t.Error("a small send buffer did not warn")
 	}
 }
 
 func TestBuffersAsWantedLogNothing(t *testing.T) {
-	fake(t, 14680064, 14680064, nil)
-	if out := warnLog(t); out != "" {
+	if out := warnLog(measured(14680064, 14680064, nil)); out != "" {
 		t.Errorf("logged:\n%s", out)
 	}
 }
 
 func TestBuffersThatCannotBeMeasuredLogNothing(t *testing.T) {
-	fake(t, 0, 0, errors.New("no socket"))
-	if out := warnLog(t); out != "" {
+	if out := warnLog(measured(0, 0, errors.New("no socket"))); out != "" {
 		t.Errorf("logged:\n%s", out)
+	}
+}
+
+func TestNilMeasureMeasuresARealSocket(t *testing.T) {
+	// Whatever the host grants, Warn must run without a fake and log at most one line.
+	if n := strings.Count(warnLog(nil), "\n"); n > 1 {
+		t.Errorf("%d lines", n)
 	}
 }
 
