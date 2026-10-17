@@ -48,6 +48,14 @@ _Avoid_: Using "tunnel" for a named group of Outposts
 A mapping from one Hostname to one Service reached through one Outpost.
 _Avoid_: Ingress rule, mapping, resource
 
+**Extra response header**:
+A header a Route adds to its Service's replies, given as `Name: value`. The Service's own header of the same name wins, even when its value is empty. The Edge's own replies, such as its error pages, don't carry it.
+_Avoid_: Custom header, injected header
+
+**Session id**:
+A random number an Outpost makes once for each run of its Tunnel and sends in every ping. The Edge reads a changed one as a restart and closes that Outpost's connections at once; a WireGuard rekey leaves it as it was.
+_Avoid_: Connection id, run id, boot id
+
 **Declaration**:
 The whole list of Routes an Outpost asks for in its own settings. While an Outpost has one, its Routes change only through it: a Route left out is removed, and one whose Hostname is taken or outside every Zone waits until it can become a Route.
 _Avoid_: Config, manifest, desired state, route file
