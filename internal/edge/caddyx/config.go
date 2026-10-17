@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sync/atomic"
@@ -90,6 +91,9 @@ type Config struct {
 	// DNSResolvers are the DNS servers the challenges and their SOA lookups ask;
 	// none means the system's.
 	DNSResolvers []string
+
+	// tlsOnly leaves out the HTTP app, so nothing listens (warmCache).
+	tlsOnly bool
 }
 
 // retiredNames are the names of the wildcard certificates in storage that
@@ -305,7 +309,65 @@ func (c Config) JSON() ([]byte, error) {
 			}}},
 		},
 	}
+	if c.tlsOnly {
+		delete(cfg["apps"].(map[string]any), "http")
+	}
 	return json.Marshal(cfg)
+}
+
+// storedNames are the names this config automates that storage holds an
+// unexpired certificate for: the ones Caddy loads into its cache in the
+// background once the config is loaded. A retired wildcard is not among them:
+// it sits under the on-demand catch-all and is loaded by the first handshake.
+func (c Config) storedNames() (out []string) {
+	st := &certmagic.FileStorage{Path: filepath.Join(c.StateDir, "caddy")}
+	now := time.Now()
+	names := append([]string(nil), c.Hostnames...)
+	for _, z := range c.Wildcards {
+		names = append(names, dnsname.WildcardNames(z)...)
+	}
+	for _, n := range names {
+		if storedNotAfter(st, n).After(now) {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
+// coldCacheWait bounds the wait for the certificates in storage to reach
+// Caddy's cache on a cold start. A variable so tests can shrink it.
+var coldCacheWait = 10 * time.Second
+
+// warmCache runs on the first load of a process, when Caddy's certificate cache
+// is empty. Caddy fills it from storage in the background, so a Visitor whose
+// handshake lands between the listener opening and that finishing gets "no
+// certificate available" as a TLS internal error. So the first load is the TLS
+// app alone, with no listener, and the real config follows once the stored
+// certificates are in the cache, which a reload keeps.
+func (c Config) warmCache(log func() *slog.Logger) error {
+	names := c.storedNames()
+	if len(names) == 0 {
+		return nil
+	}
+	c.tlsOnly = true
+	b, err := c.JSON()
+	if err != nil {
+		return err
+	}
+	if err := caddy.Load(b, true); err != nil {
+		return err
+	}
+	deadline := time.Now().Add(coldCacheWait)
+	for _, n := range names {
+		for !holdsOwn(n, time.Now()) {
+			if time.Now().After(deadline) {
+				log().Warn("a certificate in storage was not loaded in time; loading the config without it", "hostname", n)
+				return nil
+			}
+			time.Sleep(2 * time.Millisecond)
+		}
+	}
+	return nil
 }
 
 var (
@@ -351,6 +413,11 @@ func Start(c Config) error {
 	certs.setIssuer(raw)
 	certs.SetStateDir(c.StateDir)
 	c.Hostnames = certs.configure()
+	if activeTLS() == nil {
+		if err := c.warmCache(certs.log); err != nil {
+			return err
+		}
+	}
 	b, err := c.JSON()
 	if err != nil {
 		return err
