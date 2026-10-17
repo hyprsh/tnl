@@ -11,11 +11,9 @@ func forceRecv(rc syscall.RawConn, n int) error { return setsock(rc, unix.SO_RCV
 func forceSend(rc syscall.RawConn, n int) error { return setsock(rc, unix.SO_SNDBUFFORCE, n) }
 
 func setsock(rc syscall.RawConn, opt, n int) error {
-	var serr error
-	if err := rc.Control(func(fd uintptr) {
-		serr = unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, opt, n)
-	}); err != nil {
-		return err
-	}
-	return serr
+	return control(rc, func(fd int) error { return unix.SetsockoptInt(fd, unix.SOL_SOCKET, opt, n) })
 }
+
+// granted halves what getsockopt reads back: Linux reports twice the size it
+// granted, to count its bookkeeping overhead.
+func granted(readBack int) int { return readBack / 2 }

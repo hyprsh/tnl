@@ -75,6 +75,9 @@ type Config struct {
 	// remind.Standard. Clock is the watcher's clock; nil is the wall clock.
 	Reminders remind.Schedule
 	Clock     remind.Clock
+	// UDPBuffers measures the UDP buffer a socket is granted, for the warn at
+	// start; nil measures a real socket. Tests set it.
+	UDPBuffers udpbuf.Measure
 	// Allow limits the Services the Edge may name; nil allows every one.
 	Allow *allow.List
 	// Declaration is the Routes this Outpost declares, checked at start. The
@@ -179,7 +182,7 @@ func connect(ctx context.Context, cfg Config, st *State, joining bool) error {
 	if err != nil {
 		return fmt.Errorf("resolve the Edge's address %s: %w", st.EdgeAddress, err)
 	}
-	udpbuf.Warn(cfg.Log)
+	udpbuf.Warn(cfg.Log, cfg.UDPBuffers)
 	tun, err := tunnel.New(tunnel.Config{Address: st.Address, PrivateKey: st.PrivateKey, Logger: logx.WireGuardLogger(cfg.Log)})
 	if err != nil {
 		return err

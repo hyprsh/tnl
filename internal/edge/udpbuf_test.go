@@ -5,18 +5,14 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/hyprsh/tnl/internal/udpbuf/udpbuftest"
 )
 
-func fakeUDPLimits(t *testing.T, n int) {
-	t.Helper()
-	udpbuftest.Both(t, n)
+func grantedBoth(n int) func() (int, int, error) {
+	return func() (int, int, error) { return n, n, nil }
 }
 
-func TestLowUDPBufferLimitsLogOneWarnNamingTheSysctlsAtStart(t *testing.T) {
-	fakeUDPLimits(t, 212992)
-	buf, err := run(t, filepath.Join(shortDir(t), "state"))
+func TestSmallGrantedUDPBuffersLogOneWarnNamingTheSysctlsAtStart(t *testing.T) {
+	buf, err := runWith(t, Config{StateDir: filepath.Join(shortDir(t), "state"), UDPBuffers: grantedBoth(212992)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,9 +28,8 @@ func TestLowUDPBufferLimitsLogOneWarnNamingTheSysctlsAtStart(t *testing.T) {
 	}
 }
 
-func TestUDPBufferLimitsAsDocumentedLogNoWarn(t *testing.T) {
-	fakeUDPLimits(t, 7500000)
-	buf, err := run(t, filepath.Join(shortDir(t), "state"))
+func TestUDPBuffersGrantedAsDocumentedLogNoWarn(t *testing.T) {
+	buf, err := runWith(t, Config{StateDir: filepath.Join(shortDir(t), "state"), UDPBuffers: grantedBoth(7500000)})
 	if err != nil {
 		t.Fatal(err)
 	}

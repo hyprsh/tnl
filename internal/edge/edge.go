@@ -52,6 +52,9 @@ type Config struct {
 	// after which the Edge closes an Outpost's Tunnel connections without
 	// calling it Offline (20 s). The harness shrinks them.
 	OfflineAfter, SilentAfter, LivenessPoll time.Duration
+	// UDPBuffers measures the UDP buffer a socket is granted, for the warn at
+	// start; nil measures a real socket. Tests set it.
+	UDPBuffers udpbuf.Measure
 	// LogLevel is the level the logger runs at, for `status` to report.
 	LogLevel string
 	// CertWait bounds the certificate wait at `route add`; zero is 60 s.
@@ -116,7 +119,7 @@ func Run(ctx context.Context, cfg Config) error {
 	if err := udpbuf.SilenceQuicGo(); err != nil {
 		return refuse(err)
 	}
-	udpbuf.Warn(cfg.Log)
+	udpbuf.Warn(cfg.Log, cfg.UDPBuffers)
 	tun, err := tunnel.New(tunnel.Config{
 		Address:    addr.Edge,
 		PrivateKey: store.Snapshot().PrivateKey,

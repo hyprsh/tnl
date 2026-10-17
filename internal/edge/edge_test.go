@@ -26,13 +26,21 @@ func (s *syncBuf) String() string              { s.mu.Lock(); defer s.mu.Unlock(
 
 func run(t *testing.T, dir string) (*syncBuf, error) {
 	t.Helper()
+	return runWith(t, Config{StateDir: dir})
+}
+
+// runWith runs an Edge on cfg, with the address, version, build and log a test
+// would not vary filled in.
+func runWith(t *testing.T, cfg Config) (*syncBuf, error) {
+	t.Helper()
 	buf := &syncBuf{}
-	lg := logx.New(logx.Options{Level: slog.LevelInfo, Out: buf})
+	cfg.Address, cfg.Version, cfg.Build = "tnl.example.com", "v9.9.9", "full"
+	cfg.Log = logx.New(logx.Options{Level: slog.LevelInfo, Out: buf})
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	done := make(chan error, 1)
 	go func() {
-		done <- Run(ctx, Config{Address: "tnl.example.com", StateDir: dir, Version: "v9.9.9", Build: "full", Log: lg})
+		done <- Run(ctx, cfg)
 	}()
 	deadline := time.Now().Add(2 * time.Second)
 	for !strings.Contains(buf.String(), "edge started") && time.Now().Before(deadline) {

@@ -7,3 +7,6 @@ import "syscall"
 // Only Linux has a forced variant.
 func forceRecv(syscall.RawConn, int) error { return nil }
 func forceSend(syscall.RawConn, int) error { return nil }
+
+// granted is what getsockopt reads back; only Linux doubles it.
+func granted(readBack int) int { return readBack }
