@@ -77,24 +77,53 @@ func TestASilenceWithNoConnectionsToCloseIsNeitherLoggedNorCounted(t *testing.T)
 	}
 }
 
-func TestAConnectionOpenedDuringASilenceIsClosedOnceAndLogged(t *testing.T) {
-	r, cut, open := newSilentRig()
+func TestASilenceCloseIsAskedForOncePerSilenceEvenWhenItClosedNothing(t *testing.T) {
+	r, asked, open := newSilentRig()
 	*open = false
 	r.Seed("home")
 	r.clock.add(20 * time.Second)
 	r.Check()
-	*open = true
+	*open = true // a connection opens later in the same silence
 	r.clock.add(time.Second)
 	r.Check()
 	r.Check()
+	if len(*asked) != 1 {
+		t.Fatalf("asked %d times in one silence, want 1", len(*asked))
+	}
+	if strings.Contains(r.log.String(), "outpost silent") {
+		t.Fatalf("logged a close that closed nothing:\n%s", r.log)
+	}
+}
+
+func TestHearingFromAnOutpostRearmsTheSilenceCloseAfterAnEmptyAsk(t *testing.T) {
+	r, asked, open := newSilentRig()
+	*open = false
+	r.Seed("home")
+	r.clock.add(20 * time.Second)
+	r.Check()
+	r.Heard("home")
+	*open = true
+	r.clock.add(20 * time.Second)
+	r.Check()
+	if len(*asked) != 2 {
+		t.Fatalf("asked %d times over two silences, want 2", len(*asked))
+	}
 	if strings.Count(r.log.String(), "outpost silent") != 1 {
 		t.Fatalf("want one info line:\n%s", r.log)
 	}
-	n := len(*cut)
-	r.clock.add(time.Second)
+}
+
+func TestAnOutpostHeardAfterTheSilentListWasBuiltIsNotAsked(t *testing.T) {
+	r, asked, _ := newSilentRig()
+	r.Seed("other")
+	r.clock.add(40 * time.Second)
+	r.Seed("home")
+	r.clock.add(20 * time.Second) // other is Offline, home has been silent for 20 s
+	// Offline hooks run after the list is built and before the closes.
+	r.Liveness.cfg.OnOffline = func(string) { r.Heard("home") }
 	r.Check()
-	if len(*cut) != n {
-		t.Fatal("closed again in the same silence")
+	if len(*asked) != 0 {
+		t.Fatalf("asked to close %v for an Outpost heard just before", *asked)
 	}
 }
 

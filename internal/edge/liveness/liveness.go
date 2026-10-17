@@ -66,11 +66,11 @@ type Config struct {
 	Log         *slog.Logger     // transitions; nil logs nothing
 	// OnOffline runs, with no lock held, once each time an Outpost goes Offline.
 	OnOffline func(name string)
-	// OnSilent runs, with no lock held, at every check while the Outpost has
-	// been silent for SilentAfter and is not Offline, until it reports that it
-	// closed connections: it returns false if the Outpost had none. That close
-	// is logged and happens once per silence. The Outpost's state does not
-	// change.
+	// OnSilent runs, with no lock held, once per silence: at the first check
+	// after the Outpost has not been heard from for SilentAfter, if it is not
+	// Offline. It returns whether it closed connections, which is logged; false
+	// if the Outpost had none. Hearing from the Outpost re-arms it. The
+	// Outpost's state does not change.
 	OnSilent func(name string) bool
 }
 
@@ -96,14 +96,14 @@ type Liveness struct {
 }
 
 type entry struct {
-	lastSeen time.Time
-	heard    bool // something has arrived; false for a seeded entry
-	never    bool // seeded with no sign the Outpost ever connected
-	endpoint netip.AddrPort
-	version  string
-	warned   string // the version the Incompatible warning was logged for
-	offline  bool   // the Offline transition has been taken
-	silenced bool   // OnSilent closed connections in the current silence
+	lastSeen     time.Time
+	heard        bool // something has arrived; false for a seeded entry
+	never        bool // seeded with no sign the Outpost ever connected
+	endpoint     netip.AddrPort
+	version      string
+	warned       string // the version the Incompatible warning was logged for
+	offline      bool   // the Offline transition has been taken
+	silenceAsked bool   // OnSilent has been asked in the current silence
 }
 
 // outside reports whether the version the Outpost reported is outside the
@@ -168,7 +168,7 @@ func (l *Liveness) Heard(name string) {
 	was := e.lastSeen
 	back := e.offline
 	e.offline = false
-	e.silenced = false
+	e.silenceAsked = false
 	e.lastSeen, e.heard = now, true
 	l.mu.Unlock()
 	if wentOffline {
@@ -221,44 +221,52 @@ func (l *Liveness) SetEndpoint(name string, ep netip.AddrPort) {
 	}
 }
 
-// Check takes the Offline transition for every Outpost silent for too long.
+// Check takes the Offline transition for every Outpost not heard from for
+// OfflineAfter, and the silence close for every other one not heard from for
+// SilentAfter: it asks OnSilent once per silence, and the silence ends when the
+// Outpost is heard.
 func (l *Liveness) Check() {
 	now := l.cfg.Now()
-	type gone struct {
+	type outpostAt struct {
 		name string
-		last time.Time
+		last time.Time // when it was last heard
 	}
-	var out []gone
-	type quiet struct {
-		name string
-		last time.Time
-	}
-	var silent []quiet
+	var offline, silenceCloses []outpostAt
 	l.mu.Lock()
 	for name, e := range l.m {
 		switch {
 		case l.expire(e, now):
-			out = append(out, gone{name, e.lastSeen})
-		case !e.offline && !e.silenced && now.Sub(e.lastSeen) >= l.cfg.SilentAfter:
-			silent = append(silent, quiet{name, e.lastSeen})
+			offline = append(offline, outpostAt{name, e.lastSeen})
+		case !e.offline && !e.silenceAsked && now.Sub(e.lastSeen) >= l.cfg.SilentAfter:
+			silenceCloses = append(silenceCloses, outpostAt{name, e.lastSeen})
 		}
 	}
 	l.mu.Unlock()
-	for _, g := range out {
+	for _, g := range offline {
 		l.fireOffline(g.name, g.last)
 	}
-	for _, q := range silent {
-		if l.cfg.OnSilent == nil || !l.cfg.OnSilent(q.name) {
-			continue // nothing to close: ask again at the next check
+	for _, c := range silenceCloses {
+		if l.cfg.OnSilent == nil || !l.askSilenceClose(c.name, c.last) {
+			continue
 		}
-		l.mu.Lock()
-		// Heard in the meantime: that silence is over, and not this close's.
-		if e := l.m[q.name]; e != nil && e.lastSeen.Equal(q.last) {
-			e.silenced = true
-		}
-		l.mu.Unlock()
-		l.cfg.Log.Info("outpost silent, closing its connections", "outpost", q.name, "silent_for", l.cfg.SilentAfter)
+		l.cfg.Log.Info("outpost silent, closing its connections", "outpost", c.name, "silent_for", l.cfg.SilentAfter)
 	}
+}
+
+// askSilenceClose runs OnSilent for the Outpost, unless it was heard since
+// lastSeen, which ended that silence. It marks the silence asked before it
+// runs, so the close is asked for once, and reports whether OnSilent closed
+// connections.
+func (l *Liveness) askSilenceClose(name string, lastSeen time.Time) bool {
+	l.mu.Lock()
+	e := l.m[name]
+	if e == nil || !e.lastSeen.Equal(lastSeen) || e.offline || e.silenceAsked {
+		l.mu.Unlock()
+		return false
+	}
+	e.silenceAsked = true
+	l.mu.Unlock()
+	return l.cfg.OnSilent(name)
 }
 
 // expire marks e Offline if it is due and reports whether it did. The caller

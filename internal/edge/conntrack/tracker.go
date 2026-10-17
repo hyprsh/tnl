@@ -81,11 +81,20 @@ func (t *Tracker) Silence(name string) int {
 	})
 }
 
-// Silenced reports whether c is a connection of this package that Silence
-// closed.
+// Silenced reports whether c, or the connection it wraps (a tls.Conn over a
+// tracked one), is a connection of this package that Silence closed.
 func Silenced(c net.Conn) bool {
-	tc, ok := c.(*conn)
-	return ok && tc.silenced.Load()
+	for c != nil {
+		if tc, ok := c.(*conn); ok {
+			return tc.silenced.Load()
+		}
+		u, ok := c.(interface{ NetConn() net.Conn })
+		if !ok {
+			return false
+		}
+		c = u.NetConn()
+	}
+	return false
 }
 
 // CloseAll closes every connection: the drain on SIGTERM.
