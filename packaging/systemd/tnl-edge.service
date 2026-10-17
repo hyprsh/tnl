@@ -6,6 +6,7 @@ After=network-online.target
 [Service]
 ExecStart=/usr/local/bin/tnl edge
 EnvironmentFile=/etc/tnl/edge.env
+Environment=XDG_CONFIG_HOME=/var/lib/tnl/config
 DynamicUser=yes
 User=tnl
 StateDirectory=tnl

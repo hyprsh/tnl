@@ -19,8 +19,7 @@ import (
 const version = "1.2.3"
 
 // The units in the repo are the spec's code fences, line for line.
-func TestUnitsMatchSpec(t *testing.T) {
-	spec, err := os.ReadFile("../docs/spec/v1.md")
+func TestUnitsMatchSpec(t *testing.T) {	spec, err := os.ReadFile("../docs/spec/v1.md")
 	if err != nil {
 		t.Fatal(err)
 	}
