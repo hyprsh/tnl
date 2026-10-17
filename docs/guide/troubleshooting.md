@@ -59,6 +59,7 @@ The reasons:
 | `allowlist` | the Outpost's allowlist doesn't permit the Service's address |
 | `outpost offline` | nothing heard from the Outpost for 60 s, or its connection dropped under the request |
 | `tunnel not up` | the Outpost was not yet considered offline, but its Tunnel did not come back within the 10 s a request waits. The request goes through as soon as the Tunnel returns within those 10 s |
+| `connection lost` | the connection to the Service dropped before its response headers arrived. The Visitor gets the Edge's 502 page |
 | `outpost incompatible` | the Outpost's version is outside the window the Edge accepts |
 | `no route` | no Route for the Hostname |
 
