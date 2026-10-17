@@ -91,17 +91,7 @@ func (a *active) wasSilenced() bool {
 	a.mu.Lock()
 	c := a.conn
 	a.mu.Unlock()
-	for c != nil {
-		if conntrack.Silenced(c) {
-			return true
-		}
-		u, ok := c.(interface{ NetConn() net.Conn }) // a tls.Conn over the tracked one
-		if !ok {
-			return false
-		}
-		c = u.NetConn()
-	}
-	return false
+	return c != nil && conntrack.Silenced(c)
 }
 
 func (a *active) wasCut() bool {

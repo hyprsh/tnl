@@ -6,7 +6,7 @@ When the Edge can't pass a request on, it answers itself with one built-in page 
 
 | Status | When | Message |
 |---|---|---|
-| 503 | the Outpost is offline or incompatible, or its Tunnel did not come up within 10 s | "app.example.com is offline" |
+| 503 | the Outpost is Offline or incompatible, or its Tunnel did not come up within 10 s | "app.example.com is offline" |
 | 502 | the Service is unreachable | "app.example.com isn't answering" |
 | 404 | no Route for the Hostname | "Nothing is served at app.example.com" |
 
@@ -16,9 +16,9 @@ Below the message, in small text, are the time and a short request ID. The same 
 
 A request whose `Accept` includes `text/event-stream` never gets the 502 or 503 page. A browser's `EventSource` would take the page for a broken stream and not retry. The Edge instead answers `200 text/event-stream` with the body `retry: 5000` and closes the stream, so the browser reconnects by itself after 5 s. `curl` shows a 200 with that one line. The log line carries the status the Edge would have sent, with `event_stream=true`.
 
-A WebSocket or event stream that is open when an Outpost goes offline, or when the Edge stops, is ended the same way.
+A WebSocket or event stream that is open when an Outpost goes Offline, or when the Edge stops, is ended the same way.
 
-If an Outpost stops or restarts and its closing packets are lost, the Edge still ends the streams through it within 15 s, because it probes idle Tunnel connections after 5 s and drops one after 3 unanswered probes 3 s apart. A restarted Outpost resets them at the first probe. An Outpost is only marked offline after 60 s, so a stream can end before the Outpost shows as offline.
+If an Outpost stops or restarts and its closing packets are lost, the Edge still ends the streams through it within 15 s, because it probes idle Tunnel connections after 5 s and drops one after 3 unanswered probes 3 s apart. A restarted Outpost resets them at the first probe. An Outpost is only marked Offline after 60 s, so a stream can end before the Outpost shows as Offline.
 
 An upload with data the Outpost never acknowledged, because its link is gone, isn't covered by keepalive. When nothing has arrived from an Outpost for 20 s, the Edge closes all its Tunnel connections, uploads included, though the Outpost is not Offline yet. A live Outpost is never that quiet, so a Visitor pausing a download, or a Service that is slow to read an upload or to answer, is not cut.
 
@@ -60,8 +60,8 @@ The reasons:
 | `dns` | the Outpost couldn't resolve the Service's name |
 | `allowlist` | the Outpost's allowlist doesn't permit the Service's address |
 | `outpost offline` | nothing heard from the Outpost for 60 s, so the request was answered at once; or its connection dropped after the response headers went out and the Outpost is now Offline |
-| `outpost silent` | the connection dropped after the response headers because nothing had arrived from the Outpost for 20 s, and the Edge closed its connections. The Outpost was not yet offline |
-| `tunnel not up` | the Outpost was not yet considered offline, but its Tunnel did not come back within the 10 s a request waits. The request goes through as soon as the Tunnel returns within those 10 s |
+| `outpost silent` | the connection dropped after the response headers because nothing had arrived from the Outpost for 20 s, and the Edge closed its connections. The Outpost was not yet Offline |
+| `tunnel not up` | the Outpost was not yet considered Offline, but its Tunnel did not come back within the 10 s a request waits. The request goes through as soon as the Tunnel returns within those 10 s |
 | `connection lost` | the connection dropped before the response headers arrived, whether or not the Outpost is Offline by then, or was closed for silence. The Visitor gets the Edge's 502 page |
 | `outpost incompatible` | the Outpost's version is outside the window the Edge accepts |
 | `no route` | no Route for the Hostname |
