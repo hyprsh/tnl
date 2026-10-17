@@ -22,7 +22,7 @@ If an Outpost stops or restarts and its closing packets are lost, the Edge still
 
 ## Reading the logs
 
-Lines are `key=value`, one per event, at `info` by default. Under systemd:
+Lines are `key=value`, one per event, at `info` by default. `tnl logs` shows the recent ones wherever the process runs (`tnl logs -f --level warn` follows the warnings). For older lines, under systemd:
 
 ```
 journalctl -u tnl-edge            # everything
