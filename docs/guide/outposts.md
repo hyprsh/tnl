@@ -21,7 +21,7 @@ curl -fsSL https://github.com/hyprsh/tnl/releases/download/v1.4.2/install.sh | s
 The Edge doesn't know the Outpost's OS, so it prints both install lines. Run the first (with `sudo`) on Linux, which installs the systemd unit. Run the second (without) on macOS, where the install is per-user and `sudo` would make the binary root's. A note on stderr says which is which.
 
 - **The token works once** and expires after one hour. `--ttl 30m` or `--ttl 2h` changes that.
-- **The install line is pinned to the Edge's version.** The Outpost installs the same release as the Edge, which is the one the Edge accepts. A build with no release version (`dev`) can't pin: it prints the `releases/latest` line and a note on stderr that the line is not pinned.
+- **The install line is pinned to the Edge's version.** The Outpost installs the same release as the Edge, which is the one the Edge accepts. A build with no release version (`dev`) can't pin: it prints both lines with `releases/latest` and a note on stderr that they are not pinned.
 - **The token is shown once** and tnl never stores it. If you lose it, `rekey` makes another.
 
 ## Join
