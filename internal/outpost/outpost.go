@@ -214,7 +214,13 @@ func connect(ctx context.Context, cfg Config, st *State, joining bool) error {
 	fw := &forwarder.Forwarder{Version: cfg.Version, Allow: cfg.Allow, Log: cfg.Log}
 	served := make(chan struct{})
 	go func() { defer close(served); fw.Serve(ln) }()
-	defer func() { ln.Close(); <-served }()
+	defer func() {
+		ln.Close()
+		<-served
+		// The forwarder has closed every connection; let their FINs leave through
+		// WireGuard before the Tunnel goes, so the Edge hears of them at once.
+		tun.Drain(DrainCap)
+	}()
 
 	pingCtx, stopPinging := context.WithCancel(ctx)
 	defer stopPinging()

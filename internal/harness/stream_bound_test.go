@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/hyprsh/tnl/internal/edge/liveness"
+	"github.com/hyprsh/tnl/internal/outpost"
 )
 
 // streamBound is the spec's bound: a Visitor's stream through an Outpost whose
@@ -76,4 +77,49 @@ func TestAnOutpostRestartEndsOlderStreamsThroughIt(t *testing.T) {
 		resp, _ := get(t, re.Caddy, H1, "app.test", "/")
 		return resp.StatusCode == 200
 	})
+}
+
+// A stopped Outpost lets its closes leave through WireGuard before it tears
+// the Tunnel down, so a Visitor's stream ends at once, not after keepalive.
+func TestStoppingAnOutpostEndsAVisitorsStreamAtOnce(t *testing.T) {
+	svc := eventService(t)
+	re := StartEdgeWith(t, EdgeOptions{Pebble: StartPebble(t, PebbleOptions{})})
+	re.AddZone(t, "test")
+	o := re.JoinOutpost(t, "nas")
+	re.AddRoute(t, "app.test", "http://"+svc.Addr(), "nas")
+	get(t, re.Caddy, H1, "app.test", "/")
+	next := openStream(t, re, "app.test")
+	if !next() {
+		t.Fatal("the stream did not start")
+	}
+
+	stopped := time.Now()
+	o.Stop()
+	for next() {
+	}
+	if d := time.Since(stopped); d > 2*time.Second {
+		t.Fatalf("the stream ended %v after the Outpost stopped, want within 2s (keepalive would take 15s)", d)
+	}
+}
+
+// With the Edge unreachable the closes cannot leave, and the Outpost still
+// exits within the drain cap.
+func TestStoppingAnOutpostWhoseEdgeIsUnreachableStillExitsWithinTheCap(t *testing.T) {
+	svc := eventService(t)
+	re := StartEdgeWith(t, EdgeOptions{Pebble: StartPebble(t, PebbleOptions{})})
+	re.AddZone(t, "test")
+	o := re.JoinOutpost(t, "nas")
+	re.AddRoute(t, "app.test", "http://"+svc.Addr(), "nas")
+	get(t, re.Caddy, H1, "app.test", "/")
+	next := openStream(t, re, "app.test")
+	if !next() {
+		t.Fatal("the stream did not start")
+	}
+
+	cutLink(t, o, re)
+	start := time.Now()
+	o.Stop()
+	if d := time.Since(start); d > outpost.DrainCap+time.Second {
+		t.Fatalf("Stop took %v with the Edge unreachable, want within the %v cap plus a second", d, outpost.DrainCap)
+	}
 }
