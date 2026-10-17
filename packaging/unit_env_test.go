@@ -18,3 +18,15 @@ func TestEdgeUnitSetsXDGConfigHome(t *testing.T) {
 		t.Errorf("tnl-edge.service does not set XDG_CONFIG_HOME under /var/lib/tnl:\n%s", unit)
 	}
 }
+
+// install.sh puts the full build on a host that runs both roles, so the Outpost
+// unit may run a binary with Caddy linked in, and it has no HOME either.
+func TestOutpostUnitSetsXDGConfigHome(t *testing.T) {
+	unit, err := os.ReadFile("systemd/tnl-outpost.service")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(unit), "\nEnvironment=XDG_CONFIG_HOME=/var/lib/tnl-outpost/config\n") {
+		t.Errorf("tnl-outpost.service does not set XDG_CONFIG_HOME under /var/lib/tnl-outpost:\n%s", unit)
+	}
+}
