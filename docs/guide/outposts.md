@@ -12,11 +12,15 @@ sudo tnl outpost add laptop
 
 The name is one DNS label, is unique, and never changes. The command prints three lines:
 
+<!-- x-release-please-start-version -->
+
 ```
 <token>
-curl -fsSL https://github.com/hyprsh/tnl/releases/download/v1.4.2/install.sh | sudo sh -s -- outpost --token <token>
-curl -fsSL https://github.com/hyprsh/tnl/releases/download/v1.4.2/install.sh | sh -s -- outpost --token <token>
+curl -fsSL https://github.com/hyprsh/tnl/releases/download/v0.1.2/install.sh | sudo sh -s -- outpost --token <token>
+curl -fsSL https://github.com/hyprsh/tnl/releases/download/v0.1.2/install.sh | sh -s -- outpost --token <token>
 ```
+
+<!-- x-release-please-end -->
 
 The Edge doesn't know the Outpost's OS, so it prints both install lines. Run the first (with `sudo`) on Linux, which installs the systemd unit. Run the second (without) on macOS, where the install is per-user and `sudo` would make the binary root's. A note on stderr says which is which.
 
@@ -36,10 +40,12 @@ Run the install line for the Outpost host's OS. Without root or systemd, install
 
 ### Under Docker Compose
 
+<!-- x-release-please-start-version -->
+
 ```yaml
 services:
   tnl-outpost:
-    image: ghcr.io/hyprsh/tnl-outpost:1.4.2
+    image: ghcr.io/hyprsh/tnl-outpost:0.1.2
     container_name: tnl-outpost
     restart: unless-stopped
     environment:
@@ -52,6 +58,8 @@ networks:
 volumes:
   tnl-outpost:
 ```
+
+<!-- x-release-please-end -->
 
 - **The named volume holds the Outpost's state.** Without it a restart has nothing to reconnect from, and the used token is refused.
 - **Leave `TNL_TOKEN` set.** After the first join a restart ignores it. To join with a new token, change it and recreate the container: a different token joins again and replaces the state.

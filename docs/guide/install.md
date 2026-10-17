@@ -1,15 +1,15 @@
 # Installing tnl
 
-Each release ([github.com/hyprsh/tnl/releases](https://github.com/hyprsh/tnl/releases)) holds archives for two builds, a `SHA256SUMS` file, `install.sh` and the systemd units. The full build runs the Edge (and can also run an Outpost). The Outpost-only build is smaller and has no Edge. Two images carry the same builds.
+Each release ([github.com/hyprsh/tnl/releases](https://github.com/hyprsh/tnl/releases)) holds two images, archives for the same two builds, a `SHA256SUMS` file, `install.sh` and the systemd units. The full build runs the Edge (and can also run an Outpost). The Outpost-only build is smaller and has no Edge.
 
 Pick one of:
 
-- [systemd with `install.sh`](#install-with-installsh), on a Linux host. This is the usual way.
-- [Docker Compose](#docker-compose), equally supported.
+- [Docker Compose](#docker-compose). This is the usual way, and the [quick start](../../README.md#quick-start) uses it.
+- [systemd with `install.sh`](#install-with-installsh), on a Linux host without Docker, or a macOS Outpost. Equally supported.
 
 ## Ports and firewall
 
-`install.sh` does not touch your firewall (it does raise two sysctl limits, see [UDP buffers](#udp-buffers)). Open these on the Edge host's firewall and your cloud provider's security group:
+tnl does not touch your firewall. Open these on the Edge host's firewall and your cloud provider's security group:
 
 | Port | Protocol | For |
 |---|---|---|
@@ -20,9 +20,44 @@ Pick one of:
 
 An Outpost host needs no inbound port. It only has to reach the Edge's UDP port 51820.
 
-Point DNS at the Edge host: `edge.example.com` for the Outposts, and the Hostnames you serve (or a wildcard record) for Visitors.
+Point DNS at the Edge host: `edge.example.com` for the Outposts, and the Hostnames you serve for Visitors. One wildcard record, `*.example.com`, covers both.
+
+## Docker Compose
+
+Two images, both multi-arch (linux/amd64 and linux/arm64), built on distroless and running as uid 65532:
+
+- `ghcr.io/hyprsh/tnl`, the full build, state in `/var/lib/tnl`
+- `ghcr.io/hyprsh/tnl-outpost`, the Outpost-only build, state in `/var/lib/tnl-outpost`
+
+Tags are `X.Y.Z`, `X.Y`, `X` and `latest`. The examples pin the current release's exact `X.Y.Z`, which is what you should do. Before 1.0, `0.3` (the minor you run) is the safe moving tag for Outposts, and `latest` and a bare `0` are not.
+
+[`examples/compose/edge.yaml`](../../examples/compose/edge.yaml) and [`examples/compose/outpost.yaml`](../../examples/compose/outpost.yaml) are the declared setup the [quick start](../../README.md#quick-start) walks through: the Zones and Outposts are in the Edge's environment and each Outpost holds a credential, so nothing needs `docker exec`. See [Declaring the Edge](declaring-the-edge.md).
+
+The CLI way starts the Edge without `TNL_ZONE_*` and `TNL_OUTPOST_*` lines, and adds them by hand:
+
+```sh
+docker exec tnl tnl zone add example.com
+docker exec tnl tnl outpost add nas
+```
+
+The Outpost then joins with the token `outpost add` printed; see [Outposts](outposts.md#under-docker-compose).
+
+Things to know:
+
+- **Commands:** `docker exec tnl tnl …` in a container, where `sudo tnl …` is on a host. The image's `TNL_STATE_DIR` carries over into the exec.
+- **Volumes:** a named volume inherits ownership by uid 65532 from the image. A bind mount needs `chown 65532` on the directory first.
+- **Secret files** are bind-mounted as they are on the host, so each must be readable by uid 65532.
+- **UDP buffers:** set `net.core.rmem_max` and `net.core.wmem_max` to at least 7500000 on the Docker host, as [UDP buffers](#udp-buffers) says.
+- **Upgrading:** change the image tag and run `docker compose up -d`. Upgrade the Edge first; [Upgrading](upgrading.md) says which tags are safe for Outposts.
+- **Ports:** the Edge publishes its ports rather than using host networking. On a bridge network Docker lets a non-root process bind ports below 1024. Without Docker's IPv6 enabled, IPv6 Visitors arrive through the userland proxy and lose their address.
+- **Stopping:** `stop_grace_period: 20s` gives the Edge time to drain.
+- **The Outpost reaches Services by container name** on a shared network, such as `http://jellyfin:8096`. In one Compose file, as in the example, that is Compose's default network; for Services in another project, put the Outpost on that project's network. Inside the Outpost's container, `localhost` is the container, not the host.
+- **The token** goes in `TNL_TOKEN`. It works once, and the volume keeps what the Outpost saves. An Outpost declared by its Edge uses `TNL_CREDENTIAL_FILE` instead and needs no volume.
+- **Routes** can be declared in `TNL_ROUTE_*` variables, as the example does; see [Declaring Routes on the Outpost](declaring-routes.md).
 
 ## Install with `install.sh`
+
+`install.sh` does not touch your firewall. It does raise two sysctl limits, as [UDP buffers](#udp-buffers) says.
 
 On the Edge host:
 
@@ -63,21 +98,6 @@ macOS has Outpost builds only. The Edge runs on Linux.
 
 The script never replaces a full build with the Outpost build, so a host that runs both roles keeps the full one (an Outpost install there uses the full archive).
 
-### UDP buffers
-
-The Edge's HTTP/3 listener (quic-go) and the WireGuard socket (wireguard-go, on the Edge and on Outposts) ask Linux for 7 MiB socket buffers. Linux caps a request at `net.core.rmem_max` and `net.core.wmem_max`, which default to about 208 KiB. With a buffer that small, packets are dropped under load and HTTP/3 slows down. At start the Edge and an Outpost open a UDP socket, ask for 7 MiB buffers the way quic-go does (including the forced request that a process with `CAP_NET_ADMIN` is allowed) and read back what they got. This measures the socket itself, so it works in a container on a bridge network, which cannot read the host's `net.core` limits. If either buffer comes back below 7 MiB (7340032), they log one `warn` line that names both settings and the value 7500000 and points here, as in `the UDP buffer limits are too low`. tnl switches off quic-go's own `failed to sufficiently increase receive buffer size` line. A host where tnl can't open the socket to measure it gets no line.
-
-`install.sh` writes this to `/etc/sysctl.d/60-tnl.conf` and applies it:
-
-```
-net.core.rmem_max = 7500000
-net.core.wmem_max = 7500000
-```
-
-If you do not use `install.sh`, put those two lines in a file under `/etc/sysctl.d/` yourself and run `sudo sysctl -p <file>`, then restart tnl, since a socket takes its buffer size when it opens. This also applies to an Edge or Outpost in Docker: the limits are the host's, and a container cannot set `net.core.*` itself or always read it, so set them on the Docker host and then recreate the container. The warning still appears there, since it measures the socket.
-
-macOS needs nothing.
-
 ### Upgrading
 
 Run the install line again, and pin a version if you want one. It is the upgrade: the binary is swapped atomically and the running units restart. Upgrade the Edge first, then each Outpost whenever convenient. [Upgrading](upgrading.md) says which versions work together and which image tags are safe for Outposts.
@@ -98,43 +118,28 @@ Logs: `tnl logs` for the recent lines, or `journalctl -u tnl-edge` and `journalc
 
 An Edge and an Outpost on one host do not collide: the Edge uses `/var/lib/tnl`, an Outpost under systemd or Docker uses `/var/lib/tnl-outpost`, and any other Outpost uses `~/.local/state/tnl-outpost`.
 
-## Docker Compose
+## UDP buffers
 
-Two images, both multi-arch (linux/amd64 and linux/arm64), built on distroless and running as uid 65532:
+The Edge's HTTP/3 listener (quic-go) and the WireGuard socket (wireguard-go, on the Edge and on Outposts) ask Linux for 7 MiB socket buffers. Linux caps a request at `net.core.rmem_max` and `net.core.wmem_max`, which default to about 208 KiB. With a buffer that small, packets are dropped under load and HTTP/3 slows down. At start the Edge and an Outpost open a UDP socket, ask for 7 MiB buffers the way quic-go does (including the forced request that a process with `CAP_NET_ADMIN` is allowed) and read back what they got. This measures the socket itself, so it works in a container on a bridge network, which cannot read the host's `net.core` limits. If either buffer comes back below 7 MiB (7340032), they log one `warn` line that names both settings and the value 7500000 and points here, as in `the UDP buffer limits are too low`. tnl switches off quic-go's own `failed to sufficiently increase receive buffer size` line. A host where tnl can't open the socket to measure it gets no line.
 
-- `ghcr.io/hyprsh/tnl`, the full build, state in `/var/lib/tnl`
-- `ghcr.io/hyprsh/tnl-outpost`, the Outpost-only build, state in `/var/lib/tnl-outpost`
+`install.sh` writes this to `/etc/sysctl.d/60-tnl.conf` and applies it:
 
-Tags are `X.Y.Z`, `X.Y`, `X` and `latest`. The examples pin an exact `X.Y.Z`, which is what you should do. Before 1.0, `0.3` (the minor you run) is the safe moving tag for Outposts, and `latest` and a bare `0` are not.
-
-- [`examples/compose/edge.yaml`](../../examples/compose/edge.yaml)
-- [`examples/compose/outpost.yaml`](../../examples/compose/outpost.yaml)
-
-```sh
-docker compose -f edge.yaml up -d
-docker exec tnl tnl zone add example.com
-docker exec tnl tnl outpost add nas
+```
+net.core.rmem_max = 7500000
+net.core.wmem_max = 7500000
 ```
 
-The commands above are the CLI way. The example files are the declared way: the Zones and Outposts are in the Edge's environment and each Outpost holds a credential, so nothing needs `docker exec`. See [Declaring the Edge](declaring-the-edge.md).
+If you do not use `install.sh`, put those two lines in a file under `/etc/sysctl.d/` yourself and run `sudo sysctl -p <file>`, then restart tnl, since a socket takes its buffer size when it opens. This also applies to an Edge or Outpost in Docker: the limits are the host's, and a container cannot set `net.core.*` itself or always read it, so set them on the Docker host and then recreate the container. The warning still appears there, since it measures the socket.
 
-Things to know:
-
-- **Commands:** `docker exec tnl tnl …` in a container, where `sudo tnl …` is on a host. The image's `TNL_STATE_DIR` carries over into the exec.
-- **Volumes:** a named volume inherits ownership by uid 65532 from the image. A bind mount needs `chown 65532` on the directory first.
-- **Secret files** are bind-mounted as they are on the host, so each must be readable by uid 65532.
-- **UDP buffers:** set `net.core.rmem_max` and `net.core.wmem_max` to at least 7500000 on the Docker host, as [UDP buffers](#udp-buffers) says.
-- **Ports:** the Edge publishes its ports rather than using host networking. On a bridge network Docker lets a non-root process bind ports below 1024. Without Docker's IPv6 enabled, IPv6 Visitors arrive through the userland proxy and lose their address.
-- **Stopping:** `stop_grace_period: 20s` gives the Edge time to drain.
-- **The Outpost reaches Services by container name** on a shared network, such as `http://immich:2283`. Inside the Outpost's container, `localhost` is the container, not the host.
-- **The token** goes in `TNL_TOKEN`. It works once, and the volume keeps what the Outpost saves. An Outpost declared by its Edge uses `TNL_CREDENTIAL_FILE` instead and needs no volume.
-- **Routes** can be declared in `TNL_ROUTE_*` variables, as the example does; see [Declaring Routes on the Outpost](declaring-routes.md).
+macOS needs nothing.
 
 ## Help and shell completion
 
 `tnl help` explains every command. `install.sh` installs no shell completion; [Help and shell completion](completion.md) says how to add it for bash, zsh or fish.
 
 ## Uninstalling
+
+With Compose: `docker compose down -v`, which also deletes the volumes.
 
 `install.sh` has no uninstall. Stop and remove what it added:
 
@@ -148,6 +153,6 @@ sudo rm /etc/sysctl.d/60-tnl.conf   # the buffer limits; they stay in effect unt
 sudo rm -r /var/lib/tnl /var/lib/tnl-outpost   # the Edge's key, Routes and certificates, or the Outpost's key
 ```
 
-Without root: delete `~/.local/bin/tnl` and `~/.local/state/tnl-outpost`. With Compose: `docker compose down -v`.
+Without root: delete `~/.local/bin/tnl` and `~/.local/state/tnl-outpost`.
 
 Removing the Edge's state directory deletes its WireGuard key, so every Outpost has to be added again.

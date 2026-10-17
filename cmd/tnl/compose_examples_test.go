@@ -92,7 +92,7 @@ func TestTheComposeExamplesParseAsWrittenAndMatchTheSpec(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the Outpost example: %v", err)
 	}
-	if len(c.cfg.Declaration) != 1 || c.cfg.Credential != cred.Encode() {
+	if len(c.cfg.Declaration) != 2 || c.cfg.Credential != cred.Encode() {
 		t.Fatalf("%+v", c.cfg)
 	}
 	if got, _ := credential.Decode(c.cfg.Credential); got.TunnelAddr != addr.Derive("nas") {
