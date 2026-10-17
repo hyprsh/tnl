@@ -7,7 +7,6 @@ import (
 	"net"
 	"net/netip"
 	"slices"
-	"strings"
 	"sync"
 	"time"
 
@@ -38,8 +37,8 @@ type livenessHooks struct {
 
 // newLiveness makes the Edge's Liveness and counts its own start as hearing
 // from every Outpost the state holds that has connected before. The saved
-// endpoint is the sign of that: it is written on the first handshake. One
-// without it has never connected, and is not counted online.
+// endpoint is the sign of that: it is written when the Edge first hears from
+// the Outpost, before it counts it online. One without it has never connected, and is not counted online.
 func newLiveness(h livenessHooks, st *state.State) *liveness.Liveness {
 	l := liveness.New(liveness.Config{EdgeVersion: h.Version, OfflineAfter: h.OfflineAfter, Log: h.Log, OnOffline: h.CloseOutpost})
 	for _, o := range st.Outposts {
@@ -76,6 +75,7 @@ func serveLiveness(ctx context.Context, bg *sync.WaitGroup, l *liveness.Liveness
 		conn.Close()
 	})
 	pingRemembered(conn, h.Version, store.Snapshot(), h.Log)
+	keep := &endpointKeeper{store: store, tried: map[string]netip.AddrPort{}}
 	bg.Go(func() {
 		buf := make([]byte, 512)
 		for {
@@ -96,6 +96,11 @@ func serveLiveness(ctx context.Context, bg *sync.WaitGroup, l *liveness.Liveness
 				h.Log.Debug("refused a ping", "outpost", name, "error", err)
 				continue
 			}
+			// The first time an Outpost is heard from, save its endpoint before
+			// counting it online, so a crash after that still shows it connected.
+			if !hasEndpoint(store.Snapshot(), name) {
+				keep.remember(scanPeers(tun, store.Snapshot()).endpoints())
+			}
 			l.Heard(name)
 			l.SetVersion(name, ping.Version)
 			inside := l.State(name) != liveness.Incompatible
@@ -111,7 +116,6 @@ func serveLiveness(ctx context.Context, bg *sync.WaitGroup, l *liveness.Liveness
 	}
 	bg.Go(func() {
 		rx := map[string]uint64{}
-		tried := map[string]netip.AddrPort{}
 		t := time.NewTicker(poll)
 		defer t.Stop()
 		for {
@@ -120,12 +124,11 @@ func serveLiveness(ctx context.Context, bg *sync.WaitGroup, l *liveness.Liveness
 				// One last look, so an Outpost that handshook within the last
 				// poll is remembered as having connected. The device is still
 				// open: it closes after bg is done.
-				rememberEndpoints(store, pollWireGuard(l, tun, store.Snapshot(), rx), tried)
+				pollWireGuard(l, tun, store.Snapshot(), rx, keep)
 				return
 			case <-t.C:
 			}
-			seen := pollWireGuard(l, tun, store.Snapshot(), rx)
-			rememberEndpoints(store, seen, tried)
+			pollWireGuard(l, tun, store.Snapshot(), rx, keep)
 			l.Check()
 		}
 	})
@@ -147,53 +150,101 @@ func answerPing(version string, inside bool, st *state.State, outpost string, pi
 	return pong
 }
 
-// pollWireGuard counts bytes arriving from a peer as hearing from its Outpost,
-// and takes the peer's endpoint as the Outpost's, returning the endpoints seen.
-// rx remembers the last byte count.
-func pollWireGuard(l *liveness.Liveness, tun *tunnel.Tunnel, st *state.State, rx map[string]uint64) (endpoints map[string]netip.AddrPort) {
-	out, err := tun.Dev.IpcGet()
-	if err != nil {
-		return nil
+// peer is what WireGuard reports about one Outpost's peer.
+type peer struct {
+	name     string
+	rxBytes  uint64
+	endpoint netip.AddrPort // invalid until the peer has been heard
+}
+
+type peers []peer
+
+// endpoints maps each Outpost name to its peer's endpoint, where it has one.
+func (ps peers) endpoints() map[string]netip.AddrPort {
+	m := map[string]netip.AddrPort{}
+	for _, p := range ps {
+		if p.endpoint.IsValid() {
+			m[p.name] = p.endpoint
+		}
 	}
-	endpoints = map[string]netip.AddrPort{}
+	return m
+}
+
+// scanPeers reads the device's peers that belong to an Outpost in st.
+func scanPeers(tun *tunnel.Tunnel, st *state.State) peers {
 	names := map[string]string{} // public key hex -> Outpost name
 	for _, o := range st.Outposts {
 		names[o.PublicKey.Hex()] = o.Name
 	}
-	for _, block := range strings.Split(out, "public_key=")[1:] {
-		lines := strings.Split(block, "\n")
-		name, ok := names[lines[0]]
-		if !ok {
-			continue
-		}
-		var bytes uint64
-		var endpoint string
-		for _, ln := range lines[1:] {
-			if v, ok := strings.CutPrefix(ln, "rx_bytes="); ok {
-				fmt.Sscan(v, &bytes)
-			} else if v, ok := strings.CutPrefix(ln, "endpoint="); ok {
-				endpoint = v
+	var out peers
+	cur := -1
+	err := tun.Each(func(key, value string) {
+		switch key {
+		case "public_key":
+			cur = -1
+			if name, ok := names[value]; ok {
+				out = append(out, peer{name: name})
+				cur = len(out) - 1
+			}
+		case "rx_bytes":
+			if cur >= 0 {
+				fmt.Sscan(value, &out[cur].rxBytes)
+			}
+		case "endpoint":
+			if cur >= 0 {
+				out[cur].endpoint, _ = netip.ParseAddrPort(value)
 			}
 		}
-		if bytes > rx[name] {
-			l.Heard(name)
-		}
-		rx[name] = bytes
-		if ep, err := netip.ParseAddrPort(endpoint); err == nil {
-			l.SetEndpoint(name, ep)
-			endpoints[name] = ep
-		}
+	})
+	if err != nil {
+		return nil
 	}
-	return endpoints
+	return out
 }
 
-// rememberEndpoints saves an Outpost's endpoint in the state when it differs
-// from the saved one, so a restarted Edge can ping it at once. A save is tried
-// once per change: tried holds the last endpoint attempted for each Outpost.
-func rememberEndpoints(store *state.Store, seen map[string]netip.AddrPort, tried map[string]netip.AddrPort) {
+func hasEndpoint(st *state.State, name string) bool {
+	for _, o := range st.Outposts {
+		if o.Name == name {
+			return o.Endpoint.IsValid()
+		}
+	}
+	return true // not an Outpost: nothing to save
+}
+
+// pollWireGuard saves each Outpost's new endpoint, then counts bytes arriving
+// from a peer as hearing from its Outpost and takes the peer's endpoint as the
+// Outpost's. The save comes first, so an Outpost is never counted online before
+// its endpoint is kept. rx remembers the last byte count.
+func pollWireGuard(l *liveness.Liveness, tun *tunnel.Tunnel, st *state.State, rx map[string]uint64, keep *endpointKeeper) {
+	ps := scanPeers(tun, st)
+	keep.remember(ps.endpoints())
+	for _, p := range ps {
+		if p.rxBytes > rx[p.name] {
+			l.Heard(p.name)
+		}
+		rx[p.name] = p.rxBytes
+		if p.endpoint.IsValid() {
+			l.SetEndpoint(p.name, p.endpoint)
+		}
+	}
+}
+
+// endpointKeeper saves an Outpost's endpoint in the state when it differs from
+// the saved one, so a restarted Edge can ping it at once. A save is tried once
+// per change: tried holds the last endpoint attempted for each Outpost. The
+// ping handler and the poll both use it.
+type endpointKeeper struct {
+	store *state.Store
+	mu    sync.Mutex
+	tried map[string]netip.AddrPort
+}
+
+func (k *endpointKeeper) remember(seen map[string]netip.AddrPort) {
+	k.mu.Lock()
+	defer k.mu.Unlock()
 	var changed []string
-	for _, o := range store.Snapshot().Outposts {
-		if ep, ok := seen[o.Name]; ok && ep != o.Endpoint && tried[o.Name] != ep {
+	for _, o := range k.store.Snapshot().Outposts {
+		if ep, ok := seen[o.Name]; ok && ep != o.Endpoint && k.tried[o.Name] != ep {
 			changed = append(changed, o.Name)
 		}
 	}
@@ -201,10 +252,10 @@ func rememberEndpoints(store *state.Store, seen map[string]netip.AddrPort, tried
 		return
 	}
 	for _, name := range changed {
-		tried[name] = seen[name]
+		k.tried[name] = seen[name]
 	}
 	// A refused save is warned about by the store.
-	store.Update(api.ActorLocal, func(st *state.State) error {
+	k.store.Update(api.ActorLocal, func(st *state.State) error {
 		for i := range st.Outposts {
 			if ep, ok := seen[st.Outposts[i].Name]; ok && slices.Contains(changed, st.Outposts[i].Name) {
 				st.Outposts[i].Endpoint = ep
