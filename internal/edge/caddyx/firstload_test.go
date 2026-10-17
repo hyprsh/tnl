@@ -10,9 +10,13 @@ import (
 	"github.com/hyprsh/tnl/internal/edge/routes"
 )
 
-// A first load that fails must not leave Caddy's default logger buffering, or
-// every later Caddy entry would vanish.
-func TestAFailedFirstLoadLeavesNoCaddyEntryBuffered(t *testing.T) {
+// A first load that fails after Caddy has opened its logs (here, on a port that
+// is taken, which fails while the apps start) must not leave Caddy's default
+// logger buffering, or every later Caddy entry would vanish. Start can reach no
+// failure between turning the buffering on and Caddy's openLogs: the checks
+// before it run ahead of the buffering, and the config Start builds always
+// parses, so a failure before openLogs cannot be provoked from here.
+func TestAFirstLoadThatFailsOnATakenPortLeavesNoCaddyEntryBuffered(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", "")
 	busy, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
