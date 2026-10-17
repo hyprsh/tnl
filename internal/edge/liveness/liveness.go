@@ -112,9 +112,9 @@ type entry struct {
 	silenceAsked bool          // OnSilent has been asked in the current silence
 }
 
-// outside reports whether the version the Outpost reported is outside the
+// Outside reports whether the version the Outpost reported is outside the
 // Edge's window.
-func (l *Liveness) outside(version string) bool {
+func (l *Liveness) Outside(version string) bool {
 	return l.cfg.EdgeVersion != "" && version != "" && !ver.EdgeAccepts(l.cfg.EdgeVersion, version)
 }
 
@@ -194,7 +194,7 @@ func (l *Liveness) SetVersion(name, version string) {
 	warn := false
 	if e != nil {
 		e.version = version
-		if l.outside(version) {
+		if l.Outside(version) {
 			warn = e.warned != version
 			e.warned = version
 		} else {
@@ -329,7 +329,7 @@ func (l *Liveness) Info(name string) Info {
 		st = Offline
 	} else if e.never && !e.heard {
 		st = NeverConnected
-	} else if l.outside(e.version) {
+	} else if l.Outside(e.version) {
 		st = Incompatible
 	}
 	info := Info{State: st, LastSeen: e.lastSeen, Heard: e.heard, Endpoint: e.endpoint, Version: e.version}

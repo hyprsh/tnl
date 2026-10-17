@@ -99,8 +99,11 @@ func serveLiveness(ctx context.Context, bg *sync.WaitGroup, l *liveness.Liveness
 			}
 			ping, err := wire.ParsePing(buf[:n])
 			if err != nil {
-				h.Log.Debug("refused a ping", "outpost", name, "error", err)
-				continue
+				var judged bool
+				if ping, judged = judgeRefusedPing(l, buf[:n]); !judged {
+					h.Log.Debug("refused a ping", "outpost", name, "error", err)
+					continue
+				}
 			}
 			// The first time an Outpost is heard from, save its endpoint before
 			// counting it online, so a crash after that still shows it connected.
@@ -143,6 +146,19 @@ func serveLiveness(ctx context.Context, bg *sync.WaitGroup, l *liveness.Liveness
 		}
 	})
 	return nil
+}
+
+// judgeRefusedPing is what the Edge takes from a ping ParsePing refused. The
+// marker, the format number and the version never change, so a ping from a later
+// release is still judged by its version. One outside the window comes back as a
+// ping of its version alone, to be answered as outside; any other refused ping
+// is dropped (false).
+func judgeRefusedPing(l *liveness.Liveness, b []byte) (wire.Ping, bool) {
+	v, ok := wire.PingVersion(b)
+	if !ok || !l.Outside(v) {
+		return wire.Ping{}, false
+	}
+	return wire.Ping{Version: v}, true
 }
 
 // answerPing is the Edge's answer to an Outpost's ping. A ping with a
