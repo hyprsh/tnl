@@ -117,6 +117,10 @@ func serveLiveness(ctx context.Context, bg *sync.WaitGroup, l *liveness.Liveness
 		for {
 			select {
 			case <-ctx.Done():
+				// One last look, so an Outpost that handshook within the last
+				// poll is remembered as having connected. The device is still
+				// open: it closes after bg is done.
+				rememberEndpoints(store, pollWireGuard(l, tun, store.Snapshot(), rx), tried)
 				return
 			case <-t.C:
 			}
