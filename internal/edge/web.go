@@ -160,9 +160,12 @@ func startWeb(w *Web, d webDeps) (stop func(), err error) {
 			var extra []routes.Header
 			for _, h := range r.Headers {
 				// The state holds only checked headers, so ok is always true.
-				if name, value, ok := state.SplitHeader(h); ok {
-					extra = append(extra, routes.Header{Name: name, Value: value})
+				name, value, ok := state.SplitHeader(h)
+				if !ok {
+					d.Log.Warn("a Route's extra response header is malformed and is left out", "header", h)
+					continue
 				}
+				extra = append(extra, routes.Header{Name: name, Value: value})
 			}
 			rs = append(rs, routes.Route{
 				Hostname: r.Hostname, Outpost: r.Outpost, Service: svc.HostPort,
