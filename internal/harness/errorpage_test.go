@@ -192,7 +192,7 @@ func TestTimeoutIsNotRetried(t *testing.T) {
 	}
 }
 
-func TestEventStreamToADownServiceIsResetNotAnswered(t *testing.T) {
+func TestEventStreamToADownServiceGetsRetryAndIsClosed(t *testing.T) {
 	log, lines := newLogCapture()
 	h := New(t)
 	o := h.AddOutpost(t, OutpostOptions{Name: "home"})
@@ -206,15 +206,23 @@ func TestEventStreamToADownServiceIsResetNotAnswered(t *testing.T) {
 			req, _ := http.NewRequestWithContext(ctx(t), "GET", "https://"+host+"/events", nil)
 			req.Header.Set("Accept", "text/event-stream")
 			resp, err := ce.Client(t, proto).Do(req)
-			if err == nil {
-				body, _ := io.ReadAll(resp.Body)
-				resp.Body.Close()
-				t.Fatalf("%s %s: got a %d answer %q, want a reset", proto, host, resp.StatusCode, body)
+			if err != nil {
+				t.Fatalf("%s %s: %v, want a 200 answer", proto, host, err)
+			}
+			body, err := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			if err != nil {
+				t.Fatalf("%s %s: the stream did not close cleanly: %v", proto, host, err)
+			}
+			if resp.StatusCode != 200 || !strings.HasPrefix(resp.Header.Get("Content-Type"), "text/event-stream") || string(body) != "retry: 5000\n\n" {
+				t.Fatalf("%s %s: got %d %q %q, want 200 text/event-stream with retry: 5000", proto, host, resp.StatusCode, resp.Header.Get("Content-Type"), body)
 			}
 		}
+		// One line per request with the real status; retry: 5000 bounds a
+		// browser to one line per 5 s.
 		got := lines.String()
-		if !strings.Contains(got, "host="+host) || !strings.Contains(got, status) || !strings.Contains(got, "reset=true") {
-			t.Errorf("%s: the reset does not log the status it replaces:\n%s", host, got)
+		if !strings.Contains(got, "host="+host) || !strings.Contains(got, status) || !strings.Contains(got, "event_stream=true") || strings.Contains(got, "reset=") {
+			t.Errorf("%s: the line does not log the real status:\n%s", host, got)
 		}
 	}
 }

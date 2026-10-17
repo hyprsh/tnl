@@ -18,10 +18,10 @@ import (
 )
 
 const (
-	varActive = "tnl.active"
-	varReason = "tnl.reason"
-	varStatus = "tnl.status"
-	varReset  = "tnl.reset"
+	varActive      = "tnl.active"
+	varReason      = "tnl.reason"
+	varStatus      = "tnl.status"
+	varEventStream = "tnl.eventstream"
 )
 
 // active is one request in flight, as the Router sees it. The drain reaches a
@@ -222,11 +222,11 @@ func (rt *Runtime) isActive(a *active) bool {
 
 // noteAnswer records, for the request line, that the Edge answered this request
 // itself, and why.
-func noteAnswer(req *http.Request, status int, reason string, reset bool) {
+func noteAnswer(req *http.Request, status int, reason string, eventStream bool) {
 	ctx := req.Context()
 	caddyhttp.SetVar(ctx, varReason, reason)
 	caddyhttp.SetVar(ctx, varStatus, status)
-	caddyhttp.SetVar(ctx, varReset, reset)
+	caddyhttp.SetVar(ctx, varEventStream, eventStream)
 }
 
 // recorder wraps the response writer to count the bytes and remember the
@@ -294,9 +294,11 @@ type requestLog struct {
 // the Service answered gets one only with --access-log.
 func (rt *Runtime) writeRequestLine(l requestLog) {
 	reason, _ := l.vars(varReason).(string)
-	reset, _ := l.vars(varReset).(bool)
+	eventStream, _ := l.vars(varEventStream).(bool)
 	status := l.rec.status
-	if st, ok := l.vars(varStatus).(int); ok && status == 0 {
+	if st, ok := l.vars(varStatus).(int); ok && (status == 0 || eventStream) {
+		// An event stream was answered 200, but the log keeps the status the
+		// Edge would have sent.
 		status = st
 	}
 	level := slog.LevelInfo
@@ -327,8 +329,8 @@ func (rt *Runtime) writeRequestLine(l requestLog) {
 		"proto", l.req.Proto,
 		"status", status,
 	}
-	if reset {
-		attrs = append(attrs, "reset", true)
+	if eventStream {
+		attrs = append(attrs, "event_stream", true)
 	}
 	bytesIn := int64(0)
 	if l.body != nil {
