@@ -99,3 +99,27 @@ func TestTheComposeExamplesParseAsWrittenAndMatchTheSpec(t *testing.T) {
 		t.Fatalf("%+v", got)
 	}
 }
+
+// The README's quick start shows the Compose examples as they are, less the
+// marker that tells release-please which line holds the version.
+func TestTheReadmeShowsTheComposeExamplesAsTheyAre(t *testing.T) {
+	readme, err := os.ReadFile("../../README.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	blocks := regexp.MustCompile("(?s)```yaml\n(.*?)```").FindAllStringSubmatch(string(readme), -1)
+	files := []string{"../../examples/compose/edge.yaml", "../../examples/compose/outpost.yaml"}
+	if len(blocks) != len(files) {
+		t.Fatalf("the README has %d yaml blocks, want %d", len(blocks), len(files))
+	}
+	for i, f := range files {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := strings.ReplaceAll(string(b), " # x-release-please-version", "")
+		if blocks[i][1] != want {
+			t.Errorf("the README's yaml block %d differs from %s:\n%s", i+1, f, blocks[i][1])
+		}
+	}
+}
