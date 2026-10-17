@@ -217,11 +217,10 @@ func (rt *Runtime) headerFormat(outpost string) int {
 	return wire.FormatFor(v)
 }
 
-// dialOutpostOnce opens a Tunnel connection to the Outpost's data port, sends the tnl
-// header and reads the reply. On ok the connection is ready for request bytes.
-func (rt *Runtime) dialOutpostOnce(ctx context.Context, addr netip.AddrPort, outpost string, h wire.Header) (net.Conn, error) {
-	// An online Outpost whose Tunnel isn't up (WireGuard has no session, so the
-	// connect hangs) is waited for up to tunnelWait, then answered with 503.
+// connectOutpost connects to the Outpost's data port. An online Outpost whose
+// Tunnel isn't up (WireGuard has no session, so the connect hangs) is waited
+// for up to tunnelWait, then fails with errTunnelWait.
+func (rt *Runtime) connectOutpost(ctx context.Context, addr netip.AddrPort) (net.Conn, error) {
 	dctx, cancel := context.WithTimeout(ctx, tunnelWait)
 	defer cancel()
 	var c net.Conn
@@ -238,6 +237,47 @@ func (rt *Runtime) dialOutpostOnce(ctx context.Context, addr netip.AddrPort, out
 		if dctx.Err() == context.DeadlineExceeded && ctx.Err() == nil {
 			return nil, errTunnelWait
 		}
+		return nil, err
+	}
+	return c, nil
+}
+
+// watchReused bounds the wait of a request sent on a pooled connection. Such a
+// connection is not dialed, so connectOutpost's 10 s does not apply, and one
+// whose Tunnel went down hangs until the Outpost goes Offline (60 s). If the
+// request has no answer after tunnelAttempt, the watch connects to the Outpost
+// like a new request would: a Tunnel that is up ends the watch, one that stays
+// down for tunnelWait ends the request with errTunnelWait. It returns when the
+// first byte of the answer arrives (stop is closed) or ctx ends.
+func (rt *Runtime) watchReused(ctx context.Context, addr netip.AddrPort, answered <-chan struct{}, giveUp context.CancelCauseFunc) {
+	t := time.NewTimer(tunnelAttempt)
+	defer t.Stop()
+	select {
+	case <-answered:
+		return
+	case <-ctx.Done():
+		return
+	case <-t.C:
+	}
+	c, err := rt.connectOutpost(ctx, addr)
+	if err == nil {
+		c.Close()
+		return
+	}
+	if errors.Is(err, errTunnelWait) {
+		select {
+		case <-answered:
+		default:
+			giveUp(errTunnelWait)
+		}
+	}
+}
+
+// dialOutpostOnce opens a Tunnel connection to the Outpost's data port, sends the tnl
+// header and reads the reply. On ok the connection is ready for request bytes.
+func (rt *Runtime) dialOutpostOnce(ctx context.Context, addr netip.AddrPort, outpost string, h wire.Header) (net.Conn, error) {
+	c, err := rt.connectOutpost(ctx, addr)
+	if err != nil {
 		return nil, err
 	}
 	// Tracked from the dial on, so a close reaches connections still in the
