@@ -184,7 +184,8 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	resp, err := t.rt.pool.transport(t.rt, route, addr).RoundTrip(out)
 	if err != nil {
 		if errors.Is(err, errTunnelWait) {
-			return t.rt.fail(req, id, http.StatusServiceUnavailable, "outpost offline")
+			// Not Offline (that answers at once): the Tunnel didn't come back in time.
+			return t.rt.fail(req, id, http.StatusServiceUnavailable, "tunnel not up")
 		}
 		var re *ReplyError
 		if errors.As(err, &re) {

@@ -6,7 +6,7 @@ When the Edge can't pass a request on, it answers itself with one built-in page 
 
 | Status | When | Message |
 |---|---|---|
-| 503 | the Outpost is offline or incompatible | "app.example.com is offline" |
+| 503 | the Outpost is offline or incompatible, or its Tunnel did not come up within 10 s | "app.example.com is offline" |
 | 502 | the Service is unreachable | "app.example.com isn't answering" |
 | 404 | no Route for the Hostname | "Nothing is served at app.example.com" |
 
@@ -56,6 +56,7 @@ The reasons:
 | `dns` | the Outpost couldn't resolve the Service's name |
 | `allowlist` | the Outpost's allowlist doesn't permit the Service's address |
 | `outpost offline` | nothing heard from the Outpost for 60 s, or its connection dropped under the request |
+| `tunnel not up` | the Outpost was not yet considered offline, but its Tunnel did not come back within the 10 s a request waits. The request goes through as soon as the Tunnel returns within those 10 s |
 | `outpost incompatible` | the Outpost's version is outside the window the Edge accepts |
 | `no route` | no Route for the Hostname |
 
