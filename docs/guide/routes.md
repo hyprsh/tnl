@@ -79,6 +79,27 @@ tnl connect --allow 192.168.1.0/24,localhost:3000
 
 A Service the list refuses is answered with the `allowlist` dial error: Visitors get a 502, and the request is not retried. The Outpost logs each refusal at `info`, with the request ID and the address the Edge named, and logs its allowlist when it starts (`allow=none` when it has none).
 
+## Headers the Edge sets
+
+The Edge passes the Service's reply through, with these changes:
+
+- **`Strict-Transport-Security: max-age=31536000`** is added to every HTTPS reply, unless the Service sends its own, which is left as it is. There is no `includeSubDomains` or `preload`. The port-80 redirect sends none. HSTS can't be turned off per Route, and Routes can't add headers.
+- **`Via`** is removed from replies to Visitors, so they never see `Caddy`.
+- **`Server`** is the Service's own. If the Service sends none, the reply has none.
+
+The Edge's own replies (its error pages, the `200` it gives an event-stream request when the Service is down, and the redirect from port 80) carry no `Server` header and `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer` and `Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'`.
+
+Everything else is the Service's to set: `Content-Security-Policy`, `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy` and `Permissions-Policy`. The Edge doesn't add them to the Service's replies, because it can't know what the app needs. In nginx, for example:
+
+```nginx
+add_header Content-Security-Policy "default-src 'self'" always;
+add_header X-Content-Type-Options nosniff always;
+add_header Referrer-Policy strict-origin-when-cross-origin always;
+add_header Permissions-Policy "geolocation=()" always;
+```
+
+Findings from scanners about cookies, privacy notices or scraping belong to the site, not to the proxy.
+
 ## Declaring Routes on the Outpost
 
 An Outpost can list its own Routes in `TNL_ROUTE_*` variables or `--route` flags instead of using `tnl route add`. While it does, those Routes can't be changed with the CLI. See [Declaring Routes on the Outpost](declaring-routes.md).

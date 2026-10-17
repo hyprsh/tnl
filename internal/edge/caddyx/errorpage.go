@@ -59,11 +59,30 @@ small{margin-top:1.5rem;color:var(--muted);font-size:.75rem}
 </html>
 `))
 
+// ownHeaders are set on every reply the Edge makes itself: the page has inline
+// CSS, no script and no external request, so nothing else is allowed.
+var ownHeaders = [][2]string{
+	{"X-Content-Type-Options", "nosniff"},
+	{"X-Frame-Options", "DENY"},
+	{"Referrer-Policy", "no-referrer"},
+	{"Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'"},
+}
+
+// setOwnHeaders hardens a reply the Edge makes itself and removes the Server
+// header Caddy sets on every response. The Edge's own replies send none.
+func setOwnHeaders(h http.Header) {
+	for _, kv := range ownHeaders {
+		h.Set(kv[0], kv[1])
+	}
+	h.Del("Server")
+}
+
 // writeErrorPage answers with the built-in page, or one line of text if the
 // Visitor doesn't accept HTML. Every answer is no-store.
 func writeErrorPage(w http.ResponseWriter, p errorPage) {
 	h := w.Header()
 	h.Set("Cache-Control", "no-store")
+	setOwnHeaders(h)
 	if !p.acceptsHTML() {
 		h.Set("Content-Type", "text/plain; charset=utf-8")
 		w.WriteHeader(p.Status)

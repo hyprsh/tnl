@@ -25,6 +25,7 @@ func eventStreamReply(req *http.Request) *http.Response {
 	h := http.Header{}
 	h.Set("Content-Type", "text/event-stream")
 	h.Set("Cache-Control", "no-store")
+	setOwnHeaders(h)
 	return &http.Response{
 		Status:        "200 OK",
 		StatusCode:    http.StatusOK,
