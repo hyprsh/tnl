@@ -32,7 +32,7 @@ func outpostAdd(args []string) error {
 		return err
 	}
 	if len(pos) != 1 {
-		return fmt.Errorf("usage: tnl outpost add <name> [--ttl D]")
+		return usageErr("outpost add", "usage: tnl outpost add <name> [--ttl D]")
 	}
 	r, err := api.Call[api.OutpostAddReply](context.Background(), c.client(), http.MethodPost, api.PathOutposts, api.OutpostAddRequest{Name: pos[0], TTL: *ttl})
 	if err != nil {
@@ -81,7 +81,7 @@ func outpostRm(args []string) error {
 		return err
 	}
 	if len(pos) != 1 {
-		return fmt.Errorf("usage: tnl outpost rm <name> [--with-routes]")
+		return usageErr("outpost rm", "usage: tnl outpost rm <name> [--with-routes]")
 	}
 	r, err := api.Call[api.OutpostRmReply](context.Background(), c.client(), http.MethodPost, api.PathOutpostRm,
 		api.OutpostRmRequest{Name: pos[0], WithRoutes: *with})
@@ -106,7 +106,7 @@ func outpostRekey(args []string) error {
 		return err
 	}
 	if len(pos) != 1 {
-		return fmt.Errorf("usage: tnl outpost rekey <name> [--ttl D]")
+		return usageErr("outpost rekey", "usage: tnl outpost rekey <name> [--ttl D]")
 	}
 	r, err := api.Call[api.OutpostAddReply](context.Background(), c.client(), http.MethodPost, api.PathOutpostRekey,
 		api.OutpostRekeyRequest{Name: pos[0], TTL: *ttl})

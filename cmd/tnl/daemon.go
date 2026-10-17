@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"flag"
-	"fmt"
 	"io"
 	"log/slog"
 	"os"
@@ -18,17 +17,18 @@ import (
 // validates the result. Every failure is a configError, except -h.
 func parseDaemon(name string, args []string, usageOut io.Writer, define func(*flag.FlagSet), check func(*flag.FlagSet) error) (*logx.Config, error) {
 	fs := flag.NewFlagSet("tnl "+name, flag.ContinueOnError)
-	fs.SetOutput(usageOut)
+	flagSetMade(fs)
+	fs.SetOutput(io.Discard) // a bad flag is reported once, with a pointer to the help
 	define(fs)
 	log := logx.AddFlags(fs)
 	if err := fs.Parse(args); err != nil {
 		if err == flag.ErrHelp {
 			return log, err
 		}
-		return log, configError{err}
+		return log, configError{usageErr(name, "%v", err)}
 	}
 	if fs.NArg() > 0 {
-		return log, configError{fmt.Errorf("unexpected argument %q", fs.Arg(0))}
+		return log, configError{usageErr(name, "unexpected argument %q", fs.Arg(0))}
 	}
 	if check != nil {
 		if err := check(fs); err != nil {

@@ -27,7 +27,7 @@ func routeEdit(args []string) error {
 		return err
 	}
 	if len(pos) != 1 {
-		return fmt.Errorf("usage: tnl route edit <hostname> [--service URL] [--outpost NAME] [--host-header V] [--insecure-skip-verify=true|false]")
+		return usageErr("route edit", "usage: tnl route edit <hostname> [--service URL] [--outpost NAME] [--host-header V] [--insecure-skip-verify=true|false]")
 	}
 	cl := c.client()
 	if err := checkOutpostFlag(cl, "route edit", flagGiven(c.fs, "outpost"), false, ""); err != nil {

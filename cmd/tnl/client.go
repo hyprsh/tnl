@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"flag"
-	"fmt"
 	"io"
 	"os"
 	"sort"
@@ -23,19 +22,23 @@ type group struct {
 	subs map[string]func(args []string) error
 }
 
+// groups are the registered groups by name.
+var groups = map[string]*group{}
+
 func newGroup(name string) *group {
 	g := &group{name: name, subs: map[string]func([]string) error{}}
+	groups[name] = g
 	commands[name] = g.run
 	return g
 }
 
 func (g *group) run(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: tnl %s <command>; commands: %v", g.name, g.names())
+		return usageErr(g.name, "usage: tnl %s <command>; commands: %v", g.name, g.names())
 	}
 	sub, ok := g.subs[args[0]]
 	if !ok {
-		return fmt.Errorf("unknown command \"%s %s\"; commands: %v", g.name, args[0], g.names())
+		return usageErr(g.name, "unknown command \"%s %s\"; commands: %v", g.name, args[0], g.names())
 	}
 	return sub(args[1:])
 }
@@ -53,12 +56,15 @@ func (g *group) names() []string {
 // the process to talk to. Without it, and without TNL_STATE_DIR, parse
 // discovers the one live socket (see discoverStateDir).
 type clientCommand struct {
+	name     string
 	fs       *flag.FlagSet
 	stateDir string
 }
 
 func newClientCommand(name string) *clientCommand {
-	c := &clientCommand{fs: flag.NewFlagSet("tnl "+name, flag.ContinueOnError)}
+	c := &clientCommand{name: name, fs: flag.NewFlagSet("tnl "+name, flag.ContinueOnError)}
+	c.fs.SetOutput(io.Discard) // a bad flag is reported once, with a pointer to the help
+	flagSetMade(c.fs)
 	c.fs.StringVar(&c.stateDir, "state-dir", os.Getenv("TNL_STATE_DIR"),
 		"the state directory of the process to talk to (TNL_STATE_DIR)")
 	return c
@@ -69,7 +75,7 @@ func newClientCommand(name string) *clientCommand {
 func (c *clientCommand) parse(args []string) (positional []string, err error) {
 	for {
 		if err := c.fs.Parse(args); err != nil {
-			return nil, err
+			return nil, usageErr(c.name, "%v", err)
 		}
 		if c.fs.NArg() == 0 {
 			c.stateDir, err = discoverStateDir(c.stateDir)
@@ -102,7 +108,7 @@ func lsCommand[L any](name, path string, print func(io.Writer, L) error) func([]
 			return err
 		}
 		if len(pos) > 0 {
-			return fmt.Errorf("%s takes no arguments, got %q", name, pos[0])
+			return usageErr(name, "%s takes no arguments, got %q", name, pos[0])
 		}
 		_, err = showReply(c, path, *asJSON, print)
 		return err

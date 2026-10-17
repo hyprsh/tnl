@@ -35,7 +35,7 @@ func zoneAdd(args []string) error {
 		return err
 	}
 	if len(pos) != 1 {
-		return fmt.Errorf("usage: tnl zone add <zone> [--wildcard PROVIDER]")
+		return usageErr("zone add", "usage: tnl zone add <zone> [--wildcard PROVIDER]")
 	}
 	req := api.ZoneAddRequest{Name: pos[0], Provider: *provider}
 	if *provider != "" {

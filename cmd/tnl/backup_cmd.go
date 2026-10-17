@@ -27,7 +27,7 @@ func backupCommand(args []string) error {
 		return err
 	}
 	if len(pos) != 1 {
-		return fmt.Errorf("usage: tnl backup <file|->")
+		return usageErr("backup", "usage: tnl backup <file|->")
 	}
 	body, hdr, err := c.client().Download(context.Background(), api.PathBackup)
 	if err != nil {

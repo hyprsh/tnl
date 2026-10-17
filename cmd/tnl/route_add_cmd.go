@@ -42,7 +42,7 @@ func routeAdd(args []string) error {
 		return err
 	}
 	if len(pos) != 2 {
-		return fmt.Errorf("usage: tnl route add <hostname> <service-url> --outpost NAME")
+		return usageErr("route add", "usage: tnl route add <hostname> <service-url> --outpost NAME")
 	}
 	cl := c.client()
 	if err := checkOutpostFlag(cl, "route add", flagGiven(c.fs, "outpost"), *outpost == "", pos[1]); err != nil {

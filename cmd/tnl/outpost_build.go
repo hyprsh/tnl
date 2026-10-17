@@ -40,3 +40,13 @@ func needsFullBuild(command string) func([]string) error {
 		return fmt.Errorf("this is the Outpost build; `tnl %s` needs the full build, on the Edge host", command)
 	}
 }
+
+// refusedHere reports whether this build refuses the command, or the group it is in.
+func refusedHere(path string) bool {
+	for _, name := range edgeOnlyCommands {
+		if path == name || strings.HasPrefix(path, name+" ") {
+			return true
+		}
+	}
+	return false
+}

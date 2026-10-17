@@ -21,7 +21,7 @@ func routeRm(args []string) error {
 		return err
 	}
 	if len(pos) != 1 {
-		return fmt.Errorf("usage: tnl route rm <hostname>")
+		return usageErr("route rm", "usage: tnl route rm <hostname>")
 	}
 	r, err := api.Call[api.RouteRmReply](context.Background(), c.client(), http.MethodPost, api.PathRouteRm,
 		api.RouteRmRequest{Hostname: pos[0]})

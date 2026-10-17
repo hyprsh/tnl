@@ -130,6 +130,10 @@ Things to know:
 - **The token** goes in `TNL_TOKEN`. It works once, and the volume keeps what the Outpost saves. An Outpost declared by its Edge uses `TNL_CREDENTIAL_FILE` instead and needs no volume.
 - **Routes** can be declared in `TNL_ROUTE_*` variables, as the example does; see [Declaring Routes on the Outpost](declaring-routes.md).
 
+## Help and shell completion
+
+`tnl help` explains every command. `install.sh` installs no shell completion; [Help and shell completion](completion.md) says how to add it for bash, zsh or fish.
+
 ## Uninstalling
 
 `install.sh` has no uninstall. Stop and remove what it added:
