@@ -293,7 +293,7 @@ func (c Config) JSON() ([]byte, error) {
 						"automatic_https": map[string]any{"disable": true},
 						"routes": []any{map[string]any{"handle": []any{map[string]any{
 							"handler": "static_response", "status_code": 308,
-							"headers": map[string]any{"Location": []string{location}},
+							"headers": redirectHeaders(location),
 						}}}},
 					},
 				},
@@ -438,4 +438,15 @@ func Stop() error { return caddy.Stop() }
 // RootCertPath is where Caddy's internal CA keeps its root certificate.
 func RootCertPath(stateDir string) string {
 	return filepath.Join(stateDir, "caddy", "pki", "authorities", "local", "root.crt")
+}
+
+// redirectHeaders are the redirect's headers: the Edge's own hardened set, no
+// Server (an empty value overrides the one Caddy sets) and no HSTS, which
+// belongs on HTTPS replies only.
+func redirectHeaders(location string) map[string]any {
+	h := map[string]any{"Location": []string{location}, "Server": []string{}}
+	for _, kv := range ownHeaders {
+		h[kv[0]] = []string{kv[1]}
+	}
+	return h
 }
