@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/hyprsh/tnl/internal/state"
+	"github.com/hyprsh/tnl/internal/version"
 )
 
 // The skew check runs real tnl binaries of different versions against each
@@ -28,6 +29,7 @@ import (
 //	TNL_SKEW_WEB            the path the Edge builds were told to read (main.testWebFile)
 //	TNL_SKEW_DIR            holds the stamped builds tnl-a (0.1.0), tnl-b (0.1.9), tnl-c (0.2.0)
 //	TNL_SKEW_TAG_BIN        the latest release tag's build
+//	TNL_SKEW_TAG_VERSION    that tag's version, without the v
 //	TNL_SKEW_CUR_BIN        the current tree, stamped as release-please gives it after the tag (scripts/next-release.sh)
 //	TNL_SKEW_CUR_IN_WINDOW  "1" when that stamp is the tag's next patch, inside its window; "0" when a breaking commit made it the next minor, outside
 //	TNL_SKEW_CUR_OUT_BIN    the current tree, stamped outside the tag's window (a new 0.x minor; two majors on from 1.0)
@@ -91,11 +93,16 @@ func TestSkewAgainstTheLatestTag(t *testing.T) {
 		if !edgeOK {
 			t.Skip("the tag's Edge cannot be put on high ports: its source predates the check's hook")
 		}
-		// The tag's Edge drops the ping of a tree that has a field the tag lacks
-		// (the session id), so it never judges the Outpost by its version and
-		// keeps serving it. Minors needn't work together before 1.0, and the Edge
-		// cannot say so; a tag that has the field shows Incompatible as before.
-		runSkew(t, skewStep{tag, tag}, &skewStep{tag, out}, true)
+		// A tag before 0.2 predates the Edge judging a ping it refuses: it drops
+		// the ping of a tree that has a field it lacks (the session id), never
+		// learns the Outpost's version and keeps serving it, which is its
+		// documented limit. From 0.2 on the Edge reads the version of a ping it
+		// refuses, so the Outpost is Incompatible and answers 503, as the spec says.
+		serve := true
+		if v, ok := version.Parse(skewEnv(t, "TNL_SKEW_TAG_VERSION")); ok && (v.Major > 0 || v.Minor >= 2) {
+			serve = false
+		}
+		runSkew(t, skewStep{tag, tag}, &skewStep{tag, out}, serve)
 	})
 	t.Run("the Edge upgraded outside the window over the tag's Outpost", func(t *testing.T) {
 		// Joining needs the same minor: the current tree joins only inside the window.

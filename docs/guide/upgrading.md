@@ -48,6 +48,10 @@ The Edge's status commands name the state `incompatible`, and its log carries th
 
 Upgrade the side the message names. The Outpost recovers within one ping, about 10 s after the versions are inside the window.
 
+## A 0.2 Outpost under a 0.1.x Edge
+
+A 0.1.x Edge cannot read a 0.2 Outpost's ping, which carries a field it lacks, so it drops it without an answer. It never learns the Outpost's version, so it does not mark it Incompatible. The Outpost, hearing no pongs, logs "No answer from the Edge" at `warn`, and `tnl status` shows the Tunnel down. It sends no Declaration, as the Declaration travels with the ping. Upgrade the Edge first, as above, and the Outpost recovers by itself. An Edge from 0.2 on judges any later Outpost by the version in its ping and marks it Incompatible, as described above.
+
 ## Joining with a token
 
 A join token carries the Edge's version. An Outpost that cannot work with that Edge refuses the token before it writes anything, naming both versions and the Outpost version to install: the Edge's own. The install line `tnl outpost add` prints is pinned to the Edge's version, so it is always right.

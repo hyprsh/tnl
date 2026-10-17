@@ -74,7 +74,7 @@ else
   else
     echo "notice: $tag predates the check's high-port hook, so its Edge is not run; only its Outpost is"
   fi
-  TNL_SKEW_WEB="$web" TNL_SKEW_TAG_BIN="$tmp/tnl-tag" TNL_SKEW_CUR_BIN="$tmp/tnl-cur" TNL_SKEW_CUR_OUT_BIN="$tmp/tnl-cur-out" TNL_SKEW_CUR_IN_WINDOW="$inside" TNL_SKEW_TAG_EDGE_OK="$edge_ok" \
+  TNL_SKEW_WEB="$web" TNL_SKEW_TAG_BIN="$tmp/tnl-tag" TNL_SKEW_TAG_VERSION="$v" TNL_SKEW_CUR_BIN="$tmp/tnl-cur" TNL_SKEW_CUR_OUT_BIN="$tmp/tnl-cur-out" TNL_SKEW_CUR_IN_WINDOW="$inside" TNL_SKEW_TAG_EDGE_OK="$edge_ok" \
     go test -count=1 -timeout 10m -tags nomysql -run 'TestSkewAgainstTheLatestTag' ./internal/harness
 fi
 echo "ok: real Edge and Outpost processes of different versions work together as the spec says"

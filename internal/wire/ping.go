@@ -129,6 +129,31 @@ func ParsePing(b []byte) (Ping, error) {
 	return p, nil
 }
 
+// PingVersion reads the Outpost's version from a ping that ParsePing may refuse,
+// as one from a later release with fields this build does not know. The marker,
+// the format number and the version field never change, so any Edge can judge
+// any later Outpost by it. Fields before the version are skipped by their
+// lengths; nothing after it is read.
+func PingVersion(b []byte) (string, bool) {
+	if len(b) < 5 || [4]byte(b[:4]) != PingMarker || b[4] != FormatV1 {
+		return "", false
+	}
+	b = b[5:]
+	for len(b) > 0 && b[0] != tagEnd {
+		tag := b[0]
+		n, w := binary.Uvarint(b[1:])
+		if w <= 0 || n > uint64(len(b)-1-w) {
+			return "", false
+		}
+		value := b[1+w : 1+w+int(n)]
+		if tag == tagPingVersion {
+			return string(value), n <= maxVersion
+		}
+		b = b[1+w+int(n):]
+	}
+	return "", false
+}
+
 // ParsePong reads a whole datagram, refusing what ParsePing refuses. The
 // match flag and the Routes digest go together.
 func ParsePong(b []byte) (Pong, error) {
