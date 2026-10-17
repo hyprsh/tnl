@@ -76,14 +76,13 @@ type EdgeOptions struct {
 	// AccessLog is --access-log. DrainTimeout shrinks the 10 s of stopping.
 	AccessLog    bool
 	DrainTimeout time.Duration
-	// OfflineAfter, LivenessPoll and PingInterval shrink the spec's 60 s, the
-	// Edge's check interval and the 10 s ping, for this Edge and for the
-	// Outposts that Connect to it. Zero keeps the spec's values, except that
-	// the Edge checks every 20 ms and Outposts ping every 100 ms by default.
-	OfflineAfter, LivenessPoll, PingInterval time.Duration
-	// SilentAfter shrinks the 20 s of Outpost silence after which the Edge
-	// closes its Tunnel connections.
-	SilentAfter time.Duration
+	// OfflineAfter, SilentAfter, LivenessPoll and PingInterval shrink the spec's
+	// 60 s, the 20 s of silence after which the Edge closes an Outpost's Tunnel
+	// connections, the Edge's check interval and the 10 s ping, for this Edge
+	// and for the Outposts that Connect to it. Zero keeps the spec's values,
+	// except that the Edge checks every 20 ms and Outposts ping every 100 ms by
+	// default.
+	OfflineAfter, SilentAfter, LivenessPoll, PingInterval time.Duration
 	// CertWait shortens the certificate wait at `route add`; zero keeps 60 s.
 	CertWait time.Duration
 	// Address is the Edge's --address, a name or an IP the Outposts resolve; empty

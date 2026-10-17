@@ -34,8 +34,9 @@ type livenessHooks struct {
 	Log          *slog.Logger
 	// CloseOutpost closes the Outpost's Tunnel connections when it goes Offline.
 	CloseOutpost func(name string)
-	// CloseSilent closes them when nothing has arrived from it for SilentAfter.
-	CloseSilent func(name string)
+	// SilenceOutpost closes them when nothing has arrived from it for
+	// SilentAfter, and reports whether it had any to close.
+	SilenceOutpost func(name string) bool
 }
 
 // newLiveness makes the Edge's Liveness and counts its own start as hearing
@@ -44,7 +45,7 @@ type livenessHooks struct {
 // the Outpost, before it counts it online. One without it has never connected,
 // and is not counted online.
 func newLiveness(h livenessHooks, st *state.State) *liveness.Liveness {
-	l := liveness.New(liveness.Config{EdgeVersion: h.Version, OfflineAfter: h.OfflineAfter, SilentAfter: h.SilentAfter, Log: h.Log, OnOffline: h.CloseOutpost, OnSilent: h.CloseSilent})
+	l := liveness.New(liveness.Config{EdgeVersion: h.Version, OfflineAfter: h.OfflineAfter, SilentAfter: h.SilentAfter, Log: h.Log, OnOffline: h.CloseOutpost, OnSilent: h.SilenceOutpost})
 	for _, o := range st.Outposts {
 		switch {
 		case o.OneTimeKey != nil:

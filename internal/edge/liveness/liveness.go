@@ -66,9 +66,12 @@ type Config struct {
 	Log         *slog.Logger     // transitions; nil logs nothing
 	// OnOffline runs, with no lock held, once each time an Outpost goes Offline.
 	OnOffline func(name string)
-	// OnSilent runs, with no lock held, once per silence of SilentAfter, while
-	// the Outpost is not Offline. The Outpost's state does not change.
-	OnSilent func(name string)
+	// OnSilent runs, with no lock held, at every check while the Outpost has
+	// been silent for SilentAfter and is not Offline, until it reports that it
+	// closed connections: it returns false if the Outpost had none. That close
+	// is logged and happens once per silence. The Outpost's state does not
+	// change.
+	OnSilent func(name string) bool
 }
 
 // Info is a read of one Outpost.
@@ -100,9 +103,7 @@ type entry struct {
 	version  string
 	warned   string // the version the Incompatible warning was logged for
 	offline  bool   // the Offline transition has been taken
-	silenced bool   // OnSilent has run for the current silence
-	// silencedAt is when OnSilent last ran, kept after the Outpost is heard.
-	silencedAt time.Time
+	silenced bool   // OnSilent closed connections in the current silence
 }
 
 // outside reports whether the version the Outpost reported is outside the
@@ -228,39 +229,36 @@ func (l *Liveness) Check() {
 		last time.Time
 	}
 	var out []gone
-	var quiet []string
+	type quiet struct {
+		name string
+		last time.Time
+	}
+	var silent []quiet
 	l.mu.Lock()
 	for name, e := range l.m {
 		switch {
 		case l.expire(e, now):
 			out = append(out, gone{name, e.lastSeen})
 		case !e.offline && !e.silenced && now.Sub(e.lastSeen) >= l.cfg.SilentAfter:
-			e.silenced, e.silencedAt = true, now
-			quiet = append(quiet, name)
+			silent = append(silent, quiet{name, e.lastSeen})
 		}
 	}
 	l.mu.Unlock()
 	for _, g := range out {
 		l.fireOffline(g.name, g.last)
 	}
-	for _, name := range quiet {
-		l.cfg.Log.Info("outpost silent, closing its connections", "outpost", name, "silent_for", l.cfg.SilentAfter)
-		if l.cfg.OnSilent != nil {
-			l.cfg.OnSilent(name)
+	for _, q := range silent {
+		if l.cfg.OnSilent == nil || !l.cfg.OnSilent(q.name) {
+			continue // nothing to close: ask again at the next check
 		}
+		l.mu.Lock()
+		// Heard in the meantime: that silence is over, and not this close's.
+		if e := l.m[q.name]; e != nil && e.lastSeen.Equal(q.last) {
+			e.silenced = true
+		}
+		l.mu.Unlock()
+		l.cfg.Log.Info("outpost silent, closing its connections", "outpost", q.name, "silent_for", l.cfg.SilentAfter)
 	}
-}
-
-// SilencedAt is when the Outpost's connections were last closed for silence;
-// zero if never. It outlasts the silence, so a request that was cut can still
-// be told from one that was not.
-func (l *Liveness) SilencedAt(name string) time.Time {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	if e := l.m[name]; e != nil {
-		return e.silencedAt
-	}
-	return time.Time{}
 }
 
 // expire marks e Offline if it is due and reports whether it did. The caller

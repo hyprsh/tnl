@@ -1,20 +1,27 @@
 package liveness
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
 
-func newSilentRig() (*rig, *[]string) {
-	r := newRig()
-	var cut []string
+// newSilentRig has an OnSilent that closes the Outpost's connections when open
+// is true, and records every call it is made.
+func newSilentRig() (r *rig, calls *[]string, open *bool) {
+	r = newRig()
+	calls, open = new([]string), new(bool)
+	*open = true
 	r.Liveness.cfg.SilentAfter = 20 * time.Second
-	r.Liveness.cfg.OnSilent = func(name string) { cut = append(cut, name) }
-	return r, &cut
+	r.Liveness.cfg.OnSilent = func(name string) bool {
+		*calls = append(*calls, name)
+		return *open
+	}
+	return r, calls, open
 }
 
 func TestAnOutpostSilentForTheBoundHasItsConnectionsClosedButStaysOnline(t *testing.T) {
-	r, cut := newSilentRig()
+	r, cut, _ := newSilentRig()
 	r.Seed("home")
 	r.clock.add(19 * time.Second)
 	r.Check()
@@ -25,6 +32,9 @@ func TestAnOutpostSilentForTheBoundHasItsConnectionsClosedButStaysOnline(t *test
 	r.Check()
 	if len(*cut) != 1 || (*cut)[0] != "home" {
 		t.Fatalf("closed %v", *cut)
+	}
+	if !strings.Contains(r.log.String(), "outpost silent, closing its connections") {
+		t.Fatalf("no info line:\n%s", r.log)
 	}
 	if r.State("home") != Online || len(r.gone) != 0 {
 		t.Fatal("the Outpost's state changed")
@@ -37,7 +47,7 @@ func TestAnOutpostSilentForTheBoundHasItsConnectionsClosedButStaysOnline(t *test
 }
 
 func TestHearingFromAnOutpostRestartsTheSilence(t *testing.T) {
-	r, cut := newSilentRig()
+	r, cut, _ := newSilentRig()
 	r.Seed("home")
 	r.clock.add(19 * time.Second)
 	r.Heard("home")
@@ -56,21 +66,40 @@ func TestHearingFromAnOutpostRestartsTheSilence(t *testing.T) {
 	}
 }
 
-func TestSilencedAtIsWhenTheConnectionsWereLastClosedForSilence(t *testing.T) {
-	r, _ := newSilentRig()
+func TestASilenceWithNoConnectionsToCloseIsNeitherLoggedNorCounted(t *testing.T) {
+	r, _, open := newSilentRig()
+	*open = false
 	r.Seed("home")
-	if !r.SilencedAt("home").IsZero() {
-		t.Fatal("silenced before any silence")
-	}
 	r.clock.add(20 * time.Second)
 	r.Check()
-	if got := r.SilencedAt("home"); !got.Equal(r.clock.Now()) {
-		t.Fatalf("silenced at %v", got)
+	if strings.Contains(r.log.String(), "silent") {
+		t.Fatalf("logged a close that closed nothing:\n%s", r.log)
+	}
+}
+
+func TestAConnectionOpenedDuringASilenceIsClosedOnceAndLogged(t *testing.T) {
+	r, cut, open := newSilentRig()
+	*open = false
+	r.Seed("home")
+	r.clock.add(20 * time.Second)
+	r.Check()
+	*open = true
+	r.clock.add(time.Second)
+	r.Check()
+	r.Check()
+	if strings.Count(r.log.String(), "outpost silent") != 1 {
+		t.Fatalf("want one info line:\n%s", r.log)
+	}
+	n := len(*cut)
+	r.clock.add(time.Second)
+	r.Check()
+	if len(*cut) != n {
+		t.Fatal("closed again in the same silence")
 	}
 }
 
 func TestAnOutpostOfflineBeforeTheBoundIsNotClosedForSilence(t *testing.T) {
-	r, cut := newSilentRig()
+	r, cut, _ := newSilentRig()
 	r.Liveness.cfg.SilentAfter = 2 * time.Minute
 	r.Seed("home")
 	r.clock.add(2 * time.Minute)
