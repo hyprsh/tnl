@@ -146,15 +146,24 @@ func TestAfterAnEdgeRestartOutpostsCountAsOnlineBeforeTheirFirstPing(t *testing.
 	}
 }
 
-// An Outpost that has handshaken is not shown as never connected after an Edge
-// restart, even when the Edge stops before its device poll saved the endpoint.
+// An Outpost that handshook is not shown as never connected after an Edge
+// restart, even when the Edge dies without its graceful stop and its device
+// poll has not run: the endpoint is saved before the Edge first counts the
+// Outpost online.
 func TestAnOutpostThatConnectedJustBeforeAnEdgeRestartIsNotNeverConnected(t *testing.T) {
 	re := StartEdgeWith(t, EdgeOptions{LivenessPoll: time.Hour, PingInterval: time.Hour})
 	o := re.JoinOutpost(t, "nas")
+	// JoinOutpost returns once the Edge counts the Outpost online, which with an
+	// hour-long poll only a ping can do. The save must be there already, so a
+	// kill at this point loses nothing.
+	saved := false
 	for _, x := range re.Store.Snapshot().Outposts {
 		if x.Name == "nas" && x.Endpoint.IsValid() {
-			t.Fatalf("the endpoint was saved before the restart: the test proves nothing")
+			saved = true
 		}
+	}
+	if !saved {
+		t.Fatal("the Edge counted the Outpost online before it saved the endpoint")
 	}
 	// Stop the Outpost so its own ping cannot hide the bug.
 	if err := o.Stop(); err != nil {
