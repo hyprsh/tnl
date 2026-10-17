@@ -24,8 +24,8 @@ import (
 // dropped after KeepaliveProbes unanswered probes. There is no TCP user timeout.
 // They are variables so that a test can shrink them.
 var (
-	KeepaliveIdle     = 30 * time.Second
-	KeepaliveInterval = 10 * time.Second
+	KeepaliveIdle     = 5 * time.Second
+	KeepaliveInterval = 3 * time.Second
 	KeepaliveProbes   = 3
 )
 

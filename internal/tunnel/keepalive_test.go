@@ -10,7 +10,7 @@ import (
 	"github.com/hyprsh/tnl/internal/tunnel"
 )
 
-// Every Tunnel connection has TCP keepalive of 30 s idle, a 10 s interval and 3
+// Every Tunnel connection has TCP keepalive of 5 s idle, a 3 s interval and 3
 // probes, whichever side dialled and whichever accepted.
 func TestTunnelConnectionsHaveTCPKeepaliveOnBothSides(t *testing.T) {
 	privA, pubA, _ := keys.Generate()
@@ -62,8 +62,8 @@ func TestTunnelConnectionsHaveTCPKeepaliveOnBothSides(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !on || idle != 30*time.Second || interval != 10*time.Second || probes != 3 {
-			t.Errorf("%s: keepalive on=%v idle=%v interval=%v probes=%d, want on, 30s, 10s, 3", name, on, idle, interval, probes)
+		if !on || idle != 5*time.Second || interval != 3*time.Second || probes != 3 {
+			t.Errorf("%s: keepalive on=%v idle=%v interval=%v probes=%d, want on, 5s, 3s, 3", name, on, idle, interval, probes)
 		}
 	}
 }
