@@ -10,6 +10,7 @@ package outpost
 import (
 	"cmp"
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -238,12 +239,17 @@ func connect(ctx context.Context, cfg Config, st *State, joining bool) error {
 	judge := &edgeJudge{cfg: cfg}
 	dec := newDeclarer(edgeAPI, cfg.Log, cfg.Declaration)
 	digest := dec.digest()
+	// One id per run of the Tunnel: the Edge reads a new one as a restart.
+	var session wire.Session
+	if _, err := rand.Read(session[:]); err != nil {
+		return fmt.Errorf("make a session id: %w", err)
+	}
 	answered := func(p wire.Pong) {
 		w.answered(p.Version)
 		judge.judge(p)
 		dec.answered(pingCtx, p)
 	}
-	if err := runPinger(pingCtx, tun, st.Address, cfg.Version, &digest, cmp.Or(cfg.PingInterval, DefaultPingInterval), answered, cfg.Log); err != nil {
+	if err := runPinger(pingCtx, tun, st.Address, cfg.Version, &digest, session, cmp.Or(cfg.PingInterval, DefaultPingInterval), answered, cfg.Log); err != nil {
 		return fmt.Errorf("start pinging the Edge: %w", err)
 	}
 	stopRelay, err := startRelay(cfg, tun, &statusSource{cfg: cfg, st: st, w: w, judge: judge, dec: dec, edge: edgeAPI})

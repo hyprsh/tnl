@@ -18,7 +18,7 @@ A request whose `Accept` includes `text/event-stream` never gets the 502 or 503 
 
 A WebSocket or event stream that is open when an Outpost goes Offline, or when the Edge stops, is ended the same way.
 
-If an Outpost stops or restarts and its closing packets are lost, the Edge still ends the streams through it within 15 s, because it probes idle Tunnel connections after 5 s and drops one after 3 unanswered probes 3 s apart. A restarted Outpost resets them at the first probe. An Outpost is only marked Offline after 60 s, so a stream can end before the Outpost shows as Offline.
+If an Outpost stops or restarts and its closing packets are lost, the Edge still ends the streams through it within 15 s, because it probes idle Tunnel connections after 5 s and drops one after 3 unanswered probes 3 s apart. An Outpost that restarts is told apart by the session id in its pings: the Edge closes the streams that went through the old run as soon as the first ping of the new one arrives, within a ping interval of the Outpost coming back, without waiting for a probe. A WireGuard rekey keeps the id and closes nothing. An Outpost is only marked Offline after 60 s, so a stream can end before the Outpost shows as Offline.
 
 An upload with data the Outpost never acknowledged, because its link is gone, isn't covered by keepalive. When nothing has arrived from an Outpost for 20 s, the Edge closes all its Tunnel connections, uploads included, though the Outpost is not Offline yet. A live Outpost is never that quiet, so a Visitor pausing a download, or a Service that is slow to read an upload or to answer, is not cut.
 

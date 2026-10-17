@@ -13,6 +13,7 @@ import (
 	"time"
 
 	ver "github.com/hyprsh/tnl/internal/version"
+	"github.com/hyprsh/tnl/internal/wire"
 )
 
 // DefaultOfflineAfter is the silence after which an Outpost is Offline.
@@ -72,6 +73,10 @@ type Config struct {
 	// if the Outpost had none. Hearing from the Outpost re-arms it. The
 	// Outpost's state does not change.
 	OnSilent func(name string) bool
+	// OnRestart runs, with no lock held, when a ping carries a session id that
+	// differs from the one recorded: the Outpost restarted. It closes the
+	// Outpost's connections. The Outpost's state does not change.
+	OnRestart func(name string)
 }
 
 // Info is a read of one Outpost.
@@ -101,9 +106,10 @@ type entry struct {
 	never        bool // seeded with no sign the Outpost ever connected
 	endpoint     netip.AddrPort
 	version      string
-	warned       string // the version the Incompatible warning was logged for
-	offline      bool   // the Offline transition has been taken
-	silenceAsked bool   // OnSilent has been asked in the current silence
+	session      *wire.Session // the session id of the last ping that had one
+	warned       string        // the version the Incompatible warning was logged for
+	offline      bool          // the Offline transition has been taken
+	silenceAsked bool          // OnSilent has been asked in the current silence
 }
 
 // outside reports whether the version the Outpost reported is outside the
@@ -200,6 +206,26 @@ func (l *Liveness) SetVersion(name, version string) {
 		l.cfg.Log.Warn("outpost is incompatible", "outpost", name,
 			"edge_version", l.cfg.EdgeVersion, "outpost_version", version,
 			"error", ver.IncompatibleOutpost(l.cfg.EdgeVersion, version))
+	}
+}
+
+// SetSession records the session id the Outpost's ping carried. The first one
+// seen, as after the Edge's start, closes nothing. A different one means the
+// Outpost restarted: OnRestart closes its connections, with one info line. A
+// WireGuard rekey leaves the id as it was.
+func (l *Liveness) SetSession(name string, id wire.Session) {
+	l.mu.Lock()
+	e := l.m[name]
+	restarted := e != nil && e.session != nil && *e.session != id
+	if e != nil {
+		e.session = &id
+	}
+	l.mu.Unlock()
+	if restarted {
+		l.cfg.Log.Info("outpost restarted, closing its connections", "outpost", name)
+		if l.cfg.OnRestart != nil {
+			l.cfg.OnRestart(name)
+		}
 	}
 }
 

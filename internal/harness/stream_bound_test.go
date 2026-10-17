@@ -50,8 +50,14 @@ func TestAStreamEndsWithinTheBoundWhenTheOutpostsClosesNeverArrive(t *testing.T)
 	}
 }
 
-// An Outpost that restarts leaves older streams through it ended: the new
-// process knows nothing of the old connections and resets them.
+// restartBound is how long the Edge takes to close the older streams through a
+// restarted Outpost: its first ping with a new session id, 100 ms apart in the
+// harness, after the handshake. Keepalive would take 5 s at the least.
+const restartBound = 3 * time.Second
+
+// An Outpost that restarts leaves older streams through it ended at once: its
+// first ping carries a new session id, and the Edge closes the connections
+// through it, without waiting for TCP keepalive.
 func TestAnOutpostRestartEndsOlderStreamsThroughIt(t *testing.T) {
 	svc := eventService(t)
 	re := StartEdgeWith(t, EdgeOptions{Pebble: StartPebble(t, PebbleOptions{})})
@@ -70,8 +76,8 @@ func TestAnOutpostRestartEndsOlderStreamsThroughIt(t *testing.T) {
 	restarted := time.Now()
 	for next() {
 	}
-	if d := time.Since(restarted); d > streamBound {
-		t.Fatalf("the old stream ended %v after the restart, want within %v", d, streamBound)
+	if d := time.Since(restarted); d > restartBound {
+		t.Fatalf("the old stream ended %v after the restart, want within %v", d, restartBound)
 	}
 	waitFor(t, "the Route to serve again", 10*time.Second, func() bool {
 		resp, _ := get(t, re.Caddy, H1, "app.test", "/")

@@ -32,7 +32,8 @@ type livenessHooks struct {
 	SilentAfter  time.Duration // 0 is 20 s
 	Poll         time.Duration // 0 is 1 s
 	Log          *slog.Logger
-	// CloseOutpost closes the Outpost's Tunnel connections when it goes Offline.
+	// CloseOutpost closes the Outpost's Tunnel connections when it goes Offline
+	// and when it restarts.
 	CloseOutpost func(name string)
 	// SilenceOutpost closes them when nothing has arrived from it for
 	// SilentAfter, and reports whether it had any to close.
@@ -45,7 +46,7 @@ type livenessHooks struct {
 // the Outpost, before it counts it online. One without it has never connected,
 // and is not counted online.
 func newLiveness(h livenessHooks, st *state.State) *liveness.Liveness {
-	l := liveness.New(liveness.Config{EdgeVersion: h.Version, OfflineAfter: h.OfflineAfter, SilentAfter: h.SilentAfter, Log: h.Log, OnOffline: h.CloseOutpost, OnSilent: h.SilenceOutpost})
+	l := liveness.New(liveness.Config{EdgeVersion: h.Version, OfflineAfter: h.OfflineAfter, SilentAfter: h.SilentAfter, Log: h.Log, OnOffline: h.CloseOutpost, OnSilent: h.SilenceOutpost, OnRestart: h.CloseOutpost})
 	for _, o := range st.Outposts {
 		switch {
 		case o.OneTimeKey != nil:
@@ -109,6 +110,9 @@ func serveLiveness(ctx context.Context, bg *sync.WaitGroup, l *liveness.Liveness
 			}
 			l.Heard(name)
 			l.SetVersion(name, ping.Version)
+			if ping.Session != nil {
+				l.SetSession(name, *ping.Session)
+			}
 			inside := l.State(name) != liveness.Incompatible
 			if pong, err := wire.AppendPong(nil, answerPing(h.Version, inside, st, name, ping)); err == nil {
 				conn.WriteTo(pong, from)

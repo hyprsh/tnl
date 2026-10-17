@@ -20,17 +20,21 @@ var (
 )
 
 // Ping and pong field tags. The version is in both; the window flag and the
-// Declaration answer are the pong's alone, and the Declaration digest the
-// ping's.
+// Declaration answer are the pong's alone, and the Declaration digest and the
+// session id the ping's.
 const (
 	tagPingVersion = 1
 	tagPongInside  = 2 // pong: whether the Outpost is inside the window, 1 byte (0 or 1)
 	tagDigest      = 3 // ping: the digest of the Outpost's Declaration, 32 bytes
 	tagMatches     = 4 // pong: whether that digest matches the Edge's copy, 1 byte (0 or 1)
 	tagRoutes      = 5 // pong: the digest of the Outpost's Routes and waiting lines, 32 bytes
+	tagSession     = 6 // ping: the Outpost's session id, 16 bytes
 )
 
-const digestSize = 32
+const (
+	digestSize  = 32
+	sessionSize = 16
+)
 
 var (
 	ErrTruncated = errors.New("tnl: ping is cut short")
@@ -38,6 +42,10 @@ var (
 	ErrBadFlag   = errors.New("tnl: ping flag is not 0 or 1")
 	ErrBadLength = errors.New("tnl: ping field has the wrong length")
 )
+
+// Session identifies one run of an Outpost's connection to the Edge, from one
+// connect call to the next. The Edge reads a changed id as a restart.
+type Session [sessionSize]byte
 
 // Digest is a SHA-256 digest as the ping carries it.
 type Digest [digestSize]byte
@@ -48,6 +56,9 @@ type Ping struct {
 	// Declaration is the digest of the Outpost's Declaration, an empty one
 	// included. Nil leaves the field out, as the Edge's own ping does.
 	Declaration *Digest
+	// Session is the id of the Outpost's current run. Nil leaves the field out,
+	// as the Edge's own ping does.
+	Session *Session
 }
 
 // Pong is the Edge's answer.
@@ -73,6 +84,9 @@ func AppendPing(b []byte, p Ping) ([]byte, error) {
 	if p.Declaration != nil {
 		f = append(f, field{tagDigest, p.Declaration[:]})
 	}
+	if p.Session != nil {
+		f = append(f, field{tagSession, p.Session[:]})
+	}
 	return appendFields(b, PingMarker, f)
 }
 
@@ -95,7 +109,7 @@ func flag(b bool) byte {
 // ParsePing reads a whole datagram, refusing an unknown marker, format number
 // or field.
 func ParsePing(b []byte) (Ping, error) {
-	got, err := parseFields(b, PingMarker, map[byte]int{tagPingVersion: maxVersion, tagDigest: digestSize})
+	got, err := parseFields(b, PingMarker, map[byte]int{tagPingVersion: maxVersion, tagDigest: digestSize, tagSession: sessionSize})
 	if err != nil {
 		return Ping{}, err
 	}
@@ -105,6 +119,12 @@ func ParsePing(b []byte) (Ping, error) {
 			return Ping{}, ErrBadLength
 		}
 		p.Declaration = (*Digest)(d)
+	}
+	if v, ok := got[tagSession]; ok {
+		if len(v) != sessionSize {
+			return Ping{}, ErrBadLength
+		}
+		p.Session = (*Session)(v)
 	}
 	return p, nil
 }
