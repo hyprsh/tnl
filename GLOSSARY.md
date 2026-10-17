@@ -28,6 +28,10 @@ _Avoid_: Using "Declaration" for these, which is only an Outpost's Routes
 An Outpost the Edge has stopped hearing from, so its Routes can't be served until it's heard from again.
 _Avoid_: Down, disconnected, dead
 
+**Never connected**:
+A joined or declared Outpost the Edge has no record of ever connecting, and has not heard from since the Edge started. It isn't counted online, and after the usual window from the Edge's start it becomes Offline.
+_Avoid_: Pending, new, unreachable
+
 **Incompatible**:
 An Outpost whose version the Edge doesn't accept. It stays connected, but its Routes aren't served until one side is upgraded.
 _Avoid_: Outdated, unsupported

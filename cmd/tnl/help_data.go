@@ -140,10 +140,10 @@ var helpTable = []*cmdHelp{
 		summary:  "list Routes, with their Outpost, Service, options and status",
 		flags:    []flagHelp{jsonFlag},
 		examples: []string{"tnl route ls", "tnl route ls --json"}},
-	{path: "zone", group: true, summary: "manage Zones: the domains the Edge gets certificates for", usage: "zone <command>"},
+	{path: "zone", group: true, summary: "manage Zones: the names the Edge serves Hostnames under", usage: "zone <command>"},
 	{path: "zone add", usage: "zone add <zone> [--wildcard PROVIDER]", runsOn: "the Edge host", client: true,
 		summary: "add a Zone; by default the Edge gets a certificate for each Hostname",
-		args:    []argHelp{{"<zone>", "the domain, such as example.com"}},
+		args:    []argHelp{{"<zone>", "the Zone's name, such as example.com"}},
 		flags:   []flagHelp{{name: "wildcard", meta: "PROVIDER", values: "words:cloudflare", desc: "get one wildcard certificate through this DNS provider (cloudflare); the token is read from the terminal or stdin"}},
 		examples: []string{
 			"tnl zone add example.com",
