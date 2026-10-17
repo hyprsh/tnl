@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"sort"
 
 	"github.com/hyprsh/tnl/internal/logx"
 )
@@ -40,30 +39,11 @@ func exitCode(err error) int {
 var commands = map[string]func(args []string) error{}
 
 func main() {
-	if len(os.Args) < 2 {
-		usage()
-		os.Exit(2)
-	}
-	run, ok := commands[os.Args[1]]
-	if !ok {
-		fmt.Fprintf(os.Stderr, "tnl: unknown command %q\n", os.Args[1])
-		usage()
-		os.Exit(2)
-	}
-	if err := run(os.Args[2:]); err != nil {
+	if err := dispatch(os.Args[1:]); err != nil {
 		var logged *logx.LoggedError
 		if !errors.As(err, &logged) && !silent(err) { // already logged at error
 			fmt.Fprintf(os.Stderr, "tnl: %v\n", err)
 		}
 		os.Exit(exitCode(err))
 	}
-}
-
-func usage() {
-	names := make([]string, 0, len(commands))
-	for n := range commands {
-		names = append(names, n)
-	}
-	sort.Strings(names)
-	fmt.Fprintf(os.Stderr, "usage: tnl <command>\ncommands: %v\n", names)
 }

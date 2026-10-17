@@ -35,7 +35,7 @@ func zoneEdit(args []string) error {
 		}
 	}
 	if len(pos) != 1 || chosen != 1 {
-		return fmt.Errorf("%s", zoneEditUsage)
+		return usageErr("zone edit", zoneEditUsage)
 	}
 	req := api.ZoneEditRequest{Name: pos[0], Wildcard: *provider, PerHostname: *perHostname}
 	switch {

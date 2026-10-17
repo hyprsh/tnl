@@ -25,7 +25,7 @@ func zoneRm(args []string) error {
 		return err
 	}
 	if len(pos) != 1 {
-		return fmt.Errorf("usage: tnl zone rm <zone> [--with-routes]")
+		return usageErr("zone rm", "usage: tnl zone rm <zone> [--with-routes]")
 	}
 	r, err := api.Call[api.ZoneRmReply](context.Background(), c.client(), http.MethodPost, api.PathZoneRm,
 		api.ZoneRmRequest{Name: pos[0], WithRoutes: *with})

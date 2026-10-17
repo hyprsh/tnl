@@ -12,7 +12,7 @@ import (
 func init() {
 	commands["version"] = func(args []string) error {
 		if len(args) > 0 {
-			return fmt.Errorf("version takes no arguments, got %q", strings.Join(args, " "))
+			return usageErr("version", "version takes no arguments, got %q", strings.Join(args, " "))
 		}
 		fmt.Fprintf(stdout, "tnl %s %s\n%s\n", version, buildName, ver.CompatibilityLine(version, buildName))
 		return nil
