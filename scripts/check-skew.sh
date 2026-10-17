@@ -9,11 +9,13 @@
 # 2. The latest plain vX.Y.Z tag, built from its own source (git archive, so no
 #    published archive is needed), against the current tree stamped as the
 #    version release-please gives it (scripts/next-release.sh): the next patch,
-#    or the next minor when a commit since the tag is breaking. Stamped as the
-#    next patch, it runs in both directions, and with either side upgraded
-#    outside the tag's window (the next minor before 1.0, two majors on after)
-#    the Outpost must be Incompatible. Stamped as the next minor, the current
-#    tree is itself outside the window, so only that expectation runs. With no
+#    or, when a commit since the tag is breaking, the next minor before 1.0 and
+#    the next major from 1.0. Inside the tag's window (scripts/skew-window.sh:
+#    the same minor before 1.0, the same major from 1.0) it runs in both
+#    directions, and with either side upgraded outside the window (the next
+#    minor before 1.0, two majors on after) the Outpost must be Incompatible.
+#    A breaking tree is itself outside the window, so only that expectation
+#    runs. With no
 #    tag this leg is skipped with a notice, and it switches on by itself after
 #    the first release.
 #
@@ -57,14 +59,11 @@ else
   git archive "$tag" | tar -x -C "$tmp/src"
   v=${tag#v}
   next=$(sh scripts/next-release.sh "$tag")
-  # Outside the window: a new 0.x minor, or from 1.0 two majors on.
-  major=${v%%.*}
-  rest=${v#*.}
-  minor=${rest%%.*}
-  if [ "$major" = 0 ]; then out=0.$((minor + 1)).0; else out=$((major + 2)).0.0; fi
-  # A breaking commit makes the current tree the next minor, which is outside.
-  inside=1
-  if [ "$next" = "$out" ]; then inside=0; fi
+  # out is outside the tag's window; inside says whether the current tree is in
+  # it (a breaking tree is stamped outside), both from scripts/skew-window.sh.
+  window=$(sh scripts/skew-window.sh "$v" "$next")
+  out=${window% *}
+  inside=${window#* }
   build "$v" "$tmp/tnl-tag" "$tmp/src"
   build "$next" "$tmp/tnl-cur"
   build "$out" "$tmp/tnl-cur-out"
