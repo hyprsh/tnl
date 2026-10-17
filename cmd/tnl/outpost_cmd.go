@@ -52,7 +52,7 @@ func printJoin(token string) {
 	fmt.Fprintln(stdout, installLine(v, token, false))
 	fmt.Fprintln(stderr, "note: run the first install line on Linux and the second on macOS")
 	if v == "dev" {
-		fmt.Fprintln(stderr, "note: this build has no release version, so the install line is not pinned: it installs the latest release")
+		fmt.Fprintln(stderr, "note: this build has no release version, so the install lines are not pinned: they install the latest release")
 	}
 }
 
