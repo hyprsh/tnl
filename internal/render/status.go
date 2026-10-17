@@ -75,7 +75,7 @@ func outpostCounts(c api.OutpostCounts) string {
 	for _, p := range []struct {
 		n    int
 		what string
-	}{{c.Online, "online"}, {c.Offline, "offline"}, {c.Incompatible, "incompatible"}, {c.NotJoined, "not joined"}} {
+	}{{c.Online, "online"}, {c.Offline, "offline"}, {c.Incompatible, "incompatible"}, {c.NeverConnected, "never connected"}, {c.NotJoined, "not joined"}} {
 		if p.n > 0 {
 			parts = append(parts, fmt.Sprintf("%d %s", p.n, p.what))
 		}

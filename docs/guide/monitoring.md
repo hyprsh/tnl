@@ -28,7 +28,7 @@ Needs attention
 
 or "Nothing needs attention". These are problems:
 
-- an Offline or Incompatible Outpost, with when it was last seen and its number of Routes (an Outpost that is `not joined` is not a problem)
+- an Offline or Incompatible Outpost, with when it was last seen and its number of Routes (an Outpost that is `not joined` is not a problem, and neither is one that is `never connected` during the 60 s after the Edge starts; after that it is Offline, "not heard from since the Edge started")
 - a certificate whose renewal is failing, that failed, or that has expired, or that expires in under 7 days
 - a declared line that waits, such as "newbox declares photos.example.com, which nas holds"
 

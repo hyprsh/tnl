@@ -46,6 +46,8 @@ type OutpostCounts struct {
 	Offline      int `json:"offline"`
 	Incompatible int `json:"incompatible"`
 	NotJoined    int `json:"not_joined"`
+	// NeverConnected is left out when zero: it is an addition to the frozen shape.
+	NeverConnected int `json:"never_connected,omitempty"`
 }
 
 // Count adds one Outpost in the state to the counts.
@@ -57,6 +59,8 @@ func (c *OutpostCounts) Count(s OutpostState) {
 		c.Offline++
 	case StateIncompatible:
 		c.Incompatible++
+	case StateNeverConnected:
+		c.NeverConnected++
 	case StateNotJoined:
 		c.NotJoined++
 	}

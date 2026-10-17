@@ -148,6 +148,44 @@ func TestANewEndpointIsLoggedOnceAtInfo(t *testing.T) {
 	}
 }
 
+func TestAnOutpostSeededAsNeverConnectedIsNeitherOnlineNorHeard(t *testing.T) {
+	r := newRig()
+	r.SeedNever("home")
+	in := r.Info("home")
+	if in.State != NeverConnected || in.Heard {
+		t.Fatalf("info %+v", in)
+	}
+	r.clock.add(59 * time.Second)
+	r.Check()
+	if r.State("home") != NeverConnected || len(r.gone) != 0 {
+		t.Fatal("left never connected early")
+	}
+	r.clock.add(time.Second)
+	r.Check()
+	if r.State("home") != Offline || len(r.gone) != 1 || r.Info("home").Heard {
+		t.Fatalf("not offline after the window: %+v", r.Info("home"))
+	}
+}
+
+func TestAnOutpostThatWasNeverConnectedIsOnlineOnceHeard(t *testing.T) {
+	r := newRig()
+	r.SeedNever("home")
+	r.clock.add(30 * time.Second)
+	r.Heard("home")
+	if in := r.Info("home"); in.State != Online || !in.Heard {
+		t.Fatalf("info %+v", in)
+	}
+}
+
+func TestSeedNeverDoesNotOverrideATrackedOutpost(t *testing.T) {
+	r := newRig()
+	r.Heard("home")
+	r.SeedNever("home")
+	if r.State("home") != Online {
+		t.Fatal("SeedNever replaced a tracked entry")
+	}
+}
+
 func TestASeededOutpostIsNotHeardUntilSomethingArrives(t *testing.T) {
 	r := newRig()
 	r.Seed("home")

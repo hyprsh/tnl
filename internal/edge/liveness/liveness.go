@@ -29,6 +29,10 @@ const (
 	// Incompatible is an Outpost heard from lately whose version is outside the
 	// Edge's window.
 	Incompatible
+	// NeverConnected is an Outpost the Edge has no record of ever hearing from
+	// and has not heard from since it started, within the Offline window of the
+	// Edge's start. It is not online. Past the window it is Offline.
+	NeverConnected
 )
 
 func (s State) String() string {
@@ -39,6 +43,8 @@ func (s State) String() string {
 		return "online"
 	case Offline:
 		return "offline"
+	case NeverConnected:
+		return "never connected"
 	}
 	return "unknown"
 }
@@ -79,6 +85,7 @@ type Liveness struct {
 type entry struct {
 	lastSeen time.Time
 	heard    bool // something has arrived; false for a seeded entry
+	never    bool // seeded with no sign the Outpost ever connected
 	endpoint netip.AddrPort
 	version  string
 	warned   string // the version the Incompatible warning was logged for
@@ -112,6 +119,18 @@ func (l *Liveness) Seed(name string) {
 	defer l.mu.Unlock()
 	if _, ok := l.m[name]; !ok {
 		l.m[name] = &entry{lastSeen: l.cfg.Now()}
+	}
+}
+
+// SeedNever tracks an Outpost the Edge has no record of ever hearing from, such
+// as a declared one that has not connected yet. The Edge's start opens its
+// Offline window, but until something arrives it is NeverConnected, not Online.
+// It does nothing if the Outpost is tracked already.
+func (l *Liveness) SeedNever(name string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if _, ok := l.m[name]; !ok {
+		l.m[name] = &entry{lastSeen: l.cfg.Now(), never: true}
 	}
 }
 
@@ -236,6 +255,8 @@ func (l *Liveness) Info(name string) Info {
 	st := Online
 	if e.offline || now.Sub(e.lastSeen) >= l.cfg.OfflineAfter {
 		st = Offline
+	} else if e.never && !e.heard {
+		st = NeverConnected
 	} else if l.outside(e.version) {
 		st = Incompatible
 	}

@@ -70,6 +70,8 @@ func (s *Server) outpostState(o state.Outpost) (api.OutpostState, liveness.Info)
 		return api.StateOnline, info
 	case liveness.Incompatible:
 		return api.StateIncompatible, info
+	case liveness.NeverConnected:
+		return api.StateNeverConnected, info
 	}
 	return api.StateOffline, info
 }
@@ -108,9 +110,10 @@ func (s *Server) outpostList(_ context.Context, actor api.Actor, _ struct{}) (ap
 // outpostProblem is the Route status an Outpost's state gives; an online
 // Outpost is no problem.
 var outpostProblem = map[api.OutpostState]api.RouteStatus{
-	api.StateNotJoined:    api.StatusOutpostNotJoined,
-	api.StateOffline:      api.StatusOutpostOffline,
-	api.StateIncompatible: api.StatusOutpostIncompatible,
+	api.StateNotJoined:      api.StatusOutpostNotJoined,
+	api.StateOffline:        api.StatusOutpostOffline,
+	api.StateNeverConnected: api.StatusOutpostNeverConnected,
+	api.StateIncompatible:   api.StatusOutpostIncompatible,
 }
 
 // routeStatus is the first problem with the Route, in the spec's order.
