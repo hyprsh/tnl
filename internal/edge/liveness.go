@@ -29,10 +29,13 @@ const defaultLivenessPoll = time.Second
 type livenessHooks struct {
 	Version      string
 	OfflineAfter time.Duration // 0 is 60 s
+	SilentAfter  time.Duration // 0 is 20 s
 	Poll         time.Duration // 0 is 1 s
 	Log          *slog.Logger
 	// CloseOutpost closes the Outpost's Tunnel connections when it goes Offline.
 	CloseOutpost func(name string)
+	// CloseSilent closes them when nothing has arrived from it for SilentAfter.
+	CloseSilent func(name string)
 }
 
 // newLiveness makes the Edge's Liveness and counts its own start as hearing
@@ -40,7 +43,7 @@ type livenessHooks struct {
 // endpoint is the sign of that: it is written when the Edge first hears from
 // the Outpost, before it counts it online. One without it has never connected, and is not counted online.
 func newLiveness(h livenessHooks, st *state.State) *liveness.Liveness {
-	l := liveness.New(liveness.Config{EdgeVersion: h.Version, OfflineAfter: h.OfflineAfter, Log: h.Log, OnOffline: h.CloseOutpost})
+	l := liveness.New(liveness.Config{EdgeVersion: h.Version, OfflineAfter: h.OfflineAfter, SilentAfter: h.SilentAfter, Log: h.Log, OnOffline: h.CloseOutpost, OnSilent: h.CloseSilent})
 	for _, o := range st.Outposts {
 		switch {
 		case o.OneTimeKey != nil:

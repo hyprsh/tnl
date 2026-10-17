@@ -33,6 +33,10 @@ const (
 	// reasonConnectionLost: the connection dropped before the response headers,
 	// whether or not the Outpost is Offline by then.
 	reasonConnectionLost = "connection lost"
+	// reasonOutpostSilent: the connection dropped after the response headers
+	// because nothing had arrived from the Outpost for the silence bound and
+	// the Edge closed its connections. The Outpost was not Offline.
+	reasonOutpostSilent = "outpost silent"
 )
 
 // active is one request in flight, as the Router sees it. The drain reaches a
@@ -347,6 +351,8 @@ func (rt *Runtime) writeRequestLine(l requestLog) {
 		// The Outpost's connection dropped under a request that was running,
 		// after the response headers: before them, the Transport set a reason.
 		reason = reasonOutpostOffline
+	case l.failed != nil && !l.a.wasCut() && rt.outpostSilencedSince(l.outpost, l.started):
+		reason = reasonOutpostSilent
 	case rt.AccessLog:
 		access = true
 	default:
@@ -384,6 +390,13 @@ func (rt *Runtime) writeRequestLine(l requestLog) {
 		ctx = logx.AccessContext(ctx)
 	}
 	log.Log(ctx, level, "request", attrs...)
+}
+
+// outpostSilencedSince reports whether the Edge closed the Outpost's
+// connections for silence after since.
+func (rt *Runtime) outpostSilencedSince(name string, since time.Time) bool {
+	l, ok := rt.Liveness.(interface{ SilencedAt(string) time.Time })
+	return ok && name != "" && l.SilencedAt(name).After(since)
 }
 
 func (rt *Runtime) outpostOffline(name string) bool {
