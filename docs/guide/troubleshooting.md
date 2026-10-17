@@ -89,7 +89,7 @@ On SIGTERM (`systemctl stop`, `docker stop`) the Edge:
 
 So a deploy or restart costs a long upload nothing if it ends within 10 s, and cuts a longer one. Event streams reconnect on their own. The Edge unit sets `TimeoutStopSec=20s` and the Compose example `stop_grace_period: 20s`, so the supervisor waits longer than the drain.
 
-An Outpost closes everything and exits at once.
+An Outpost closes everything, gives the closes up to 1 s to leave, and exits, so streams through it end at once.
 
 ## After an Edge restart
 

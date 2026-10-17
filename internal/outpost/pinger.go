@@ -15,6 +15,10 @@ import (
 // DefaultPingInterval is how often the Outpost pings the Edge.
 const DefaultPingInterval = 10 * time.Second
 
+// DrainCap bounds how long a stopping Outpost waits for its closes to leave
+// through WireGuard before it tears the Tunnel down.
+const DrainCap = time.Second
+
 // runPinger pings 100.64.0.1 on the ping port every interval, from the
 // Outpost's Tunnel address and the ping port, and reads the Edge's answers,
 // calling answered with each. The ping carries the digest of the Outpost's

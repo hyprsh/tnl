@@ -299,3 +299,7 @@ func (net *Net) TCPDelayEnabled() (bool, error) {
 	}
 	return bool(opt), nil
 }
+
+// Queued is the number of packets the stack has produced that WireGuard has not
+// yet taken.
+func (net *Net) Queued() int { return net.ep.NumQueued() }

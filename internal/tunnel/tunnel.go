@@ -146,5 +146,42 @@ func (t *Tunnel) WaitHandshake(ctx context.Context) error {
 	}
 }
 
+// txBytes is the bytes WireGuard has sent to all peers, which it counts after
+// the UDP send.
+func (t *Tunnel) txBytes() (total int64) {
+	out, err := t.Dev.IpcGet()
+	if err != nil {
+		return 0
+	}
+	for _, line := range strings.Split(out, "\n") {
+		if v, ok := strings.CutPrefix(line, "tx_bytes="); ok {
+			n, _ := strconv.ParseInt(v, 10, 64)
+			total += n
+		}
+	}
+	return total
+}
+
+// quietPeriod is how long the Tunnel must send nothing, with nothing queued, for
+// Drain to call it drained.
+const quietPeriod = 30 * time.Millisecond
+
+// Drain waits until what the netstack has sent has left through WireGuard: no
+// packet queued in the stack and no byte sent for a quiet period. It gives up
+// after max, so an unreachable peer cannot hold it. Call it before Close, which
+// drops whatever is still queued.
+func (t *Tunnel) Drain(max time.Duration) {
+	deadline := time.Now().Add(max)
+	last, quietSince := t.txBytes(), time.Now()
+	for time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+		if tx := t.txBytes(); tx != last || t.Net.Queued() > 0 {
+			last, quietSince = tx, time.Now()
+		} else if time.Since(quietSince) >= quietPeriod {
+			return
+		}
+	}
+}
+
 // Close stops WireGuard and the netstack.
 func (t *Tunnel) Close() { t.Dev.Close() }
