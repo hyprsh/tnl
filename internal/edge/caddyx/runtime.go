@@ -115,6 +115,12 @@ func lookupRuntime(id string) (*Runtime, error) {
 // Outpost (spec section 6, step 3). A variable so tests can shrink it.
 var tunnelWait = 10 * time.Second
 
+// tunnelAttempt is how long one connect to the Outpost is given before the
+// transport starts another, within tunnelWait. A single connect would wait on
+// TCP's SYN retransmits, which back off (1, 2, 4 s ...), so a Tunnel that came
+// back late in the wait would go unnoticed until the wait was over.
+var tunnelAttempt = time.Second
+
 var errTunnelWait = errors.New("tnl: the Tunnel to the Outpost did not come up in time")
 
 // poolIdleTimeout is how long an idle connection to a Service is kept.
@@ -217,11 +223,19 @@ func (rt *Runtime) dialOutpostOnce(ctx context.Context, addr netip.AddrPort, out
 	// An online Outpost whose Tunnel isn't up (WireGuard has no session, so the
 	// connect hangs) is waited for up to tunnelWait, then answered with 503.
 	dctx, cancel := context.WithTimeout(ctx, tunnelWait)
-	c, err := rt.Dialer(dctx, addr)
-	waited := dctx.Err() == context.DeadlineExceeded && ctx.Err() == nil
-	cancel()
+	defer cancel()
+	var c net.Conn
+	var err error
+	for {
+		actx, acancel := context.WithTimeout(dctx, tunnelAttempt)
+		c, err = rt.Dialer(actx, addr)
+		acancel()
+		if err == nil || dctx.Err() != nil || ctx.Err() != nil || actx.Err() == nil {
+			break
+		}
+	}
 	if err != nil {
-		if waited {
+		if dctx.Err() == context.DeadlineExceeded && ctx.Err() == nil {
 			return nil, errTunnelWait
 		}
 		return nil, err
