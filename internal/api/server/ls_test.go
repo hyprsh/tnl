@@ -148,6 +148,36 @@ func TestAnOutpostSeededAtTheEdgesStartIsOnlineWithNothingSeen(t *testing.T) {
 	}
 }
 
+func TestAnOutpostNeverHeardIsNeverConnectedUntilTheWindowPasses(t *testing.T) {
+	clock := lsNow
+	live := liveness.New(liveness.Config{OfflineAfter: time.Minute, Now: func() time.Time { return clock }})
+	f := lsFixture(t, live, nil, "nas")
+	join(t, f, "nas")
+	live.SeedNever("nas")
+	o := lsOutposts(t, f)["nas"]
+	if o.State != api.StateNeverConnected || o.LastSeen != nil || o.LastSeenAgoSeconds != nil {
+		t.Fatalf("%+v", o)
+	}
+	st, err := api.Call[api.EdgeStatus](context.Background(), f.client, http.MethodGet, api.PathStatus, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Outposts.Online != 0 || st.Outposts.NeverConnected != 1 || len(st.Attention) != 0 {
+		t.Fatalf("within the window: %+v, %+v", st.Outposts, st.Attention)
+	}
+	clock = clock.Add(time.Minute)
+	if o := lsOutposts(t, f)["nas"]; o.State != api.StateOffline {
+		t.Fatalf("past the window: %+v", o)
+	}
+	st, err = api.Call[api.EdgeStatus](context.Background(), f.client, http.MethodGet, api.PathStatus, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Outposts.Offline != 1 || st.Outposts.NeverConnected != 0 || len(st.Attention) != 1 || st.Attention[0].Kind != api.AttentionOutpostOffline {
+		t.Fatalf("past the window: %+v, %+v", st.Outposts, st.Attention)
+	}
+}
+
 func TestOutpostLsCountsRoutesAndMarksDeclared(t *testing.T) {
 	f := lsFixture(t, nil, nil, "plain", "decl")
 	join(t, f, "plain", "decl")

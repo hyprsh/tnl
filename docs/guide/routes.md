@@ -32,7 +32,7 @@ tnl route ls
 
 ## Listing Routes
 
-`tnl route ls` prints every Route, with a STATUS column that shows the first problem: `outpost not joined`, `outpost offline` or `outpost incompatible`, then `no certificate` or `certificate expired`, then `renewal failing`, else `ok`.
+`tnl route ls` prints every Route, with a STATUS column that shows the first problem: `outpost not joined`, `outpost never connected`, `outpost offline` or `outpost incompatible`, then `no certificate` or `certificate expired`, then `renewal failing`, else `ok`.
 
 A line an Outpost declares that is not a Route yet gets a row of its own, `waiting: taken by nas` or `waiting: outside every Zone`. While a Hostname moves between Outposts it shows two rows. An Outpost's `tnl route ls` prints the same as the Edge's. `--json` gives the stable form.
 

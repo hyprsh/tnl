@@ -66,8 +66,8 @@ sudo tnl outpost ls
 
 One row per Outpost, sorted by name:
 
-- **STATE** is `online` (heard from in the last 60 s), `offline`, `incompatible` (its version is outside the Edge's window) or `not joined` (added, token unused). A declared Outpost is never `not joined`, and is marked "(declared)".
-- **LAST SEEN** is relative ("4s ago"). A `not joined` row shows "token expires in 42m" or "expired" instead. For up to 60 s after an Edge restart, an Outpost the Edge has not heard from yet shows `online` with "–".
+- **STATE** is `online` (heard from in the last 60 s), `offline`, `never connected` (joined or declared, but the Edge has no record of it ever connecting; it turns `offline` 60 s after the Edge starts), `incompatible` (its version is outside the Edge's window) or `not joined` (added, token unused). A declared Outpost is never `not joined`, and is marked "(declared)".
+- **LAST SEEN** is relative ("4s ago"). A `not joined` row shows "token expires in 42m" or "expired" instead. For up to 60 s after an Edge restart, an Outpost that has connected before and that the Edge has not heard from yet shows `online` with "–". One that has never connected shows `never connected` with "–".
 - **ENDPOINT** and **VERSION** are what the Edge last heard, "–" when unknown. **ROUTES** is a count, or "3 declared" for an Outpost that declares its Routes.
 
 `--json` prints the same as JSON, the stable form for scripts: times are RFC 3339, durations are seconds, and the fields only ever grow within a major version. The tables may change in any release.
