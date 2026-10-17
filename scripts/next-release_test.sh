@@ -53,6 +53,17 @@ check v1.4.2 'fix: plain' 1.4.3
 check v1.4.2 'feat!: breaking' 2.0.0
 check v1.4.2 'fix: x\n\nBREAKING CHANGE: y' 2.0.0
 
+# A feat before 1.0 is a patch (bump-patch-for-minor-pre-major).
+check v0.1.2 'feat: a feature' 0.1.3
+check v0.1.2 'feat(route): a scoped feature' 0.1.3
+
+# A feat from 1.0 is the next minor; breaking still wins.
+check v1.4.2 'feat: a feature' 1.5.0
+check v1.4.2 'feat(route): scoped' 1.5.0
+check v1.4.2 'feat: x\n\nBREAKING CHANGE: y' 2.0.0
+check v1.4.2 'chore: nothing' 1.4.3
+check v1.4.2 'featx: not a feat' 1.4.3
+
 # A plain vX.Y.Z tag only.
 if (cd "$tmp" && sh "$script" v0.1.2-rc1) >/dev/null 2>&1; then
   echo "FAIL: a pre-release tag was accepted" >&2
