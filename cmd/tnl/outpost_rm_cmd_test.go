@@ -21,19 +21,22 @@ func TestOutpostAddAndRekeyPrintTheTokenThenTheInstallLinePinnedToTheVersion(t *
 	runningEdge(t)
 	for _, args := range [][]string{{"outpost", "add", "laptop"}, {"outpost", "rekey", "laptop"}} {
 		out, errOut, code, err := tnlBoth(args...)
-		if err != nil || code != 0 || errOut != "" {
+		if err != nil || code != 0 || !strings.Contains(errOut, "first install line on Linux") {
 			t.Fatalf("%v: %q %q %v %d", args, out, errOut, err, code)
 		}
 		lines := strings.Split(strings.TrimSpace(out), "\n")
-		if len(lines) != 2 {
+		if len(lines) != 3 {
 			t.Fatalf("%v: stdout %q", args, out)
 		}
 		if _, err := token.Decode(lines[0]); err != nil {
 			t.Fatalf("first line is not a token: %v", err)
 		}
-		want := "curl -fsSL https://github.com/hyprsh/tnl/releases/download/v1.2.3/install.sh | sudo sh -s -- outpost --token " + lines[0]
-		if lines[1] != want {
-			t.Fatalf("install line %q, want %q", lines[1], want)
+		base := "curl -fsSL https://github.com/hyprsh/tnl/releases/download/v1.2.3/install.sh | "
+		for i, sh := range []string{"sudo sh", "sh"} {
+			want := base + sh + " -s -- outpost --token " + lines[0]
+			if lines[i+1] != want {
+				t.Fatalf("install line %q, want %q", lines[i+1], want)
+			}
 		}
 	}
 }
@@ -45,7 +48,8 @@ func TestInstallLineOfADevBuildIsTheLatestOneAndSaysItIsNotPinned(t *testing.T) 
 	if err != nil || code != 0 {
 		t.Fatalf("%v %d", err, code)
 	}
-	if !strings.Contains(out, "https://github.com/hyprsh/tnl/releases/latest/download/install.sh | sudo sh -s -- outpost --token ") {
+	if !strings.Contains(out, "https://github.com/hyprsh/tnl/releases/latest/download/install.sh | sudo sh -s -- outpost --token ") ||
+		!strings.Contains(out, "install.sh | sh -s -- outpost --token ") {
 		t.Fatalf("stdout %q", out)
 	}
 	if !strings.Contains(errOut, "not pinned") {

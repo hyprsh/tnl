@@ -50,6 +50,8 @@ On the Outpost host, with the token:
 curl -fsSL https://github.com/hyprsh/tnl/releases/latest/download/install.sh | sudo sh -s -- outpost --token <the token>
 ```
 
+`tnl outpost add` prints this line pinned to the Edge's version, and a second one without `sudo` for a macOS Outpost.
+
 This installs the Outpost-only build and a systemd unit, and starts it. The Outpost saves what it needs in its state directory, so a restart needs no token. Without root or systemd (macOS, say) the script installs only the binary, to `~/.local/bin`, and prints the `tnl connect --token …` line to run in a terminal or under your own supervisor.
 
 ### 5. Add a Route
