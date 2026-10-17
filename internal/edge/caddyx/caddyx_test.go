@@ -66,10 +66,10 @@ func TestConfigSetsCaddyAsAWhole(t *testing.T) {
 	if d, err := time.ParseDuration(cfg.Apps.HTTP.GracePeriod); err != nil || d != 0 {
 		t.Errorf("grace_period = %q, want 0", cfg.Apps.HTTP.GracePeriod)
 	}
-	if l := cfg.Apps.HTTP.Servers["https"].Listen; len(l) != 1 || l[0] != ":443" {
+	if l := cfg.Apps.HTTP.Servers["https"].Listen; len(l) != 1 || l[0] != "tnltcp/:443" {
 		t.Errorf("https listens on %v", l)
 	}
-	if l := cfg.Apps.HTTP.Servers["redirect"].Listen; len(l) != 1 || l[0] != ":80" {
+	if l := cfg.Apps.HTTP.Servers["redirect"].Listen; len(l) != 1 || l[0] != "tnltcp/:80" {
 		t.Errorf("redirect listens on %v", l)
 	}
 }
