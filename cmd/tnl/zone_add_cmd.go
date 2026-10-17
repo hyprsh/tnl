@@ -49,6 +49,9 @@ func zoneAdd(args []string) error {
 	}
 	printZoneResult(fmt.Sprintf("added Zone %s (%s)", z.Name, zoneMode(z.ZoneInfo)), z.WildcardInfo, z.Warnings)
 	printHandovers(z.Handovers)
+	if z.Mode == "per-hostname" {
+		fmt.Fprintf(stderr, "note: each Hostname in %s needs its own DNS record, or a wildcard record, pointing at the Edge\n", z.Name)
+	}
 	return nil
 }
 
