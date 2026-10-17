@@ -7,11 +7,15 @@
 #    minor must serve a Route and another minor must make the Outpost
 #    Incompatible, with the Edge on each side.
 # 2. The latest plain vX.Y.Z tag, built from its own source (git archive, so no
-#    published archive is needed), against the current tree stamped as the tag's
-#    next patch, in both directions, and stamped outside the tag's window (the
-#    next minor before 1.0, two majors on after) for the Incompatible case, with
-#    either side upgraded to it. With no tag this leg is skipped with a
-#    notice, and it switches on by itself after the first release.
+#    published archive is needed), against the current tree stamped as the
+#    version release-please gives it (scripts/next-release.sh): the next patch,
+#    or the next minor when a commit since the tag is breaking. Stamped as the
+#    next patch, it runs in both directions, and with either side upgraded
+#    outside the tag's window (the next minor before 1.0, two majors on after)
+#    the Outpost must be Incompatible. Stamped as the next minor, the current
+#    tree is itself outside the window, so only that expectation runs. With no
+#    tag this leg is skipped with a notice, and it switches on by itself after
+#    the first release.
 #
 # The Edge cannot bind 80 and 443 unprivileged, and has no public setting for
 # other ports. These builds are linked with -X main.testWebFile=PATH, which makes
@@ -52,12 +56,15 @@ else
   mkdir "$tmp/src"
   git archive "$tag" | tar -x -C "$tmp/src"
   v=${tag#v}
-  next=${v%.*}.$((${v##*.} + 1))
+  next=$(sh scripts/next-release.sh "$tag")
   # Outside the window: a new 0.x minor, or from 1.0 two majors on.
   major=${v%%.*}
   rest=${v#*.}
   minor=${rest%%.*}
   if [ "$major" = 0 ]; then out=0.$((minor + 1)).0; else out=$((major + 2)).0.0; fi
+  # A breaking commit makes the current tree the next minor, which is outside.
+  inside=1
+  if [ "$next" = "$out" ]; then inside=0; fi
   build "$v" "$tmp/tnl-tag" "$tmp/src"
   build "$next" "$tmp/tnl-cur"
   build "$out" "$tmp/tnl-cur-out"
@@ -67,7 +74,7 @@ else
   else
     echo "notice: $tag predates the check's high-port hook, so its Edge is not run; only its Outpost is"
   fi
-  TNL_SKEW_WEB="$web" TNL_SKEW_TAG_BIN="$tmp/tnl-tag" TNL_SKEW_CUR_BIN="$tmp/tnl-cur" TNL_SKEW_CUR_OUT_BIN="$tmp/tnl-cur-out" TNL_SKEW_TAG_EDGE_OK="$edge_ok" \
+  TNL_SKEW_WEB="$web" TNL_SKEW_TAG_BIN="$tmp/tnl-tag" TNL_SKEW_CUR_BIN="$tmp/tnl-cur" TNL_SKEW_CUR_OUT_BIN="$tmp/tnl-cur-out" TNL_SKEW_CUR_IN_WINDOW="$inside" TNL_SKEW_TAG_EDGE_OK="$edge_ok" \
     go test -count=1 -timeout 10m -tags nomysql -run 'TestSkewAgainstTheLatestTag' ./internal/harness
 fi
 echo "ok: real Edge and Outpost processes of different versions work together as the spec says"
