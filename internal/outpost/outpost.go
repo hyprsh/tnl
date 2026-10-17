@@ -36,6 +36,10 @@ import (
 	"github.com/hyprsh/tnl/internal/wire"
 )
 
+// DrainCap bounds how long a stopping Outpost waits for its closes to leave
+// through WireGuard before it tears the Tunnel down.
+const DrainCap = time.Second
+
 // Config is what `tnl connect` passes in.
 type Config struct {
 	Token string // empty to reconnect from the state
