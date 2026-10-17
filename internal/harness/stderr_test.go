@@ -79,15 +79,13 @@ func TestEdgeUnderTheUnitsEnvironmentWritesOnlyTnlLinesToStderr(t *testing.T) {
 	time.Sleep(time.Second) // Caddy's background lines
 	p.stop()
 
-	// The one exception is Caddy's "redirected default logger" JSON line, written
-	// once at each start before the redirect takes effect (listed in the spec).
-	var redirected int
-	for _, l := range strings.Split(strings.TrimSpace(p.out.String()), "\n") {
-		switch {
-		case strings.Contains(l, `"msg":"redirected default logger"`):
-			redirected++
-		case !strings.HasPrefix(l, "time="):
-			t.Errorf("stderr line that is not a tnl line: %q", l)
+	// No exception: Caddy's "redirected default logger" line reaches stderr as a
+	// tnl line (cold start) or is dropped (warm start), never as Caddy's JSON.
+	for name, out := range map[string]string{"cold": first.out.String(), "warm": p.out.String()} {
+		for _, l := range strings.Split(strings.TrimSpace(out), "\n") {
+			if !strings.HasPrefix(l, "time=") {
+				t.Errorf("%s start: stderr line that is not a tnl line: %q", name, l)
+			}
 		}
 	}
 	seen := map[string]int{}
@@ -103,8 +101,5 @@ func TestEdgeUnderTheUnitsEnvironmentWritesOnlyTnlLinesToStderr(t *testing.T) {
 	}
 	if !strings.Contains(p.out.String(), "started background certificate maintenance") {
 		t.Errorf("Caddy's startup line is missing:\n%s", p.out)
-	}
-	if redirected != 1 {
-		t.Errorf("%d \"redirected default logger\" lines, want 1:\n%s", redirected, p.out)
 	}
 }
