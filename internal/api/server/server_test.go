@@ -327,12 +327,27 @@ func TestZoneAddNoWarningWhenNamesPointAtTheEdge(t *testing.T) {
 	}
 }
 
+// fakeWildcards accepts every token and has every certificate at once.
+type fakeWildcards struct{}
+
+func (fakeWildcards) Check(_ context.Context, _, _, zone string) (string, error) { return zone, nil }
+func (fakeWildcards) Reload() error                                              { return nil }
+func (fakeWildcards) Wait(context.Context, string) error                         { return nil }
+func (fakeWildcards) WaitOwn(context.Context, string) error                      { return nil }
+func (fakeWildcards) Settle()                                                    {}
+
+// Only a wildcard Zone resolves a name at zone add, so this one has to: the
+// resolver for the Zone's check name hangs until released.
 func TestZoneAddResolvesAfterTheLock(t *testing.T) {
 	res := edgeResolver()
 	res.block = make(chan struct{})
-	f := startWith(t, "1.2.3", api.ActorLocal, res)
+	f := startConfigured(t, "1.2.3", api.ActorLocal, func(c *server.Config) { c.Resolver = res; c.Wildcards = fakeWildcards{} })
 	done := make(chan error, 1)
-	go func() { _, err := addZone(f.client, "slow.test"); done <- err }()
+	go func() {
+		_, err := api.Call[api.ZoneAddReply](context.Background(), f.client, http.MethodPost, api.PathZones,
+			api.ZoneAddRequest{Name: "slow.test", Provider: "cloudflare", Token: "t"})
+		done <- err
+	}()
 	// Wait until the Zone is saved: the resolver is then running, blocked.
 	deadline := time.Now().Add(5 * time.Second)
 	for len(f.store.Snapshot().Zones) == 0 {
@@ -351,6 +366,11 @@ func TestZoneAddResolvesAfterTheLock(t *testing.T) {
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("a concurrent change waited for the resolver")
+	}
+	select {
+	case <-done:
+		t.Fatal("the slow Zone add finished before its resolver was released: the test shows nothing")
+	default:
 	}
 	close(res.block)
 	if err := <-done; err != nil {
