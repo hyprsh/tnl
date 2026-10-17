@@ -4,17 +4,19 @@ An Edge can take its Zones and its Outposts from its settings, so that one Compo
 
 You need three things the Edge cannot make for itself, all made offline:
 
+<!-- x-release-please-start-version -->
+
 1. **The Edge's private key,** so its public key is known before it first starts. `tnl keygen` prints one in `wg genkey` format:
 
    ```sh
-   docker run --rm ghcr.io/hyprsh/tnl:1.4.2 keygen > tnl-key
+   docker run --rm ghcr.io/hyprsh/tnl:0.1.2 keygen > tnl-key
    sudo chown 65532 tnl-key && sudo chmod 600 tnl-key   # the Edge runs as uid 65532 and reads the file as it is on the host
    ```
 
 2. **A line and a credential for each Outpost,** from the key:
 
    ```sh
-   docker run --rm -v "$PWD/tnl-key:/key:ro" ghcr.io/hyprsh/tnl:1.4.2 \
+   docker run --rm -v "$PWD/tnl-key:/key:ro" ghcr.io/hyprsh/tnl:0.1.2 \
      credential nas --address edge.example.com --key-file /key
    ```
 
@@ -23,35 +25,15 @@ You need three things the Edge cannot make for itself, all made offline:
    TNL_CREDENTIAL=tnlc1.…
    ```
 
+   <!-- x-release-please-end -->
+
    The first line goes in the Edge's settings. The credential goes to the Outpost. `--wireguard-port N` names a port other than 51820. The command never contacts an Edge, so it runs anywhere the full build does.
 
 3. **The names the Outposts dial.** The Edge's `--address` and WireGuard port are baked into every credential. Changing either means minting every credential again, which is one more reason to give `--address` a DNS name.
 
 ## The Edge
 
-```yaml
-services:
-  tnl:
-    image: ghcr.io/hyprsh/tnl:X.Y.Z
-    container_name: tnl
-    restart: unless-stopped
-    stop_grace_period: 20s
-    environment:
-      TNL_ADDRESS: edge.example.com
-      TNL_KEY_FILE: /run/secrets/tnl-key
-      TNL_ZONE_MAIN: example.com
-      TNL_OUTPOST_NAS: nas 6WvT…=
-    secrets: [tnl-key]
-    ports: ["80:80/tcp", "443:443/tcp", "443:443/udp", "51820:51820/udp"]
-    volumes: ["tnl:/var/lib/tnl"]
-secrets:
-  tnl-key:
-    file: ./tnl-key
-volumes:
-  tnl:
-```
-
-([`examples/compose/edge.yaml`](../../examples/compose/edge.yaml).) Without Compose, the same settings are flags: `tnl edge --address … --key-file … --zone "example.com" --outpost "nas 6WvT…="`, with `--zone` and `--outpost` repeated for more.
+[`examples/compose/edge.yaml`](../../examples/compose/edge.yaml) is the Edge's Compose file, as the [quick start](../../README.md#quick-start) uses it. Without Compose, the same settings are flags: `tnl edge --address … --key-file … --zone "example.com" --outpost "nas 6WvT…="`, with `--zone` and `--outpost` repeated for more.
 
 ### The lines
 
@@ -79,26 +61,7 @@ environment:
 
 ## The Outpost
 
-```yaml
-services:
-  tnl-outpost:
-    image: ghcr.io/hyprsh/tnl-outpost:X.Y.Z
-    container_name: tnl-outpost
-    restart: unless-stopped
-    environment:
-      TNL_CREDENTIAL_FILE: /run/secrets/tnl-credential
-      TNL_ROUTE_PHOTOS: photos.example.com http://immich:2283
-    secrets: [tnl-credential]
-    networks: [apps]
-secrets:
-  tnl-credential:
-    file: ./tnl-credential
-networks:
-  apps:
-    external: true
-```
-
-([`examples/compose/outpost.yaml`](../../examples/compose/outpost.yaml).) Put the part after `TNL_CREDENTIAL=` in `./tnl-credential`.
+[`examples/compose/outpost.yaml`](../../examples/compose/outpost.yaml) is an Outpost's Compose file, beside the two Services it forwards to. Put the part after `TNL_CREDENTIAL=` in `./tnl-credential`.
 
 - **It connects from the first packet,** with no join exchange, and writes no `state.json`. The state directory holds only `tnl.sock`, so the container needs no volume.
 - **`--credential-file`** (`TNL_CREDENTIAL_FILE`), or `TNL_CREDENTIAL` holding the credential itself. Setting both is refused, and so is `--token` together with a credential. The credential is never a flag value.
