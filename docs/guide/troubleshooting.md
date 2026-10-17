@@ -18,6 +18,8 @@ A request whose `Accept` includes `text/event-stream` never gets the 502 or 503 
 
 A WebSocket or event stream that is open when an Outpost goes offline, or when the Edge stops, is ended the same way.
 
+If an Outpost stops or restarts and its closing packets are lost, the Edge still ends the streams through it within 15 s, because it probes idle Tunnel connections after 5 s and drops one after 3 unanswered probes 3 s apart. A restarted Outpost resets them at the first probe. An Outpost is only marked offline after 60 s, so a stream can end before the Outpost shows as offline.
+
 ## Reading the logs
 
 Lines are `key=value`, one per event, at `info` by default. Under systemd:
