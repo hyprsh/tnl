@@ -113,9 +113,9 @@ func (t *Tunnel) ListenPort() (int, error) {
 	return 0, errors.New("no listen_port in wireguard state")
 }
 
-// Each calls fn with every key=value line of WireGuard's state, in order. A
+// EachStateLine calls fn with every key=value line of WireGuard's state, in order. A
 // peer's lines follow its public_key line.
-func (t *Tunnel) Each(fn func(key, value string)) error {
+func (t *Tunnel) EachStateLine(fn func(key, value string)) error {
 	out, err := t.Dev.IpcGet()
 	if err != nil {
 		return err
@@ -129,7 +129,7 @@ func (t *Tunnel) Each(fn func(key, value string)) error {
 }
 
 func (t *Tunnel) get(key string) (value string, found bool) {
-	t.Each(func(k, v string) {
+	t.EachStateLine(func(k, v string) {
 		if k == key && !found {
 			value, found = v, true
 		}
@@ -141,7 +141,7 @@ func (t *Tunnel) get(key string) (value string, found bool) {
 func (t *Tunnel) WaitHandshake(ctx context.Context) error {
 	for {
 		handshook := false
-		err := t.Each(func(k, v string) {
+		err := t.EachStateLine(func(k, v string) {
 			if k == "last_handshake_time_sec" && v != "0" {
 				handshook = true
 			}
@@ -163,7 +163,7 @@ func (t *Tunnel) WaitHandshake(ctx context.Context) error {
 // txBytes is the bytes WireGuard has sent to all peers, which it counts after
 // the UDP send.
 func (t *Tunnel) txBytes() (total int64) {
-	t.Each(func(k, v string) {
+	t.EachStateLine(func(k, v string) {
 		if k == "tx_bytes" {
 			n, _ := strconv.ParseInt(v, 10, 64)
 			total += n
