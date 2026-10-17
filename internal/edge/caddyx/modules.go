@@ -163,14 +163,14 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	if t.rt.Liveness != nil {
 		switch t.rt.Liveness.State(route.Outpost) {
 		case liveness.Offline:
-			return t.rt.fail(req, id, http.StatusServiceUnavailable, "outpost offline")
+			return t.rt.fail(req, id, http.StatusServiceUnavailable, reasonOutpostOffline)
 		case liveness.Incompatible:
 			return t.rt.fail(req, id, http.StatusServiceUnavailable, "outpost incompatible")
 		}
 	}
 	addr, ok := t.rt.Outposts.Addr(route.Outpost)
 	if !ok {
-		return t.rt.fail(req, id, http.StatusServiceUnavailable, "outpost offline")
+		return t.rt.fail(req, id, http.StatusServiceUnavailable, reasonOutpostOffline)
 	}
 	out := req.Clone(context.WithValue(ctx, requestIDKey, id))
 	out.URL.Scheme = "http"
@@ -207,8 +207,9 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 		}
 		// The Outpost's connection dropped before the response headers, or the
 		// Service sent something that isn't HTTP: still the Edge's reply, never
-		// Caddy's own 502.
-		return t.rt.fail(req, id, http.StatusBadGateway, "connection lost")
+		// Caddy's own 502. Whether the Outpost is Offline by now does not matter:
+		// a drop before the response headers is always connection lost.
+		return t.rt.fail(req, id, http.StatusBadGateway, reasonConnectionLost)
 	}
 	if a, ok := caddyhttp.GetVar(ctx, varActive).(*active); ok {
 		a.attach(resp)
