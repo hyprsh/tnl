@@ -48,32 +48,39 @@ func (q LogsQuery) Values() url.Values {
 	return v
 }
 
+// Validate is the one check of a logs query, made by the CLI before it asks and
+// by the server when it reads the request; the error is a 400.
+func (q LogsQuery) Validate() error {
+	if q.N < 0 || q.Since < 0 {
+		return Errorf(http.StatusBadRequest, "n and since can't be negative")
+	}
+	if _, ok := ParseLogLevel(q.Level); q.Level != "" && !ok {
+		return Errorf(http.StatusBadRequest, "level %q: want error, warn, info or debug", q.Level)
+	}
+	return nil
+}
+
 // ParseLogsQuery reads the query of a GET PathLogs; the error is a 400.
 func ParseLogsQuery(v url.Values) (LogsQuery, error) {
 	var q LogsQuery
 	q.Follow = v.Get("follow") == "1"
 	q.JSON = v.Get("format") == "json"
+	q.Level = v.Get("level")
 	if s := v.Get("n"); s != "" {
 		n, err := strconv.Atoi(s)
-		if err != nil || n < 0 {
+		if err != nil {
 			return q, Errorf(http.StatusBadRequest, "n %q: want a number of lines", s)
 		}
 		q.N = n
 	}
 	if s := v.Get("since"); s != "" {
 		d, err := time.ParseDuration(s)
-		if err != nil || d < 0 {
+		if err != nil {
 			return q, Errorf(http.StatusBadRequest, "since %q: want a duration such as 10m", s)
 		}
 		q.Since = d
 	}
-	if s := v.Get("level"); s != "" {
-		if _, ok := ParseLogLevel(s); !ok {
-			return q, Errorf(http.StatusBadRequest, "level %q: want error, warn, info or debug", s)
-		}
-		q.Level = s
-	}
-	return q, nil
+	return q, q.Validate()
 }
 
 // ParseLogLevel reads error, warn, info or debug.

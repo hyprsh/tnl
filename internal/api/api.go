@@ -92,8 +92,8 @@ func Errorf(status int, format string, a ...any) *Error {
 	return &Error{Status: status, Message: fmt.Sprintf(format, a...)}
 }
 
-// errorBody is how an Error travels.
-type errorBody struct {
+// ErrorBody is how an Error travels: the JSON body of every refusal.
+type ErrorBody struct {
 	Error string `json:"error"`
 }
 

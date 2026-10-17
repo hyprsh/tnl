@@ -183,7 +183,7 @@ func (c *Client) roundTrip(ctx context.Context, method, path string, req any) ([
 		return out, fmt.Errorf("%s answered without a %s header; it is not a tnl", c.link().address(), VersionHeader)
 	}
 	if resp.StatusCode >= 400 {
-		var eb errorBody
+		var eb ErrorBody
 		msg := strings.TrimSpace(string(raw))
 		if dec := strictDecoder(raw); dec.Decode(&eb) == nil && eb.Error != "" {
 			msg = eb.Error

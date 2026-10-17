@@ -364,9 +364,7 @@ func (s *Server) reply(w http.ResponseWriter, resp any, err error) {
 		if ae.UnknownField != "" {
 			w.Header().Set(api.UnknownFieldHeader, ae.UnknownField)
 		}
-		send(ae.Status, struct {
-			Error string `json:"error"`
-		}{ae.Message})
+		send(ae.Status, api.ErrorBody{Error: ae.Message})
 		return
 	}
 	send(http.StatusOK, resp)
