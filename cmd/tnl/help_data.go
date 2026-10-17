@@ -1,0 +1,188 @@
+package main
+
+import "github.com/hyprsh/tnl/internal/api"
+
+// helpTable is the one place the CLI's help is written. `tnl help`, -h, the
+// shell completion and the tests all read it. Tests check it against the
+// registered commands, their real flags and the spec's CLI table (§7), so a
+// command added anywhere adds a row here, and the spec's table, or fails.
+//
+// usage and runsOn are the two cells of the spec's table, word for word.
+var helpTable = []*cmdHelp{
+	{path: "edge", usage: "edge [flags]", runsOn: "the Edge host; full build only", daemon: true,
+		summary: "run the Edge: the public HTTPS front door, the WireGuard endpoint and the API",
+		flags: []flagHelp{
+			{name: "address", meta: "NAME", env: "TNL_ADDRESS", desc: "the DNS name Outposts dial (required); a name is better than an IP"},
+			{name: "wireguard-port", meta: "PORT", def: "51820", env: "TNL_WIREGUARD_PORT", desc: "the UDP port WireGuard listens on; 443 switches HTTP/3 off"},
+			{name: "acme-email", meta: "EMAIL", env: "TNL_ACME_EMAIL", desc: "the contact email for the ACME account (optional)"},
+			{name: "acme-ca", meta: "URL", env: "TNL_ACME_CA", desc: "the ACME directory URL to get certificates from; default Let's Encrypt production"},
+			{name: "key-file", meta: "FILE", env: "TNL_KEY_FILE, or TNL_KEY holding the key", desc: "a file holding the Edge's WireGuard private key, as `tnl keygen` prints it; default: generated at first start"},
+			{name: "zone", meta: "LINE", env: "TNL_ZONE_<LABEL>", repeat: true, desc: "a Zone to declare: \"<zone> [--wildcard PROVIDER (--token-file PATH | --token VALUE)]\"; not both the flag and the variable. --token works in a variable only"},
+			{name: "outpost", meta: "LINE", env: "TNL_OUTPOST_<LABEL>", repeat: true, desc: "an Outpost to declare: \"<name> <public-key>\"; not both the flag and the variable"},
+			{name: "state-dir", meta: "DIR", def: "/var/lib/tnl", env: "TNL_STATE_DIR", desc: "the state directory"},
+			{name: "access-log", env: "TNL_ACCESS_LOG", desc: "also log successful requests and what the Service answered"},
+		},
+		examples: []string{
+			"tnl edge --address tunnel.example.com",
+			"TNL_ADDRESS=tunnel.example.com tnl edge --acme-email you@example.com",
+		},
+		notes: "A bad flag or variable exits 78. Secrets come from a file or a variable, never from a flag's value."},
+	{path: "connect", usage: "connect [flags]", runsOn: "an Outpost", daemon: true,
+		summary: "run an Outpost: join the Edge, hold the Tunnel and dial Services",
+		flags: []flagHelp{
+			{name: "token", meta: "TOKEN", env: "TNL_TOKEN", desc: "the join token from `tnl outpost add`; needed only to join"},
+			{name: "credential-file", meta: "FILE", env: "TNL_CREDENTIAL_FILE, or TNL_CREDENTIAL holding the credential", desc: "a file holding the Outpost credential from `tnl credential`; the Outpost then needs no join and writes no state.json"},
+			{name: "state-dir", meta: "DIR", env: "TNL_STATE_DIR", desc: "the state directory; default: the per-user directory, or /var/lib/tnl-outpost as root"},
+			{name: "allow", meta: "LIST", env: "TNL_ALLOW", desc: "the Services the Edge may name: CIDRs and host:port, comma-separated; default none, so the Outpost dials whatever the Edge names"},
+			{name: "route", meta: "LINE", env: "TNL_ROUTE_<LABEL>", repeat: true, desc: "a Route to declare: \"<hostname> <service-url> [--host-header V] [--insecure-skip-verify]\"; not both the flag and the variable"},
+		},
+		examples: []string{
+			"tnl connect --token <token>",
+			"TNL_CREDENTIAL_FILE=/etc/tnl/credential tnl connect --allow 192.168.1.0/24",
+		},
+		notes: "A bad flag or variable exits 78. Do not give --token and a credential together."},
+	{path: "version", usage: "version", runsOn: "anywhere; local only",
+		summary:  "print the version, the build (full or outpost) and which versions it works with",
+		examples: []string{"tnl version"}},
+	{path: "keygen", usage: "keygen", runsOn: "anywhere; full build only; local only",
+		summary:  "print a new WireGuard private key, for the Edge's --key-file",
+		examples: []string{"tnl keygen > /etc/tnl/key && chmod 600 /etc/tnl/key"}},
+	{path: "credential", usage: "credential <name> --address A [--wireguard-port N] [--key-file F]", runsOn: "anywhere; full build only; local only",
+		summary: "make an Outpost credential offline, from the Edge's key, for an Outpost that never joins",
+		args:    []argHelp{{"<name>", "the Outpost's name"}},
+		flags: []flagHelp{
+			{name: "address", meta: "NAME", desc: "the Edge's --address, the DNS name Outposts dial (required)"},
+			{name: "wireguard-port", meta: "PORT", def: "51820", desc: "the Edge's WireGuard port"},
+			{name: "key-file", meta: "FILE", env: "TNL_KEY_FILE, or TNL_KEY holding the key", desc: "the Edge's private key file"},
+		},
+		examples: []string{"tnl credential office --address tunnel.example.com --key-file /etc/tnl/key"},
+		notes:    "It prints the Edge's line for the Outpost, then the credential. It never contacts an Edge."},
+	{path: "status", usage: "status [--json]", runsOn: "the Edge host or an Outpost", client: true,
+		summary: "show the health of the running Edge or Outpost, and what needs attention",
+		flags:   []flagHelp{jsonFlag},
+		examples: []string{
+			"tnl status",
+			"tnl status --json",
+		},
+		notes: "Exit 0: nothing needs attention. 1: something does. 2: no Edge or Outpost found."},
+	{path: "outpost", group: true, summary: "manage Outposts", usage: "outpost <command>"},
+	{path: "outpost add", usage: "outpost add <name> [--ttl D]", runsOn: "the Edge host", client: true,
+		summary: "add an Outpost and print its join token and install lines",
+		args:    []argHelp{{"<name>", "the Outpost's name"}},
+		flags:   []flagHelp{ttlFlag},
+		examples: []string{
+			"tnl outpost add office",
+			"tnl outpost add office --ttl 2h",
+		},
+		notes: "The first line of output is the token, so a script can capture it."},
+	{path: "outpost rekey", firstArg: "outposts", usage: "outpost rekey <name> [--ttl D]", runsOn: "the Edge host", client: true,
+		summary:  "give an Outpost a new key: print a new join token and install lines",
+		args:     []argHelp{{"<name>", "the Outpost to rekey"}},
+		flags:    []flagHelp{ttlFlag},
+		examples: []string{"tnl outpost rekey office"}},
+	{path: "outpost rm", firstArg: "outposts", usage: "outpost rm <name> [--with-routes]", runsOn: "the Edge host", client: true,
+		summary: "remove an Outpost",
+		args:    []argHelp{{"<name>", "the Outpost to remove"}},
+		flags:   []flagHelp{{name: "with-routes", desc: "also remove the Routes through the Outpost"}},
+		examples: []string{
+			"tnl outpost rm office",
+			"tnl outpost rm office --with-routes",
+		}},
+	{path: "outpost ls", usage: "outpost ls [--json]", runsOn: "the Edge host", client: true,
+		summary:  "list Outposts, with their state, last seen time and Routes",
+		flags:    []flagHelp{jsonFlag},
+		examples: []string{"tnl outpost ls", "tnl outpost ls --json"}},
+	{path: "route", group: true, summary: "manage Routes: Hostnames the Edge serves, each to a Service", usage: "route <command>"},
+	{path: "route add", usage: "route add <hostname> <service-url> [--outpost NAME] [--host-header V] [--insecure-skip-verify]", runsOn: "both", client: true,
+		summary: "add a Route from a Hostname to a Service",
+		args: []argHelp{
+			{"<hostname>", "the Hostname Visitors use, inside a Zone"},
+			{"<service-url>", "the Service to forward to, such as http://localhost:3000"},
+		},
+		flags: []flagHelp{
+			{name: "outpost", meta: "NAME", values: "outposts", desc: "the Outpost whose network the Service is on; required on the Edge host, absent on an Outpost, where the Edge fills in the caller"},
+			{name: "host-header", meta: "V", desc: "the Host header to send to the Service, instead of the Visitor's"},
+			{name: "insecure-skip-verify", desc: "skip verifying an https:// Service's certificate"},
+		},
+		examples: []string{
+			"tnl route add app.example.com http://localhost:3000 --outpost office",
+			"tnl route add app.example.com https://nas.lan:5001 --insecure-skip-verify",
+		}},
+	{path: "route edit", firstArg: "routes", usage: "route edit <hostname> [--service URL] [--outpost NAME] [--host-header V] [--insecure-skip-verify=true|false]", runsOn: "both", client: true,
+		summary: "change a Route; only the flags you give change",
+		args:    []argHelp{{"<hostname>", "the Route's Hostname"}},
+		flags: []flagHelp{
+			{name: "service", meta: "URL", desc: "the new Service URL"},
+			{name: "outpost", meta: "NAME", values: "outposts", desc: "the Outpost whose network the Service is on (Edge host only)"},
+			{name: "host-header", meta: "V", desc: "the Host header to send to the Service; \"\" sends the Visitor's"},
+			{name: "insecure-skip-verify", meta: "=true|false", desc: "whether to skip verifying an https:// Service's certificate"},
+		},
+		examples: []string{
+			"tnl route edit app.example.com --service http://localhost:3001",
+			"tnl route edit app.example.com --host-header \"\"",
+		}},
+	{path: "route rm", firstArg: "routes", usage: "route rm <hostname>", runsOn: "both", client: true,
+		summary:  "remove a Route",
+		args:     []argHelp{{"<hostname>", "the Route's Hostname"}},
+		examples: []string{"tnl route rm app.example.com"}},
+	{path: "route ls", usage: "route ls [--json]", runsOn: "both", client: true,
+		summary:  "list Routes, with their Outpost, Service, options and status",
+		flags:    []flagHelp{jsonFlag},
+		examples: []string{"tnl route ls", "tnl route ls --json"}},
+	{path: "zone", group: true, summary: "manage Zones: the domains the Edge gets certificates for", usage: "zone <command>"},
+	{path: "zone add", usage: "zone add <zone> [--wildcard PROVIDER]", runsOn: "the Edge host", client: true,
+		summary: "add a Zone; by default the Edge gets a certificate for each Hostname",
+		args:    []argHelp{{"<zone>", "the domain, such as example.com"}},
+		flags:   []flagHelp{{name: "wildcard", meta: "PROVIDER", values: "words:cloudflare", desc: "get one wildcard certificate through this DNS provider (cloudflare); the token is read from the terminal or stdin"}},
+		examples: []string{
+			"tnl zone add example.com",
+			"tnl zone add example.com --wildcard cloudflare",
+		}},
+	{path: "zone edit", firstArg: "zones", usage: "zone edit <zone> (--wildcard PROVIDER | --per-hostname | --token)", runsOn: "the Edge host", client: true,
+		summary: "change how a Zone gets certificates; give exactly one flag",
+		args:    []argHelp{{"<zone>", "the Zone to change"}},
+		flags: []flagHelp{
+			{name: "wildcard", meta: "PROVIDER", values: "words:cloudflare", desc: "switch to one wildcard certificate through this DNS provider (cloudflare); the token is read from the terminal or stdin"},
+			{name: "per-hostname", desc: "switch to a certificate for each Hostname, and delete the token"},
+			{name: "token", desc: "replace the DNS token, read from the terminal or stdin"},
+		},
+		examples: []string{"tnl zone edit example.com --per-hostname", "tnl zone edit example.com --token"}},
+	{path: "zone rm", firstArg: "zones", usage: "zone rm <zone> [--with-routes]", runsOn: "the Edge host", client: true,
+		summary:  "remove a Zone",
+		args:     []argHelp{{"<zone>", "the Zone to remove"}},
+		flags:    []flagHelp{{name: "with-routes", desc: "also remove the Routes that no other Zone contains"}},
+		examples: []string{"tnl zone rm example.com", "tnl zone rm example.com --with-routes"}},
+	{path: "zone ls", usage: "zone ls [--json]", runsOn: "both", client: true,
+		summary:  "list Zones, with their certificate mode and certificate",
+		flags:    []flagHelp{jsonFlag},
+		examples: []string{"tnl zone ls", "tnl zone ls --json"}},
+	{path: "backup", usage: "backup <file|->", runsOn: "the Edge host", client: true,
+		summary:  "write the Edge's state to an archive",
+		args:     []argHelp{{"<file|->", "where to write the archive; - is stdout"}},
+		examples: []string{"tnl backup /var/backups/tnl.tar", "tnl backup - | age -r KEY > tnl.tar.age"},
+		notes:    "The file is created 0600 and replaces one of that name."},
+	{path: "help", firstArg: "commands", usage: "help [command...]", runsOn: "anywhere; local only",
+		summary:  "show help for tnl, a group or a command; -h and --help do the same at every level",
+		args:     []argHelp{{"[command...]", "a command or group, such as route or route add"}},
+		examples: []string{"tnl help", "tnl help route add"}},
+	{path: "completion", firstArg: "words:bash zsh fish", usage: "completion bash|zsh|fish", runsOn: "anywhere; local only",
+		summary: "print a shell completion script for commands, flags and live names",
+		args:    []argHelp{{"bash|zsh|fish", "the shell"}},
+		examples: []string{
+			"source <(tnl completion bash)",
+			"tnl completion fish > ~/.config/fish/completions/tnl.fish",
+		},
+		notes: "Where an Edge or Outpost runs on this host, it also completes Outpost names, Route Hostnames and Zones, through the local socket. See docs/guide/completion.md."},
+}
+
+var (
+	jsonFlag = flagHelp{name: "json", desc: "print JSON, the stable form, instead of a table"}
+	ttlFlag  = flagHelp{name: "ttl", meta: "D", def: api.DefaultTokenTTL, desc: "how long the join token works, such as 30m or 2h"}
+
+	stateDirFlag = flagHelp{name: "state-dir", meta: "DIR", env: "TNL_STATE_DIR",
+		desc: "the state directory of the process to talk to; default: the one live socket found on this host"}
+	logFlags = []flagHelp{
+		{name: "log-level", meta: "LEVEL", values: "words:error warn info debug", def: "info", env: "TNL_LOG_LEVEL", desc: "log level: error, warn, info or debug"},
+		{name: "log-format", meta: "FORMAT", values: "words:text json", def: "text", env: "TNL_LOG_FORMAT", desc: "log format: text or json"},
+	}
+)

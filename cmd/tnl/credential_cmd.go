@@ -23,6 +23,7 @@ func init() {
 // and the credential. It never contacts an Edge.
 func runCredential(args []string) error {
 	fs := flag.NewFlagSet("tnl credential", flag.ContinueOnError)
+	flagSetMade(fs)
 	fs.SetOutput(io.Discard)
 	var address, keyFile string
 	var port int
@@ -42,7 +43,7 @@ func runCredential(args []string) error {
 	}
 	switch {
 	case len(names) != 1:
-		return fmt.Errorf("usage: tnl credential <name> --address A [--wireguard-port N] [--key-file F]")
+		return usageErr("credential", "usage: tnl credential <name> --address A [--wireguard-port N] [--key-file F]")
 	case address == "":
 		return fmt.Errorf("--address is required: the DNS name Outposts dial")
 	case port < 1 || port > 65535:

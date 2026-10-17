@@ -51,7 +51,7 @@ func statusCmd(args []string) error {
 		return err
 	}
 	if len(pos) > 0 {
-		return fmt.Errorf("status takes no arguments, got %q", pos[0])
+		return usageErr("status", "status takes no arguments, got %q", pos[0])
 	}
 	if sock := filepath.Join(c.stateDir, api.SocketName); probe(sock) != socketLive {
 		return exitError{exitNotFound, fmt.Errorf("can't open %s: no Edge or Outpost is running there, or this user may not open its socket (try sudo)", sock)}

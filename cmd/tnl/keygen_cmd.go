@@ -20,12 +20,13 @@ func init() {
 // Edge's --key-file.
 func runKeygen(args []string) error {
 	fs := flag.NewFlagSet("tnl keygen", flag.ContinueOnError)
+	flagSetMade(fs)
 	fs.SetOutput(io.Discard)
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	if fs.NArg() > 0 {
-		return fmt.Errorf("keygen takes no arguments, got %q", fs.Arg(0))
+		return usageErr("keygen", "keygen takes no arguments, got %q", fs.Arg(0))
 	}
 	priv, _, err := keys.Generate()
 	if err != nil {

@@ -9,6 +9,6 @@ func tnl(args ...string) (out string, code int, err error) {
 	old := stdout
 	stdout = &buf
 	defer func() { stdout = old }()
-	err = commands[args[0]](args[1:])
+	err = dispatch(args)
 	return buf.String(), exitCode(err), err
 }

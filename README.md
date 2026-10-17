@@ -4,7 +4,7 @@ tnl puts a Service on your home or office network at a public `https://` address
 
 The design is in [`docs/spec/v1.md`](docs/spec/v1.md), the terms in [`GLOSSARY.md`](GLOSSARY.md).
 
-> The tracer-bullet feature set: one `http://` Service per Route, a certificate for each Hostname. Installing, ports, systemd and Docker are in [`docs/guide/install.md`](docs/guide/install.md); upgrading is in [`docs/guide/upgrading.md`](docs/guide/upgrading.md).
+> The tracer-bullet feature set: one `http://` Service per Route, a certificate for each Hostname. Installing, ports, systemd and Docker are in [`docs/guide/install.md`](docs/guide/install.md); upgrading is in [`docs/guide/upgrading.md`](docs/guide/upgrading.md). `tnl help` explains every command; shell completion is in [`docs/guide/completion.md`](docs/guide/completion.md).
 
 ## Quick start
 
