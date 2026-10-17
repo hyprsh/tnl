@@ -57,7 +57,7 @@ func (s *Server) zoneAdd(ctx context.Context, actor api.Actor, req api.ZoneAddRe
 		w := s.wildcardCertificate(ctx, z.Name)
 		warnings = append(warnings, w...)
 	}
-	warnings = append(warnings, s.zoneDNSWarnings(ctx, z.Name)...)
+	warnings = append(warnings, s.zoneDNSWarnings(ctx, z)...)
 	s.warn(actor, warnings, "zone", z.Name)
 	reply.Warnings = api.Warnings{Warnings: warnings}
 	return reply, nil
@@ -183,7 +183,7 @@ func (s *Server) CheckDeclaredZones(ctx context.Context, zones []state.Zone, sch
 				}
 				warnings = append(warnings, s.declaredCertificate(ctx, z.Name)...)
 			}
-			warnings = append(warnings, s.zoneDNSWarnings(ctx, z.Name)...)
+			warnings = append(warnings, s.zoneDNSWarnings(ctx, z)...)
 			s.warn(api.ActorLocal, warnings, "zone", z.Name)
 		}()
 	}

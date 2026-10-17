@@ -80,3 +80,4 @@ Two lines in the logs are not Edge messages and are expected:
 
 - A name that gets its own certificate appears in Certificate Transparency logs. A wildcard Zone keeps its Hostnames out, except for names two labels or more below it, which `route add` warns about.
 - The DNS checks at `zone add` and `route add` only warn. They never refuse.
+- `zone add` checks DNS only for a wildcard Zone, by resolving a random name under it. A per-hostname Zone needs only each Hostname to point at the Edge, which `route add` checks, so a wildcard record elsewhere does not warn. A declared Zone is checked when its line is new or its mode changes, not at every start.
