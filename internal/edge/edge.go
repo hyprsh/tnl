@@ -111,7 +111,9 @@ func Run(ctx context.Context, cfg Config) error {
 	if err != nil {
 		return refuse(&ConfigError{err})
 	}
-	udpbuf.SilenceQuicGo()
+	if err := udpbuf.SilenceQuicGo(); err != nil {
+		return refuse(err)
+	}
 	udpbuf.Warn(cfg.Log)
 	tun, err := tunnel.New(tunnel.Config{
 		Address:    addr.Edge,

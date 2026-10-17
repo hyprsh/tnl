@@ -4,14 +4,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hyprsh/tnl/internal/udpbuf"
+	"github.com/hyprsh/tnl/internal/udpbuf/udpbuftest"
 )
 
 func logOfAnOutpostOnHostWithLimits(t *testing.T, n int) string {
 	t.Helper()
-	old := udpbuf.Read
-	t.Cleanup(func() { udpbuf.Read = old })
-	udpbuf.Read = func(string) (int, error) { return n, nil }
+	udpbuftest.Both(t, n)
 	tok, edgeKey := newToken(t, "127.0.0.1")
 	edge := newFakeEdge(t, edgeKey, 0, tok.OneTimeKey)
 	tok.Port = edge.port

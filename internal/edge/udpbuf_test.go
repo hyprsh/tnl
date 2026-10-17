@@ -6,14 +6,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hyprsh/tnl/internal/udpbuf"
+	"github.com/hyprsh/tnl/internal/udpbuf/udpbuftest"
 )
 
 func fakeUDPLimits(t *testing.T, n int) {
 	t.Helper()
-	old := udpbuf.Read
-	t.Cleanup(func() { udpbuf.Read = old })
-	udpbuf.Read = func(string) (int, error) { return n, nil }
+	udpbuftest.Both(t, n)
 }
 
 func TestLowUDPBufferLimitsLogOneWarnNamingTheSysctlsAtStart(t *testing.T) {

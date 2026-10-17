@@ -65,7 +65,7 @@ The script never replaces a full build with the Outpost build, so a host that ru
 
 ### UDP buffers
 
-The Edge's HTTP/3 listener (quic-go) and the WireGuard socket (wireguard-go, on the Edge and on Outposts) ask Linux for 7 MiB socket buffers. Linux caps a request at `net.core.rmem_max` and `net.core.wmem_max`, which default to about 208 KiB. With a buffer that small, packets are dropped under load and HTTP/3 slows down. If either limit is below 7 MiB (7340032), the Edge and an Outpost log one `warn` line at start that names both settings and the value 7500000 and points here, as in `the UDP buffer limits are too low ... set net.core.rmem_max and net.core.wmem_max to 7500000`. tnl switches off quic-go's own `failed to sufficiently increase receive buffer size` line. A host whose limits tnl can't read (anything but Linux) gets no line.
+The Edge's HTTP/3 listener (quic-go) and the WireGuard socket (wireguard-go, on the Edge and on Outposts) ask Linux for 7 MiB socket buffers. Linux caps a request at `net.core.rmem_max` and `net.core.wmem_max`, which default to about 208 KiB. With a buffer that small, packets are dropped under load and HTTP/3 slows down. At start the Edge and an Outpost open a UDP socket, ask for 7 MiB buffers the way quic-go does (including the forced request that a process with `CAP_NET_ADMIN` is allowed) and read back what they got. This measures the socket itself, so it works in a container on a bridge network, which cannot read the host's `net.core` limits. If either buffer comes back below 7 MiB (7340032), they log one `warn` line that names both settings and the value 7500000 and points here, as in `the UDP buffer limits are too low`. tnl switches off quic-go's own `failed to sufficiently increase receive buffer size` line. A host where tnl can't open the socket to measure it gets no line.
 
 `install.sh` writes this to `/etc/sysctl.d/60-tnl.conf` and applies it:
 
@@ -74,7 +74,7 @@ net.core.rmem_max = 7500000
 net.core.wmem_max = 7500000
 ```
 
-If you do not use `install.sh`, put those two lines in a file under `/etc/sysctl.d/` yourself and run `sudo sysctl -p <file>`, then restart tnl, since a socket takes its buffer size when it opens. This also applies to an Edge or Outpost in Docker: the limits are the host's, a container cannot set `net.core.*` itself, so set them on the Docker host and then recreate the container.
+If you do not use `install.sh`, put those two lines in a file under `/etc/sysctl.d/` yourself and run `sudo sysctl -p <file>`, then restart tnl, since a socket takes its buffer size when it opens. This also applies to an Edge or Outpost in Docker: the limits are the host's, and a container cannot set `net.core.*` itself or always read it, so set them on the Docker host and then recreate the container. The warning still appears there, since it measures the socket.
 
 macOS needs nothing.
 
