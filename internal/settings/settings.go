@@ -7,6 +7,7 @@ package settings
 
 import (
 	"fmt"
+	"net/url"
 	"sort"
 	"strings"
 
@@ -155,7 +156,7 @@ func checkLabel(prefix, label string) error {
 func parseRoute(text string) (declare.Line, error) {
 	words := strings.Fields(text)
 	if len(words) < 2 {
-		return declare.Line{}, fmt.Errorf("want <hostname> <service-url> [--host-header V] [--insecure-skip-verify]")
+		return declare.Line{}, fmt.Errorf("want <hostname> <service-url> [--host-header V] [--insecure-skip-verify] [--no-hsts] [--header Name=value, repeatable]")
 	}
 	var r declare.Line
 	host := dnsname.Normalize(words[0])
@@ -168,7 +169,8 @@ func parseRoute(text string) (declare.Line, error) {
 		return declare.Line{}, err
 	}
 	r.Service = svc.Canonical
-	var gotHeader, gotInsecure bool
+	var gotHeader, gotInsecure, gotNoHSTS bool
+	var headers []string
 	for rest := words[2:]; len(rest) > 0; rest = rest[1:] {
 		switch w := rest[0]; w {
 		case "--host-header":
@@ -188,6 +190,21 @@ func parseRoute(text string) (declare.Line, error) {
 				return declare.Line{}, fmt.Errorf("--insecure-skip-verify is given twice")
 			}
 			gotInsecure, r.InsecureSkipVerify = true, true
+		case "--no-hsts":
+			if gotNoHSTS {
+				return declare.Line{}, fmt.Errorf("--no-hsts is given twice")
+			}
+			gotNoHSTS, r.NoHSTS = true, true
+		case "--header":
+			if len(rest) < 2 {
+				return declare.Line{}, fmt.Errorf("--header needs a Name=value")
+			}
+			h, err := headerWord(rest[1])
+			if err != nil {
+				return declare.Line{}, err
+			}
+			headers = append(headers, h)
+			rest = rest[1:]
 		default:
 			if strings.HasPrefix(w, "-") {
 				return declare.Line{}, fmt.Errorf("unknown option %s", w)
@@ -195,5 +212,24 @@ func parseRoute(text string) (declare.Line, error) {
 			return declare.Line{}, fmt.Errorf("unexpected word %q after the Service URL", w)
 		}
 	}
+	if r.Headers, err = state.CanonHeaders(headers); err != nil {
+		return declare.Line{}, err
+	}
 	return r, nil
+}
+
+// headerWord turns the word after --header, Name=value, into "Name: value". The
+// words of a line are split on whitespace and have no quoting, so a space in the
+// value is written %20 and a % is written %25; any %XX is decoded. The name
+// ends at the first =.
+func headerWord(w string) (string, error) {
+	name, enc, ok := strings.Cut(w, "=")
+	if !ok || name == "" || strings.Contains(name, ":") {
+		return "", fmt.Errorf("--header wants Name=value, got %q", w)
+	}
+	value, err := url.PathUnescape(enc)
+	if err != nil {
+		return "", fmt.Errorf("--header %s: the value is not valid %%-encoding (write a space as %%20 and a %% as %%25)", name)
+	}
+	return name + ": " + value, nil
 }

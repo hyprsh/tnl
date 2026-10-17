@@ -23,7 +23,14 @@ type Route struct {
 	InsecureSkipVerify bool
 	// HostHeader replaces the Visitor's Host header when not empty.
 	HostHeader string
+	// NoHSTS leaves out the Strict-Transport-Security header the Edge adds.
+	NoHSTS bool
+	// Headers are added to the Service's replies unless it sent the same name.
+	Headers []Header
 }
+
+// Header is one extra response header of a Route.
+type Header struct{ Name, Value string }
 
 // Table is what the router reads. Lookup must not block.
 type Table interface {

@@ -144,6 +144,10 @@ type RouteAddRequest struct {
 	// HostHeader overrides the Host header sent to the Service; "" keeps the Visitor's.
 	HostHeader         string `json:"host_header,omitempty"`
 	InsecureSkipVerify bool   `json:"insecure_skip_verify,omitempty"`
+	// NoHSTS leaves the Strict-Transport-Security header off the Route's replies.
+	NoHSTS bool `json:"no_hsts,omitempty"`
+	// Headers are extra response headers, each "Name: value".
+	Headers []string `json:"headers,omitempty"`
 }
 
 // RouteInfo is a Route as the API shows it. Options holds the Route's options

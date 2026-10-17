@@ -48,6 +48,31 @@ func TestParseRoutesFromEitherFormGiveTheSameDeclaration(t *testing.T) {
 	}
 }
 
+func TestAHeaderWordIsPercentDecodedAndTheHeadersComeOutCanonical(t *testing.T) {
+	a := "m.example.com http://x --no-hsts --header x-frame-options=DENY --header Content-Security-Policy=default-src%20'self';%20img-src%20data:%20100%25"
+	b := "m.example.com http://x --header Content-Security-Policy=default-src%20%27self%27;%20img-src%20data:%20100%25 --header X-Frame-Options=DENY --no-hsts"
+	want := []declare.Line{{Hostname: "m.example.com", Service: "http://x", NoHSTS: true,
+		Headers: []string{"Content-Security-Policy: default-src 'self'; img-src data: 100%", "X-Frame-Options: DENY"}}}
+	for _, line := range []string{a, b} {
+		got, _, err := ParseRoutes(nil, []string{line})
+		if err != nil || !reflect.DeepEqual(got, want) {
+			t.Errorf("%q: %+v %v", line, got, err)
+		}
+	}
+}
+
+func TestBadHeaderWordsAreRefused(t *testing.T) {
+	for _, w := range []string{
+		"--header", "--header X", "--header =v", "--header X=", "--header X=a%zz", "--header X=a%0Ab",
+		"--header Strict-Transport-Security=x", "--header Content-Length=1", "--header Bad:Name=x",
+		"--header A=1 --header a=2", "--no-hsts --no-hsts",
+	} {
+		if _, _, err := ParseRoutes(nil, []string{"m.example.com http://x " + w}); err == nil {
+			t.Errorf("%q was accepted", w)
+		}
+	}
+}
+
 func TestParseRoutesSortsByHostname(t *testing.T) {
 	d, _, err := ParseRoutes([]string{"TNL_ROUTE_B=b.example.com http://x", "TNL_ROUTE_A=z.example.com http://y"}, nil)
 	if err != nil || len(d) != 2 || d[0].Hostname != "b.example.com" {

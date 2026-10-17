@@ -34,14 +34,18 @@ tnl route ls
 
 `tnl route ls` prints every Route, with a STATUS column that shows the first problem: `outpost not joined`, `outpost never connected`, `outpost offline` or `outpost incompatible`, then `no certificate` or `certificate expired`, then `renewal failing`, else `ok`.
 
+`route ls` shows the options in the OPTIONS column, one word each: `host-header=app.lan`, `insecure-skip-verify=true`, `no-hsts=true` and `header="Name: value"` (quoted, because a value has spaces). In `--json`, `options` is a list of the same words without the quotes, such as `"header=Name: value"`.
+
 A line an Outpost declares that is not a Route yet gets a row of its own, `waiting: taken by nas` or `waiting: outside every Zone`. While a Hostname moves between Outposts it shows two rows. An Outpost's `tnl route ls` prints the same as the Edge's. `--json` gives the stable form.
 
 ## Options
 
 - **`--host-header VALUE`** replaces the Host header sent to the Service. Without it the Service sees the Visitor's Hostname. `route edit --host-header ""` clears it.
 - **`--insecure-skip-verify`** skips verifying an `https://` Service's certificate (see below). `route edit --insecure-skip-verify=false` turns verification back on.
+- **`--no-hsts`** leaves the `Strict-Transport-Security` header off every reply of this Route, including the Edge's own 502 and 503. `route edit --no-hsts=false` turns it back on. A browser that has already seen the header keeps it for a year, so use this from the start.
+- **`--header 'Name: value'`**, repeatable, adds a response header to the Service's replies, such as `--header 'X-Frame-Options: DENY'`. The Service's own header of the same name wins, and the Edge's own replies (error pages, 502, 503) get none. `route edit --header` replaces the Route's whole list, `route edit --header ""` clears it, and a `route edit` without `--header` leaves it. A header name may be given once. tnl refuses names it manages or that would break HTTP: `Strict-Transport-Security` (use `--no-hsts`), `Via`, `Server`, `Content-Length`, `Content-Type`, `Transfer-Encoding` and the hop-by-hop headers (`Connection`, `Keep-Alive`, `Proxy-Authenticate`, `Proxy-Authorization`, `Proxy-Connection`, `TE`, `Trailer`, `Upgrade`).
 
-`route edit` changes any of `--service`, `--outpost`, `--host-header` and `--insecure-skip-verify`, and closes the Route's open connections so the next request meets the new Route, even when only an option changed.
+`route edit` changes any of `--service`, `--outpost`, `--host-header`, `--insecure-skip-verify`, `--no-hsts` and `--header`, and closes the Route's open connections so the next request meets the new Route, even when only an option changed.
 
 ## `https://` Services
 
@@ -83,13 +87,13 @@ A Service the list refuses is answered with the `allowlist` dial error: Visitors
 
 The Edge passes the Service's reply through, with these changes:
 
-- **`Strict-Transport-Security: max-age=31536000`** is added to every HTTPS reply, unless the Service sends its own, which is left as it is. There is no `includeSubDomains` or `preload`. The port-80 redirect sends none. HSTS can't be turned off per Route, and Routes can't add headers.
+- **`Strict-Transport-Security: max-age=31536000`** is added to every HTTPS reply, unless the Service sends its own, which is left as it is, or the Route has `--no-hsts`. There is no `includeSubDomains` or `preload`. The port-80 redirect sends none.
 - **`Via`** is removed from replies to Visitors, so they never see `Caddy`.
 - **`Server`** is the Service's own. If the Service sends none, the reply has none.
 
 The Edge's own replies (its error pages, the `200` it gives an event-stream request when the Service is down, and the redirect from port 80) carry no `Server` header and `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer` and `Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'`.
 
-Everything else is the Service's to set: `Content-Security-Policy`, `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy` and `Permissions-Policy`. The Edge doesn't add them to the Service's replies, because it can't know what the app needs. In nginx, for example:
+Everything else is the Service's to set, or the Route's `--header`: `Content-Security-Policy`, `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy` and `Permissions-Policy`. The Edge doesn't add them to the Service's replies by itself, because it can't know what the app needs. A Route can add them for a Service that can't, with `--header 'Permissions-Policy: geolocation=()'`; where the Service sends the same header, the Service's wins. In nginx, for example:
 
 ```nginx
 add_header Content-Security-Policy "default-src 'self'" always;

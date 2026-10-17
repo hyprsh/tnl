@@ -17,6 +17,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/hyprsh/tnl/internal/state"
 )
 
 // The skew check runs real tnl binaries of different versions against each
@@ -260,6 +262,7 @@ func runSkew(t *testing.T, join skewStep, then *skewStep, serve bool) {
 	if then.edge != join.edge {
 		outProc.stop()
 		edgeProc.stop()
+		bumpEdgeSchema(t, edgeDir)
 		edgeProc = startEdge(then.edge)
 		outProc = startOutpost(then.outpost)
 	} else if then.outpost != join.outpost {
@@ -278,5 +281,28 @@ func runSkew(t *testing.T, join skewStep, then *skewStep, serve bool) {
 	})
 	if !strings.Contains(edgeProc.out.String(), "outpost is incompatible") {
 		t.Errorf("the Edge did not warn:\n%s", edgeProc.out)
+	}
+}
+
+// bumpEdgeSchema stamps the stopped Edge's state.json with this tree's schema
+// version. A tnl of the next minor refuses the file a tag's Edge wrote, with no
+// migration before 1.0 (spec section 5), so a real upgrade would start a new
+// Edge; the fields the schemas share are the same, and this test is about the
+// Outpost's version, not the file.
+func bumpEdgeSchema(t *testing.T, dir string) {
+	t.Helper()
+	path := filepath.Join(dir, "state.json")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc map[string]any
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatal(err)
+	}
+	doc["version"] = state.Version
+	raw, _ = json.MarshalIndent(doc, "", "  ")
+	if err := os.WriteFile(path, raw, 0o600); err != nil {
+		t.Fatal(err)
 	}
 }

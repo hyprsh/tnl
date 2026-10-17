@@ -157,9 +157,15 @@ func startWeb(w *Web, d webDeps) (stop func(), err error) {
 		rs := make([]routes.Route, 0, len(st.Routes))
 		for _, r := range st.Routes {
 			svc := r.Parsed()
+			var extra []routes.Header
+			for _, h := range r.Headers {
+				name, value, _ := state.SplitHeader(h)
+				extra = append(extra, routes.Header{Name: name, Value: value})
+			}
 			rs = append(rs, routes.Route{
 				Hostname: r.Hostname, Outpost: r.Outpost, Service: svc.HostPort,
 				TLS: svc.TLS, ServerName: svc.Host, InsecureSkipVerify: r.InsecureSkipVerify, HostHeader: r.HostHeader,
+				NoHSTS: r.NoHSTS, Headers: extra,
 			})
 		}
 		table.Swap(rs)

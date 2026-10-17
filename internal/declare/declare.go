@@ -6,6 +6,7 @@ package declare
 import (
 	"crypto/sha256"
 	"sort"
+	"strconv"
 )
 
 // Line is one declared Route as it travels and as the digests see it. The
@@ -16,6 +17,11 @@ type Line struct {
 	Service            string `json:"service"`
 	HostHeader         string `json:"host_header,omitempty"`
 	InsecureSkipVerify bool   `json:"insecure_skip_verify,omitempty"`
+	// NoHSTS turns the Edge's HSTS header off for the line's Route.
+	NoHSTS bool `json:"no_hsts,omitempty"`
+	// Headers are extra response headers, "Name: value", in the canonical form
+	// (names in canonical case, sorted, none twice).
+	Headers []string `json:"headers,omitempty"`
 }
 
 // Entry is a line as the Edge has it: applied (it is a Route) or waiting.
@@ -29,23 +35,25 @@ const DigestSize = sha256.Size
 
 // Digest is the digest of a Declaration: SHA-256 over a canonical text, so it
 // does not depend on the order of the lines, on JSON key order or on
-// whitespace. The text is the prefix "tnl-declaration-1\n", then for each line
-// in Hostname order its Hostname, Service, host header and "1" or "0" for
-// insecure_skip_verify, each followed by a NUL byte, and a newline. An empty
+// whitespace. The text is the prefix "tnl-declaration-2\n", then for each line
+// in Hostname order its Hostname, Service, host header, "1" or "0" for
+// insecure_skip_verify, "1" or "0" for no_hsts, the number of extra headers in
+// decimal and each header as "Name: value" in the order the line holds them
+// (canonical: sorted), each followed by a NUL byte, and a newline. An empty
 // Declaration has a digest too.
 func Digest(lines []Line) [DigestSize]byte {
 	entries := make([]Entry, len(lines))
 	for i, l := range lines {
 		entries[i].Line = l
 	}
-	return digest("tnl-declaration-1\n", entries, false)
+	return digest("tnl-declaration-2\n", entries, false)
 }
 
 // RoutesDigest is the digest of an Outpost's Routes and waiting lines as the
-// Edge has them: the same text under the prefix "tnl-routes-1\n", with a
+// Edge has them: the same text under the prefix "tnl-routes-2\n", with a
 // further "waiting" or "applied" field in each line's record.
 func RoutesDigest(entries []Entry) [DigestSize]byte {
-	return digest("tnl-routes-1\n", entries, true)
+	return digest("tnl-routes-2\n", entries, true)
 }
 
 func digest(prefix string, entries []Entry, withStatus bool) [DigestSize]byte {
@@ -62,6 +70,15 @@ func digest(prefix string, entries []Entry, withStatus bool) [DigestSize]byte {
 			field("1")
 		} else {
 			field("0")
+		}
+		if e.NoHSTS {
+			field("1")
+		} else {
+			field("0")
+		}
+		field(strconv.Itoa(len(e.Headers)))
+		for _, hd := range e.Headers {
+			field(hd)
 		}
 		if withStatus {
 			if e.Waiting {

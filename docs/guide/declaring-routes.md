@@ -5,6 +5,7 @@ An Outpost can list its own Routes, so that starting it is all the setup its Ser
 ```sh
 TNL_ROUTE_MEDIA="media.example.com http://localhost:8096 --host-header jellyfin --insecure-skip-verify" tnl connect
 tnl connect --route "media.example.com http://localhost:8096"
+TNL_ROUTE_APP="app.example.com http://localhost:3000 --no-hsts --header X-Frame-Options=DENY --header Content-Security-Policy=default-src%20%27self%27" tnl connect
 ```
 
 In Compose, the Outpost lists them next to its token or credential ([`examples/compose/outpost.yaml`](../../examples/compose/outpost.yaml) shows the credential; [Declaring the Edge](declaring-the-edge.md) explains it):
@@ -19,7 +20,8 @@ environment:
 ## The lines
 
 - `<LABEL>` is letters, digits and `_`. It names the line in messages and never reaches the Edge.
-- Words are split on whitespace, with no quoting. The Hostname and Service URL come first, then the options.
+- Words are split on whitespace, with no quoting. The Hostname and Service URL come first, then the options: `--host-header V`, `--insecure-skip-verify`, `--no-hsts` and `--header Name=value`, which may repeat.
+- A header value with a space is written with `%20`, and a `%` with `%25`, because a line has no quoting: `--header Content-Security-Policy=default-src%20%27self%27`. The headers are sorted and their names put in canonical case, so how you order them or how much you encode changes nothing. The same names are refused as for `tnl route add --header`, and a name may be given once.
 - The lines are checked when `tnl connect` starts. A syntax error, an unknown option, a Service URL with a path or a scheme other than `http` or `https`, an invalid Hostname, one Hostname on two lines, or `--route` together with `TNL_ROUTE_*` makes it exit with status 78. The message names the variable: `TNL_ROUTE_MEDIA: unknown option --host-heder`.
 - `tnl connect` and `tnl edge` also refuse any other `TNL_*` variable they don't know, with a "did you mean" (`unknown variable TNL_ADRESS: did you mean TNL_ADDRESS?`) that echoes names, never values.
 

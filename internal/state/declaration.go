@@ -127,11 +127,11 @@ func (s *State) DeclarationDigest(outpost string) [declare.DigestSize]byte {
 }
 
 func lineOf(r Route) declare.Line {
-	return declare.Line{Hostname: r.Hostname, Service: r.Service, HostHeader: r.HostHeader, InsecureSkipVerify: r.InsecureSkipVerify}
+	return declare.Line{Hostname: r.Hostname, Service: r.Service, HostHeader: r.HostHeader, InsecureSkipVerify: r.InsecureSkipVerify, NoHSTS: r.NoHSTS, Headers: r.Headers}
 }
 
 func routeOf(outpost string, l declare.Line) Route {
-	return Route{Hostname: l.Hostname, Outpost: outpost, Service: l.Service, HostHeader: l.HostHeader, InsecureSkipVerify: l.InsecureSkipVerify}
+	return Route{Hostname: l.Hostname, Outpost: outpost, Service: l.Service, HostHeader: l.HostHeader, InsecureSkipVerify: l.InsecureSkipVerify, NoHSTS: l.NoHSTS, Headers: l.Headers}
 }
 
 // WaitingLine is a line that is not a Route, with why.
@@ -206,7 +206,7 @@ func (s *State) ApplyDeclaration(outpost string, lines []declare.Line, now time.
 		switch {
 		case held && have.Outpost != outpost:
 			res.Waiting = append(res.Waiting, WaitingLine{l.Hostname, s.WaitingReason(outpost, l.Hostname)})
-		case held && have == want:
+		case held && sameRoute(have, want):
 			res.Unchanged = append(res.Unchanged, l.Hostname)
 		case held:
 			for i := range s.Routes {
@@ -272,6 +272,9 @@ func (s *State) validateDeclarations(outposts map[string]bool) error {
 				return invalid(le, "%v", err)
 			}
 			if err := CheckHostHeader(l.HostHeader); err != nil {
+				return invalid(le, "%v", err)
+			}
+			if err := CheckHeaders(l.Headers); err != nil {
 				return invalid(le, "%v", err)
 			}
 		}

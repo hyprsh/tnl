@@ -37,6 +37,9 @@ func routeAdd(args []string) error {
 	outpost := c.fs.String("outpost", "", "the Outpost whose network the Service is on (required on the Edge host, absent on an Outpost)")
 	hostHeader := c.fs.String("host-header", "", "the Host header to send to the Service, instead of the Visitor's")
 	insecure := c.fs.Bool("insecure-skip-verify", false, "skip verifying an https:// Service's certificate")
+	noHSTS := c.fs.Bool("no-hsts", false, "leave the Strict-Transport-Security header off this Route's replies")
+	var headers lineFlag
+	c.fs.Var(&headers, "header", "an extra response header, \"Name: value\"; repeatable")
 	pos, err := c.parse(args)
 	if err != nil {
 		return err
@@ -50,7 +53,8 @@ func routeAdd(args []string) error {
 	}
 	r, err := api.Call[api.RouteAddReply](context.Background(), cl, http.MethodPost, api.PathRoutes,
 		api.RouteAddRequest{Hostname: pos[0], Service: pos[1], Outpost: *outpost,
-			HostHeader: *hostHeader, InsecureSkipVerify: *insecure})
+			HostHeader: *hostHeader, InsecureSkipVerify: *insecure,
+			NoHSTS: *noHSTS, Headers: headers})
 	if err != nil {
 		return err
 	}
