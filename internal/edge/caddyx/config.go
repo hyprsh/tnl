@@ -264,7 +264,7 @@ func (c Config) JSON() ([]byte, error) {
 				"https_port":   c.HTTPSPort,
 				"servers": map[string]any{
 					"https": map[string]any{
-						"listen":    []string{c.HTTPSListen},
+						"listen":    []string{listenAddr(c.HTTPSListen)},
 						"protocols": protocols,
 						// read_timeout and write_timeout stay unset, which is 0.
 						"read_header_timeout": to.ReadHeader.String(),
@@ -285,7 +285,7 @@ func (c Config) JSON() ([]byte, error) {
 					// matchers, and the router has none, so this server is explicit.
 					// It still answers ACME HTTP-01 challenges before its routes run.
 					"redirect": map[string]any{
-						"listen":          []string{c.HTTPListen},
+						"listen":          []string{listenAddr(c.HTTPListen)},
 						"automatic_https": map[string]any{"disable": true},
 						"routes": []any{map[string]any{"handle": []any{map[string]any{
 							"handler": "static_response", "status_code": 308,
