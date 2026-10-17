@@ -65,7 +65,7 @@ The script never replaces a full build with the Outpost build, so a host that ru
 
 ### UDP buffers
 
-The Edge's HTTP/3 listener (quic-go) and the WireGuard socket (wireguard-go, on the Edge and on Outposts) ask Linux for 7 MiB socket buffers. Linux caps a request at `net.core.rmem_max` and `net.core.wmem_max`, which default to about 208 KiB. With a buffer that small, packets are dropped under load and HTTP/3 slows down. Without the fix the Edge logs `failed to sufficiently increase receive buffer size` at start.
+The Edge's HTTP/3 listener (quic-go) and the WireGuard socket (wireguard-go, on the Edge and on Outposts) ask Linux for 7 MiB socket buffers. Linux caps a request at `net.core.rmem_max` and `net.core.wmem_max`, which default to about 208 KiB. With a buffer that small, packets are dropped under load and HTTP/3 slows down. If either limit is below 7 MiB (7340032), the Edge and an Outpost log one `warn` line at start that names both settings and the value 7500000 and points here, as in `the UDP buffer limits are too low ... set net.core.rmem_max and net.core.wmem_max to 7500000`. tnl switches off quic-go's own `failed to sufficiently increase receive buffer size` line. A host whose limits tnl can't read (anything but Linux) gets no line.
 
 `install.sh` writes this to `/etc/sysctl.d/60-tnl.conf` and applies it:
 

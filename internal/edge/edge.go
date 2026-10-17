@@ -25,6 +25,7 @@ import (
 	"github.com/hyprsh/tnl/internal/remind"
 	"github.com/hyprsh/tnl/internal/state"
 	"github.com/hyprsh/tnl/internal/tunnel"
+	"github.com/hyprsh/tnl/internal/udpbuf"
 )
 
 // Config is what `tnl edge` passes in.
@@ -110,6 +111,8 @@ func Run(ctx context.Context, cfg Config) error {
 	if err != nil {
 		return refuse(&ConfigError{err})
 	}
+	udpbuf.SilenceQuicGo()
+	udpbuf.Warn(cfg.Log)
 	tun, err := tunnel.New(tunnel.Config{
 		Address:    addr.Edge,
 		PrivateKey: store.Snapshot().PrivateKey,
