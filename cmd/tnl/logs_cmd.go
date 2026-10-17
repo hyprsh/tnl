@@ -1,15 +1,14 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"fmt"
-	"io"
 	"os"
 	"os/signal"
 	"syscall"
 
 	"github.com/hyprsh/tnl/internal/api"
+	"github.com/hyprsh/tnl/internal/render"
 )
 
 func init() { commands["logs"] = logsCmd }
@@ -52,23 +51,5 @@ func logsCmd(args []string) error {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	body, _, err := c.client().Download(ctx, api.PathLogs+"?"+q.Values().Encode())
-	if err != nil {
-		return err
-	}
-	defer body.Close()
-	w := bufio.NewWriter(stdout)
-	// Copy in chunks and flush after each, so a followed line shows at once.
-	buf := make([]byte, 32<<10)
-	for {
-		m, rerr := body.Read(buf)
-		w.Write(buf[:m])
-		w.Flush()
-		if rerr == io.EOF || ctx.Err() != nil {
-			return nil
-		}
-		if rerr != nil {
-			return rerr
-		}
-	}
+	return render.Logs(ctx, stdout, c.client(), q)
 }

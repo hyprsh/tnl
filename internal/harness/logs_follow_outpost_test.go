@@ -3,33 +3,44 @@ package harness
 import (
 	"bufio"
 	"context"
+	"io"
 	"net/http"
 	"strings"
 	"testing"
 
 	"github.com/hyprsh/tnl/internal/api"
+	"github.com/hyprsh/tnl/internal/render"
 )
 
 // `tnl logs -f` on an Outpost: its CLI talks to the relay socket, which serves
-// the Outpost's own ring and must deliver a followed line as it is logged.
+// the Outpost's own ring and must deliver a followed line as it is logged. The
+// follow runs through render.Logs, the code the command runs.
 func TestFollowingAnOutpostsLogsDeliversNewLinesAsTheyAreLogged(t *testing.T) {
 	re := StartEdgeWith(t, EdgeOptions{})
+	re.AddZone(t, "test")
 	nas := re.ConnectWith(t, "nas", re.AddOutpost(t, "nas"), ConnectOptions{})
 
 	fctx, cancel := context.WithCancel(ctx(t))
-	defer cancel()
-	q := api.LogsQuery{Follow: true, N: 1}
-	body, _, err := nas.CLI.Download(fctx, api.PathLogs+"?"+q.Values().Encode())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer body.Close()
-	sc := bufio.NewScanner(body)
+	pr, pw := io.Pipe()
+	done := make(chan error, 1)
+	go func() {
+		err := render.Logs(fctx, pw, nas.CLI, api.LogsQuery{Follow: true, N: 1})
+		pw.Close()
+		done <- err
+	}()
+	defer func() {
+		cancel()
+		pr.Close()
+		<-done
+	}()
+	sc := bufio.NewScanner(pr)
 	readLine(t, sc) // the last line held
 
 	// A route change through the Outpost's CLI is a line the Outpost logs.
 	req := api.RouteAddRequest{Hostname: "app.test", Service: "http://127.0.0.1:1", Outpost: "nas"}
-	api.Call[api.RouteAddReply](ctx(t), nas.CLI, http.MethodPost, api.PathRoutes, req)
+	if _, err := api.Call[api.RouteAddReply](ctx(t), nas.CLI, http.MethodPost, api.PathRoutes, req); err != nil {
+		t.Fatal(err)
+	}
 	for i := 0; i < 20; i++ {
 		l := readLine(t, sc)
 		if strings.Contains(l, "route change through this Outpost's CLI") {
