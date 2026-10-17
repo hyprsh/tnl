@@ -37,10 +37,15 @@ func (s *Server) warn(actor api.Actor, ws []string, attrs ...any) {
 	}
 }
 
-// zoneDNSWarnings resolves a random name under the Zone and says so if it
-// doesn't point at the Edge's address. DNS checks only warn. It must run
-// after the Store's lock is released.
-func (s *Server) zoneDNSWarnings(ctx context.Context, zone string) []string {
+// zoneDNSWarnings resolves a random name under a wildcard Zone and says so if
+// it doesn't point at the Edge's address. A per-hostname Zone is not checked:
+// it needs only each Hostname to point there, which `route add` checks. DNS
+// checks only warn. It must run after the Store's lock is released.
+func (s *Server) zoneDNSWarnings(ctx context.Context, z state.Zone) []string {
+	if z.Mode != state.Wildcard {
+		return nil
+	}
+	zone := z.Name
 	var b [4]byte
 	rand.Read(b[:])
 	name := "tnl-check-" + hex.EncodeToString(b[:]) + "." + zone

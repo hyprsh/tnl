@@ -445,3 +445,22 @@ func credentialKey(t *testing.T, cred string) keys.Key {
 	}
 	return c.PrivateKey
 }
+
+// A declared wildcard Zone gets the DNS check when its line is new, and an
+// Edge restarted with the line unchanged does not repeat it.
+func TestRestartingWithAnUnchangedZoneLineLogsNoDNSWarning(t *testing.T) {
+	StartFakeDNS(t, "example.test", dnsToken)
+	elog := new(lockedBuf)
+	opts := EdgeOptions{Pebble: StartPebble(t, PebbleOptions{}), Resolver: nowhere{}, LogOut: elog, LogLevel: slog.LevelWarn,
+		Zones: []state.DeclaredZone{{Name: "example.test", Provider: "fake", Token: dnsToken}}}
+	re := StartEdgeWith(t, opts)
+	waitFor(t, "the DNS warning of the new line", 10*time.Second, func() bool { return countLines(elog, "level=warn", "doesn't resolve") == 1 })
+	re.Stop()
+	elog = new(lockedBuf)
+	opts.LogOut, opts.StateDir = elog, re.StateDir
+	StartEdgeWith(t, opts)
+	time.Sleep(2 * time.Second)
+	if n := countLines(elog, "level=warn", "doesn't resolve"); n != 0 {
+		t.Fatalf("%d DNS warnings at the restart:\n%s", n, elog)
+	}
+}

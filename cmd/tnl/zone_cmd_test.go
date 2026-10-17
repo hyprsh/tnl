@@ -92,18 +92,15 @@ func tnlBoth(args ...string) (out, errOut string, code int, err error) {
 	return buf.String(), ebuf.String(), exitCode(err), err
 }
 
-func TestZoneAddWarnsOnStderrAndExitsZero(t *testing.T) {
+func TestPerHostnameZoneAddPrintsNoDNSWarningWhateverTheNamesResolveTo(t *testing.T) {
 	runningEdgeWith(t, fakeDNS{"elsewhere.test": false})
 	for _, zone := range []string{"elsewhere.test", "nowhere.test"} {
 		out, errOut, code, err := tnlBoth("zone", "add", zone)
 		if err != nil || code != 0 || !strings.Contains(out, "added Zone "+zone) {
 			t.Fatalf("%s: %q %v %d", zone, out, err, code)
 		}
-		if !strings.HasPrefix(errOut, "warning: ") || !strings.Contains(errOut, zone) || strings.Count(errOut, "\n") != 1 {
-			t.Fatalf("%s: stderr %q", zone, errOut)
-		}
-		if strings.Contains(out, "warning") {
-			t.Fatalf("%s: warning on stdout: %q", zone, out)
+		if errOut != "" || strings.Contains(out, "warning") {
+			t.Fatalf("%s: stderr %q, stdout %q", zone, errOut, out)
 		}
 	}
 	ls, _, err := tnl("zone", "ls")

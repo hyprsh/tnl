@@ -298,22 +298,20 @@ func logLines(f *fixture, substr string) []string {
 	return out
 }
 
-func TestZoneAddWarnsWhenNamesPointElsewhereOrNowhere(t *testing.T) {
+// A per-hostname Zone needs only each Hostname to point at the Edge, which
+// `route add` checks, so what a random name under it resolves to is no concern.
+func TestPerHostnameZoneAddGivesNoDNSWarningWhereverNamesPoint(t *testing.T) {
 	for _, zone := range []string{"points-away.test", "nowhere.test"} {
 		f := startWith(t, "1.2.3", api.ActorLocal, edgeResolver())
 		z, err := addZone(f.client, zone)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(z.Warnings.Warnings) != 1 || !strings.Contains(z.Warnings.Warnings[0], zone) || !strings.Contains(z.Warnings.Warnings[0], "tnl.example.com") {
-			t.Fatalf("%s: warnings %q", zone, z.Warnings.Warnings)
+		if z.Warnings.Warnings != nil || len(logLines(f, "level=warn")) != 0 {
+			t.Fatalf("%s: warnings %q, log %s", zone, z.Warnings.Warnings, f.log.String())
 		}
 		if got := f.store.Snapshot().Zones; len(got) != 1 {
 			t.Fatalf("%s: the Zone was not saved: %+v", zone, got)
-		}
-		lines := logLines(f, "level=warn")
-		if len(lines) != 1 || !strings.Contains(lines[0], "actor=local") || !strings.Contains(lines[0], z.Warnings.Warnings[0]) {
-			t.Fatalf("%s: warn lines %q", zone, lines)
 		}
 	}
 }
