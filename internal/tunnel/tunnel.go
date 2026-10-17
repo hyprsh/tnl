@@ -107,36 +107,50 @@ func (t *Tunnel) SetPrivateKey(key keys.Key) error {
 
 // ListenPort reports the UDP port WireGuard bound.
 func (t *Tunnel) ListenPort() (int, error) {
-	if v, ok := t.get("listen_port="); ok {
+	if v, ok := t.get("listen_port"); ok {
 		return strconv.Atoi(v)
 	}
 	return 0, errors.New("no listen_port in wireguard state")
 }
 
-func (t *Tunnel) get(prefix string) (string, bool) {
+// Each calls fn with every key=value line of WireGuard's state, in order. A
+// peer's lines follow its public_key line.
+func (t *Tunnel) Each(fn func(key, value string)) error {
 	out, err := t.Dev.IpcGet()
 	if err != nil {
-		return "", false
+		return err
 	}
 	for _, line := range strings.Split(out, "\n") {
-		if v, ok := strings.CutPrefix(line, prefix); ok {
-			return v, true
+		if k, v, ok := strings.Cut(line, "="); ok {
+			fn(k, v)
 		}
 	}
-	return "", false
+	return nil
+}
+
+func (t *Tunnel) get(key string) (value string, found bool) {
+	t.Each(func(k, v string) {
+		if k == key && !found {
+			value, found = v, true
+		}
+	})
+	return value, found
 }
 
 // WaitHandshake blocks until some peer has completed a handshake.
 func (t *Tunnel) WaitHandshake(ctx context.Context) error {
 	for {
-		out, err := t.Dev.IpcGet()
+		handshook := false
+		err := t.Each(func(k, v string) {
+			if k == "last_handshake_time_sec" && v != "0" {
+				handshook = true
+			}
+		})
 		if err != nil {
 			return err
 		}
-		for _, line := range strings.Split(out, "\n") {
-			if v, ok := strings.CutPrefix(line, "last_handshake_time_sec="); ok && v != "0" {
-				return nil
-			}
+		if handshook {
+			return nil
 		}
 		select {
 		case <-ctx.Done():
@@ -149,16 +163,12 @@ func (t *Tunnel) WaitHandshake(ctx context.Context) error {
 // txBytes is the bytes WireGuard has sent to all peers, which it counts after
 // the UDP send.
 func (t *Tunnel) txBytes() (total int64) {
-	out, err := t.Dev.IpcGet()
-	if err != nil {
-		return 0
-	}
-	for _, line := range strings.Split(out, "\n") {
-		if v, ok := strings.CutPrefix(line, "tx_bytes="); ok {
+	t.Each(func(k, v string) {
+		if k == "tx_bytes" {
 			n, _ := strconv.ParseInt(v, 10, 64)
 			total += n
 		}
-	}
+	})
 	return total
 }
 
