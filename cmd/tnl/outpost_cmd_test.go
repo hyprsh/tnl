@@ -20,7 +20,7 @@ func TestOutpostAddPrintsTheTokenFirst(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stdout %q is not a token: %v", out, err)
 	}
-	if strings.Count(out, "\n") != 2 || tok.TunnelAddr.String() != "100.64.0.2" {
+	if strings.Count(out, "\n") != 3 || tok.TunnelAddr.String() != "100.64.0.2" {
 		t.Fatalf("stdout %q, token %+v", out, tok)
 	}
 }

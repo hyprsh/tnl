@@ -22,7 +22,8 @@ func init() {
 }
 
 // outpostAdd prints the join token on the first line of stdout, so it can be
-// captured, and the install line pinned to the Edge's version on the second.
+// captured, then two install lines pinned to the Edge's version: the second for
+// Linux (as root), the third for macOS (as the user).
 func outpostAdd(args []string) error {
 	c := newClientCommand("outpost add")
 	ttl := c.fs.String("ttl", api.DefaultTokenTTL, "how long the join token works, such as 30m or 2h")
@@ -41,25 +42,34 @@ func outpostAdd(args []string) error {
 	return nil
 }
 
-// printJoin prints the token, then the install line that carries it. A build
-// without a release version cannot pin, and says so on stderr.
+// printJoin prints the token, then the Linux and macOS install lines that carry
+// it. The Edge does not know the Outpost's OS. A build without a release
+// version cannot pin, and says so on stderr.
 func printJoin(token string) {
 	v, _ := versionInfo()
 	fmt.Fprintln(stdout, token)
-	fmt.Fprintln(stdout, installLine(v, token))
+	fmt.Fprintln(stdout, installLine(v, token, true))
+	fmt.Fprintln(stdout, installLine(v, token, false))
+	fmt.Fprintln(stderr, "note: run the first install line on Linux and the second on macOS")
 	if v == "dev" {
 		fmt.Fprintln(stderr, "note: this build has no release version, so the install line is not pinned: it installs the latest release")
 	}
 }
 
-// installLine is the command an Outpost host runs. A release version pins the
-// line to that release's install.sh; "dev" cannot pin and takes the latest.
-func installLine(version, token string) string {
+// installLine is the command an Outpost host runs: with sudo for the systemd
+// install on Linux, without for the per-user install on macOS. A release
+// version pins the line to that release's install.sh; "dev" cannot pin and
+// takes the latest.
+func installLine(version, token string, sudo bool) string {
 	base := "https://github.com/hyprsh/tnl/releases/latest/download/install.sh"
 	if version != "dev" {
 		base = "https://github.com/hyprsh/tnl/releases/download/v" + version + "/install.sh"
 	}
-	return "curl -fsSL " + base + " | sudo sh -s -- outpost --token " + token
+	sh := "sh"
+	if sudo {
+		sh = "sudo sh"
+	}
+	return "curl -fsSL " + base + " | " + sh + " -s -- outpost --token " + token
 }
 
 // outpostRm removes an Outpost; --with-routes removes its Routes too.

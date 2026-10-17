@@ -36,7 +36,13 @@ curl -fsSL https://github.com/hyprsh/tnl/releases/latest/download/install.sh | s
 curl -fsSL https://github.com/hyprsh/tnl/releases/latest/download/install.sh | sudo sh -s -- outpost --token <token>
 ```
 
-`releases/latest/download/install.sh` installs the latest release. To pin a version, use `releases/download/vX.Y.Z/install.sh`: each release attaches its own script, which installs that release's version. `tnl outpost add` prints a line pinned to the Edge's version.
+On macOS leave out `sudo`: the install is per-user (see below), and `sudo` would give root the binary.
+
+```sh
+curl -fsSL https://github.com/hyprsh/tnl/releases/latest/download/install.sh | sh -s -- outpost --token <token>
+```
+
+`releases/latest/download/install.sh` installs the latest release. To pin a version, use `releases/download/vX.Y.Z/install.sh`: each release attaches its own script, which installs that release's version. `tnl outpost add` prints both lines (Linux with `sudo`, macOS without), pinned to the Edge's version.
 
 ### Without root or systemd
 
