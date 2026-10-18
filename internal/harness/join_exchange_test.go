@@ -49,6 +49,7 @@ func reachService(t *testing.T, re *RealEdge, j *JoinedOutpost) {
 }
 
 func TestJoinSwapsInTheOutpostsOwnKeyAndForgetsTheOneTimeKey(t *testing.T) {
+	t.Parallel()
 	re := StartEdge(t)
 	tokText := re.AddOutpost(t, "laptop")
 	tok, err := token.Decode(tokText)
@@ -96,6 +97,7 @@ func TestJoinSwapsInTheOutpostsOwnKeyAndForgetsTheOneTimeKey(t *testing.T) {
 }
 
 func TestASecondConnectWithTheSameTokenFailsAndTheFirstKeepsWorking(t *testing.T) {
+	t.Parallel()
 	re := StartEdge(t)
 	tok := re.AddOutpost(t, "laptop")
 	first := re.Connect(t, "laptop", tok, MustTempDir(t))
@@ -111,6 +113,7 @@ func TestASecondConnectWithTheSameTokenFailsAndTheFirstKeepsWorking(t *testing.T
 }
 
 func TestATokenPastItsTTLIsRefusedAndTheStateDirectoryIsUntouched(t *testing.T) {
+	t.Parallel()
 	re := StartEdge(t)
 	tok := re.AddOutpostTTL(t, "laptop", "50ms")
 	// Waits out the real 50 ms TTL; the token has no state to poll.
@@ -126,6 +129,7 @@ func TestATokenPastItsTTLIsRefusedAndTheStateDirectoryIsUntouched(t *testing.T) 
 }
 
 func TestRestartWithTheSameTokenStillSetReconnectsFromTheState(t *testing.T) {
+	t.Parallel()
 	re := StartEdge(t)
 	tok := re.AddOutpost(t, "laptop")
 	dir := MustTempDir(t)
@@ -148,6 +152,7 @@ func TestRestartWithTheSameTokenStillSetReconnectsFromTheState(t *testing.T) {
 }
 
 func TestATokenForAnotherOutpostJoinsAsThatOutpostAndReplacesTheState(t *testing.T) {
+	t.Parallel()
 	re := StartEdge(t)
 	tok := re.AddOutpost(t, "laptop")
 	dir := MustTempDir(t)
@@ -170,6 +175,7 @@ func TestATokenForAnotherOutpostJoinsAsThatOutpostAndReplacesTheState(t *testing
 }
 
 func TestAJoinedOutpostCallingTheJoinPathAgainGets403(t *testing.T) {
+	t.Parallel()
 	re := StartEdge(t)
 	j := re.JoinOutpost(t, "laptop")
 	_, pub, _ := keys.Generate()
@@ -186,6 +192,7 @@ func TestAJoinedOutpostCallingTheJoinPathAgainGets403(t *testing.T) {
 }
 
 func TestTheStartLogLineCarriesTheOutpostsName(t *testing.T) {
+	t.Parallel()
 	re := StartEdge(t)
 	tok := re.AddOutpost(t, "laptop")
 	logs := &LockedBuf{}

@@ -32,6 +32,7 @@ func readLine(t *testing.T, sc *bufio.Scanner) string {
 }
 
 func TestLogsServesTheEdgesOwnLinesAndFollowsNewOnes(t *testing.T) {
+	t.Parallel()
 	re := StartEdgeWith(t, EdgeOptions{})
 	nas := re.ConnectWith(t, "nas", re.AddOutpost(t, "nas"), ConnectOptions{})
 
@@ -66,6 +67,7 @@ func TestLogsServesTheEdgesOwnLinesAndFollowsNewOnes(t *testing.T) {
 }
 
 func TestAnOutpostCannotReadTheEdgesLogsThroughTheTunnel(t *testing.T) {
+	t.Parallel()
 	re := StartEdgeWith(t, EdgeOptions{})
 	nas := re.ConnectWith(t, "nas", re.AddOutpost(t, "nas"), ConnectOptions{})
 	_, _, err := nas.API.Download(Ctx(t), api.PathLogs)
@@ -75,6 +77,7 @@ func TestAnOutpostCannotReadTheEdgesLogsThroughTheTunnel(t *testing.T) {
 }
 
 func TestLogsOnAnOutpostAreItsOwnAndNotTheEdges(t *testing.T) {
+	t.Parallel()
 	re := StartEdgeWith(t, EdgeOptions{})
 	nas := re.ConnectWith(t, "nas", re.AddOutpost(t, "nas"), ConnectOptions{})
 

@@ -13,6 +13,7 @@ import (
 // A healthy Edge prints its summary and that nothing needs attention, which is
 // exit 0.
 func TestStatusOfAHealthyEdgePrintsTheSummaryAndNothingNeedsAttention(t *testing.T) {
+	t.Parallel()
 	svc := NewHTTPService(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 	re := StartEdgeWith(t, EdgeOptions{})
 	re.AddZone(t, "test")

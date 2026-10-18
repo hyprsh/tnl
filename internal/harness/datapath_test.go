@@ -12,6 +12,7 @@ import (
 )
 
 func TestBytesFlowBothWaysAfterOK(t *testing.T) {
+	t.Parallel()
 	svc := NewEchoService(t)
 	h := New(t)
 	o := h.AddOutpost(t, OutpostOptions{})
@@ -35,6 +36,7 @@ func TestBytesFlowBothWaysAfterOK(t *testing.T) {
 }
 
 func TestRepliesBeforeAnyRequestByte(t *testing.T) {
+	t.Parallel()
 	// A Service that speaks only after the client does: the Edge must still get ok.
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -61,6 +63,7 @@ func dialReason(t *testing.T, h *Harness, o *Outpost, service string) wire.Reaso
 }
 
 func TestRefusedPortGivesRefused(t *testing.T) {
+	t.Parallel()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -76,6 +79,7 @@ func TestRefusedPortGivesRefused(t *testing.T) {
 }
 
 func TestUnresolvableNameGivesDNS(t *testing.T) {
+	t.Parallel()
 	h := New(t)
 	o := h.AddOutpost(t, OutpostOptions{})
 	if got := dialReason(t, h, o, "nonexistent.invalid:80"); got != wire.ReasonDNS {
@@ -84,6 +88,7 @@ func TestUnresolvableNameGivesDNS(t *testing.T) {
 }
 
 func TestBlackholedAddressGivesTimeout(t *testing.T) {
+	t.Parallel()
 	// A dialer that never connects, with the dial budget cut to 200 ms. The
 	// 5 s budget itself is a constant checked in the forwarder's own test.
 	h := New(t)
@@ -100,6 +105,7 @@ func TestBlackholedAddressGivesTimeout(t *testing.T) {
 }
 
 func TestUnknownMarkerIsRefused(t *testing.T) {
+	t.Parallel()
 	h := New(t)
 	o := h.AddOutpost(t, OutpostOptions{Version: "0.1.0"})
 	rp := h.Edge.Raw(t, Ctx(t), o, []byte("GET / HTTP/1.1\r\nHost: x\r\n\r\n"))
@@ -109,6 +115,7 @@ func TestUnknownMarkerIsRefused(t *testing.T) {
 }
 
 func TestUnknownFieldIsRefused(t *testing.T) {
+	t.Parallel()
 	h := New(t)
 	o := h.AddOutpost(t, OutpostOptions{Version: "0.1.0"})
 	raw := []byte{'t', 'n', 'l', 0, 1, 1, 3, 'a', ':', '1', 99, 1, 'x', 0}
@@ -119,6 +126,7 @@ func TestUnknownFieldIsRefused(t *testing.T) {
 }
 
 func TestSlowHeaderIsCutOff(t *testing.T) {
+	t.Parallel()
 	h := New(t)
 	o := h.AddOutpost(t, OutpostOptions{HeaderTimeout: 200 * time.Millisecond})
 	conn, err := h.Edge.Net.DialContextTCPAddrPort(Ctx(t), o.DataAddr())
@@ -135,6 +143,7 @@ func TestSlowHeaderIsCutOff(t *testing.T) {
 }
 
 func TestTunnelHasNagleOff(t *testing.T) {
+	t.Parallel()
 	h := New(t)
 	o := h.AddOutpost(t, OutpostOptions{})
 	for name, n := range map[string]interface{ TCPDelayEnabled() (bool, error) }{"edge": h.Edge.Net, "outpost": o.Net} {
