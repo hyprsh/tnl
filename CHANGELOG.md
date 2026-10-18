@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.2.0](https://github.com/hyprsh/tnl/compare/v0.1.2...v0.2.0) (2026-10-18)
+
+
+### ⚠ BREAKING CHANGES
+
+* **liveness:** the ping has a new field, which an older Edge refuses. Upgrade the Edge and every Outpost to the same 0.2 minor.
+* **route:** the Edge and every Outpost must be upgraded to the same 0.2 minor, and the Edge's state file moves to schema version 3, with no migration before 1.0: an Edge refuses a state.json of schema 2.
+* **skew:** footer), else the next patch. Its tests run in check.sh.
+
+### Features
+
+* **liveness:** close an Outpost's streams as soon as it restarts, with a session id in the ping ([6899aea](https://github.com/hyprsh/tnl/commit/6899aea6f4854cdf542c968f41b42d8cf7d9f209))
+* **route:** let a Route turn HSTS off and add its own response headers ([3167ce9](https://github.com/hyprsh/tnl/commit/3167ce9ae8221ecbc5185fc28cad87e0a1c6267d))
+
+
+### Bug Fixes
+
+* **liveness:** judge an Outpost of a later minor from a ping the Edge refuses ([0a19cfd](https://github.com/hyprsh/tnl/commit/0a19cfd0be771fe3e79009c2bfc8efbf49293df8))
+* **release:** make next-release.sh bump as release-please does from 1.0 ([e9c5e67](https://github.com/hyprsh/tnl/commit/e9c5e67eafd1f95c798a82a49527d325829789fd))
+* **route:** let a Service's header win even when its value is empty ([3f86b36](https://github.com/hyprsh/tnl/commit/3f86b367d4956f2b00f3554e09091f1b685c02e5))
+* **route:** sort a Route's headers by name and name a pseudo-header as one ([98700b1](https://github.com/hyprsh/tnl/commit/98700b180018fe008b0e76c52349d1b52aa12c8c))
+* **scripts:** judge the skew check's window from 1.x as the version package does ([7d91f99](https://github.com/hyprsh/tnl/commit/7d91f99d8e52dad742cd60c4e376696a37936827))
+
+
+### Tests
+
+* **skew:** stamp the current tree with the version release-please gives it ([5b1a7f3](https://github.com/hyprsh/tnl/commit/5b1a7f33f1bc8d2388cf6fb529c252a83c33cd75))
+
 ## [0.1.2](https://github.com/hyprsh/tnl/compare/v0.1.1...v0.1.2) (2026-10-17)
 
 

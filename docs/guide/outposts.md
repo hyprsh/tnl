@@ -16,8 +16,8 @@ The name is one DNS label, is unique, and never changes. The command prints thre
 
 ```
 <token>
-curl -fsSL https://github.com/hyprsh/tnl/releases/download/v0.1.2/install.sh | sudo sh -s -- outpost --token <token>
-curl -fsSL https://github.com/hyprsh/tnl/releases/download/v0.1.2/install.sh | sh -s -- outpost --token <token>
+curl -fsSL https://github.com/hyprsh/tnl/releases/download/v0.2.0/install.sh | sudo sh -s -- outpost --token <token>
+curl -fsSL https://github.com/hyprsh/tnl/releases/download/v0.2.0/install.sh | sh -s -- outpost --token <token>
 ```
 
 <!-- x-release-please-end -->
@@ -45,7 +45,7 @@ Run the install line for the Outpost host's OS. Without root or systemd, install
 ```yaml
 services:
   tnl-outpost:
-    image: ghcr.io/hyprsh/tnl-outpost:0.1.2
+    image: ghcr.io/hyprsh/tnl-outpost:0.2.0
     container_name: tnl-outpost
     restart: unless-stopped
     environment:
