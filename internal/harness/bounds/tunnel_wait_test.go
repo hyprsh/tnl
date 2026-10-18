@@ -36,6 +36,7 @@ func TestARequestWaitingForAReturningOutpostGetsTheServicesReply(t *testing.T) {
 		resp, body := Get(t, re.Caddy, H1, "app.test", "/")
 		got <- result{resp.StatusCode, body, time.Since(start)}
 	}()
+	// The request must wait unanswered for a real 3 s before the Outpost connects.
 	time.Sleep(3 * time.Second)
 	re.Connect(t, "nas", "", o.StateDir)
 

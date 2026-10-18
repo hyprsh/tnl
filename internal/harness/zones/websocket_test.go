@@ -29,7 +29,7 @@ func upgradeHandler(w http.ResponseWriter, r *http.Request) {
 		if _, err := fmt.Fprint(rw, "x\n"); err != nil || rw.Flush() != nil {
 			return
 		}
-		time.Sleep(20 * time.Millisecond)
+		time.Sleep(20 * time.Millisecond) // paces the stream
 	}
 }
 

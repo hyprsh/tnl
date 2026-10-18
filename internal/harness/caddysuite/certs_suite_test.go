@@ -117,6 +117,7 @@ func TestCaddySuiteStopEndsRenewalWithoutAReload(t *testing.T) {
 	})
 	// Wait out the whole life of the stopped certificate, which Caddy would have
 	// renewed before it ended.
+	// (A real lifetime to wait out, to show that nothing happens.)
 	time.Sleep(time.Until(goneExpires) + 500*time.Millisecond)
 	if st, ok := ce.Certs().Status("gone.test"); ok {
 		t.Errorf("the stopped Hostname was renewed: %+v", st)

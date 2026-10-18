@@ -117,7 +117,7 @@ func TestServiceThatStartsListeningLaterIsServed(t *testing.T) {
 	h.Edge.Routes.Swap([]routes.Route{{Hostname: "late.test", Outpost: o.Name, Service: addr}})
 
 	go func() {
-		time.Sleep(2 * time.Second)
+		time.Sleep(2 * time.Second) // the Service comes up late, by design
 		ln, err := net.Listen("tcp", addr)
 		if err != nil {
 			return

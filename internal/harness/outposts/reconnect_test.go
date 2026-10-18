@@ -95,6 +95,7 @@ func TestAnEdgeRestartRaisesNoWarningButALongOutageDoes(t *testing.T) {
 	// Routine: back well inside the silence the warning needs.
 	re = restart(t, re)
 	WaitFor(t, "the Outpost to be heard again", 3*time.Second, func() bool { return re.Liveness.Info("nas").Version == HarnessVersion })
+	// Waits out the real silence a warning would need, to show it does not come.
 	time.Sleep(testNoAnswerAfter + 500*time.Millisecond)
 	if hasWarn(log.String()) {
 		t.Fatalf("a routine restart logged a warning:\n%s", log)

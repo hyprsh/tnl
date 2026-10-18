@@ -76,7 +76,7 @@ func TestEdgeUnderTheUnitsEnvironmentWritesOnlyTnlLinesToStderr(t *testing.T) {
 	}
 
 	p := start()
-	time.Sleep(time.Second) // Caddy's background lines
+	time.Sleep(time.Second) // Caddy's background lines: proves none of them breaks the stderr rules, so no condition ends it
 	p.stop()
 
 	// No exception: Caddy's "redirected default logger" line reaches stderr as a

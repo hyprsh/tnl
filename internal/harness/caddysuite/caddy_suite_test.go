@@ -97,7 +97,7 @@ func suiteService() http.Handler {
 			var m int64
 			m, err = io.CopyN(h, r.Body, stallAfter)
 			n += m
-			time.Sleep(stall)
+			time.Sleep(stall) // the Service stops reading, by design
 		}
 		if err == nil {
 			var m int64
@@ -245,7 +245,7 @@ func TestEventStreamWithAHeartbeatOutlivesEveryIdleTimeoutAndSeveralReloads(t *t
 		done <- forEachProto(func(p Proto) sseRun { return readSSE(t, ce, p, "3s,3s,3s,3s") })
 	}()
 	for range 3 {
-		time.Sleep(3 * time.Second)
+		time.Sleep(3 * time.Second) // one heartbeat interval of real time between reloads
 		ce.Reload(t)
 	}
 	res := <-done
@@ -283,7 +283,7 @@ func (p *patternReader) Read(b []byte) (int, error) {
 		return 0, io.EOF
 	}
 	if p.stall > 0 && p.sent >= p.stallAfter {
-		time.Sleep(p.stall)
+		time.Sleep(p.stall) // the Visitor stalls, by design
 		p.stall = 0
 	}
 	b = b[:min(int64(len(b)), p.left)]

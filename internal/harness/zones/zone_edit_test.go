@@ -205,7 +205,7 @@ func TestAddingANestedWildcardZoneMovesTheRoutesWithoutATLSError(t *testing.T) {
 	if resp, body := Get(t, re.Caddy, H2, "app.lab.example.test", "/"); resp.StatusCode != 200 || body != "hello" {
 		t.Fatalf("%d %q", resp.StatusCode, body)
 	}
-	time.Sleep(300 * time.Millisecond)
+	time.Sleep(300 * time.Millisecond) // lets the poller keep handshaking past the edit, to catch a late failure
 	n, fails := v.finish()
 	if len(fails) != 0 {
 		t.Fatalf("%d of %d handshakes failed, first: %s", len(fails), n, fails[0])

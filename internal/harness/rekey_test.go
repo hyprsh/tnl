@@ -49,7 +49,7 @@ func TestARekeyWithoutARestartClosesNothing(t *testing.T) {
 	if err := o.Tunnel.WaitHandshake(ctx); err != nil {
 		t.Fatal(err)
 	}
-	time.Sleep(time.Second) // ten pings with the new keys
+	time.Sleep(time.Second) // ten pings with the new keys: a real interval to wait out, no state shows it
 	for i := 0; i < 2; i++ {
 		if !next() {
 			t.Fatal("the stream ended after a rekey")

@@ -113,6 +113,7 @@ func TestASecondConnectWithTheSameTokenFailsAndTheFirstKeepsWorking(t *testing.T
 func TestATokenPastItsTTLIsRefusedAndTheStateDirectoryIsUntouched(t *testing.T) {
 	re := StartEdge(t)
 	tok := re.AddOutpostTTL(t, "laptop", "50ms")
+	// Waits out the real 50 ms TTL; the token has no state to poll.
 	time.Sleep(150 * time.Millisecond)
 	dir := MustTempDir(t)
 	_, err := re.TryConnect(t, "laptop", tok, dir)
