@@ -48,9 +48,9 @@ type RealEdge struct {
 	pingInterval time.Duration
 }
 
-// harnessVersion is the version the real Edge, the Outposts and the API client
+// HarnessVersion is the version the real Edge, the Outposts and the API client
 // all report, so the CLI-style exact-version check passes.
-const harnessVersion = "v0.0.0-test"
+const HarnessVersion = "v0.0.0-test"
 
 // EdgeOptions tunes StartEdgeWith. The zero value is StartEdge: no Caddy.
 type EdgeOptions struct {
@@ -143,7 +143,7 @@ func TryStartEdgeWith(t testing.TB, opts EdgeOptions) (*RealEdge, error) {
 	}
 
 	cfg := edge.Config{
-		Address: cmp.Or(opts.Address, "127.0.0.1"), StateDir: dir, Version: cmp.Or(opts.Version, harnessVersion), Build: "full", Revision: "test",
+		Address: cmp.Or(opts.Address, "127.0.0.1"), StateDir: dir, Version: cmp.Or(opts.Version, HarnessVersion), Build: "full", Revision: "test",
 		Log:      logx.New(logx.Options{Level: slog.LevelWarn, Out: testWriter{t}}),
 		Resolver: opts.Resolver, WireGuardPort: opts.WireGuardPort, CertWait: opts.CertWait,
 		DNSResolvers: []string{fakeDNSServer(t)}, UDPBuffers: grantedInFull,
@@ -208,7 +208,7 @@ func TryStartEdgeWith(t testing.TB, opts EdgeOptions) (*RealEdge, error) {
 	return &RealEdge{
 		Edge:     e,
 		StateDir: dir,
-		API:      &api.Client{StateDir: dir, Version: cmp.Or(opts.Version, harnessVersion)},
+		API:      &api.Client{StateDir: dir, Version: cmp.Or(opts.Version, HarnessVersion)},
 		Store:    r.Store,
 		Liveness: r.Liveness,
 		Certs:    r.Certs,
@@ -281,7 +281,7 @@ type JoinedOutpost struct {
 func (e *RealEdge) JoinOutpost(t testing.TB, name string) *JoinedOutpost {
 	t.Helper()
 	tok := e.AddOutpost(t, name)
-	return e.Connect(t, name, tok, mustTempDir(t))
+	return e.Connect(t, name, tok, MustTempDir(t))
 }
 
 // Connect runs an Outpost with the given token and state directory, as
@@ -337,7 +337,7 @@ func DeclaredLine(label, hostname, service string) outpost.DeclaredRoute {
 func (e *RealEdge) ConnectCredential(t testing.TB, name, cred string, opts ConnectOptions) *JoinedOutpost {
 	t.Helper()
 	opts.Credential = cred
-	j, err := e.TryConnectWith(t, name, "", mustTempDir(t), opts)
+	j, err := e.TryConnectWith(t, name, "", MustTempDir(t), opts)
 	if err != nil {
 		t.Fatalf("outpost.Run: %v", err)
 	}
@@ -350,7 +350,7 @@ func (e *RealEdge) ConnectWith(t testing.TB, name, tok string, opts ConnectOptio
 	if opts.JoinTimeout == 0 {
 		opts.JoinTimeout = 3 * time.Second
 	}
-	j, err := e.TryConnectWith(t, name, tok, mustTempDir(t), opts)
+	j, err := e.TryConnectWith(t, name, tok, MustTempDir(t), opts)
 	if err != nil {
 		t.Fatalf("outpost.Run: %v", err)
 	}
@@ -375,7 +375,7 @@ func (e *RealEdge) TryConnectWith(t testing.TB, name, tok, stateDir string, opts
 	}
 	go func() {
 		done <- outpost.Run(ctx, outpost.Config{
-			Token: tok, StateDir: stateDir, Version: cmp.Or(opts.Version, harnessVersion), Build: "outpost", Revision: "test",
+			Token: tok, StateDir: stateDir, Version: cmp.Or(opts.Version, HarnessVersion), Build: "outpost", Revision: "test",
 			Log:         logx.New(logx.Options{Level: slog.LevelInfo, Out: out}),
 			JoinTimeout: opts.JoinTimeout, RelayDialTimeout: 2 * time.Second, Allow: opts.Allow,
 			Started:      func(r *outpost.Running) { up <- r },
@@ -417,7 +417,7 @@ func (e *RealEdge) TryConnectWith(t testing.TB, name, tok, stateDir string, opts
 	}
 	o := &Outpost{Name: name, Addr: r.Address, Tunnel: r.Tunnel, Net: r.Tunnel.Net}
 	e.Outposts.Set(name, o.DataAddr())
-	return &JoinedOutpost{Outpost: o, API: r.API, CLI: &api.Client{StateDir: stateDir, Version: cmp.Or(opts.Version, harnessVersion)}, Token: tok, StateDir: stateDir, Stop: func() error { stopped = true; return stop() }}, nil
+	return &JoinedOutpost{Outpost: o, API: r.API, CLI: &api.Client{StateDir: stateDir, Version: cmp.Or(opts.Version, HarnessVersion)}, Token: tok, StateDir: stateDir, Stop: func() error { stopped = true; return stop() }}, nil
 }
 
 // waitHandshake waits until the Edge has completed a handshake with the peer
@@ -444,7 +444,7 @@ func (e *RealEdge) waitHandshake(ctx context.Context, a netip.Addr) error {
 	}
 }
 
-func mustTempDir(t testing.TB) string {
+func MustTempDir(t testing.TB) string {
 	t.Helper()
 	// The Outpost's tnl.sock lives here, so keep the path short.
 	dir, err := os.MkdirTemp("", "tnlo")

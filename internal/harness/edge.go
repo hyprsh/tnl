@@ -224,7 +224,7 @@ func (ce *CaddyEdge) PlainClient() *http.Client {
 	}
 }
 
-func verifyOpts(p *Pebble, chain []*x509.Certificate) x509.VerifyOptions {
+func VerifyOpts(p *Pebble, chain []*x509.Certificate) x509.VerifyOptions {
 	roots := x509.NewCertPool()
 	roots.AddCert(p.Root)
 	inter := x509.NewCertPool()

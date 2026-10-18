@@ -53,7 +53,7 @@ func TestOutpostLsShowsOnlineOfflineIncompatibleAndNotJoined(t *testing.T) {
 	re := StartEdgeWith(t, EdgeOptions{Version: "0.3.4", OfflineAfter: ShortOfflineAfter})
 	opts := func(v string) ConnectOptions { return ConnectOptions{JoinTimeout: 3 * time.Second, Version: v} }
 	connect := func(name, v string) *JoinedOutpost {
-		j, err := re.TryConnectWith(t, name, re.AddOutpost(t, name), mustTempDir(t), opts(v))
+		j, err := re.TryConnectWith(t, name, re.AddOutpost(t, name), MustTempDir(t), opts(v))
 		if err != nil {
 			t.Fatal(err)
 		}

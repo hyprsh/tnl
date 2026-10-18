@@ -64,8 +64,8 @@ func WaitServed(t *testing.T, re *RealEdge, host string) {
 // DeclaredEdge is what an operator holds before the Edge first starts: the
 // Edge's private key (from `tnl keygen`) and the port its credentials name.
 type DeclaredEdge struct {
-	key  keys.Key
-	port int
+	Key  keys.Key
+	Port int
 }
 
 func NewDeclaredEdge(t *testing.T) DeclaredEdge {
@@ -74,7 +74,7 @@ func NewDeclaredEdge(t *testing.T) DeclaredEdge {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return DeclaredEdge{key: priv, port: freePort(t, true)}
+	return DeclaredEdge{Key: priv, Port: freePort(t, true)}
 }
 
 func GetAccepting(t *testing.T, ce *CaddyEdge, proto Proto, host, accept string) (*http.Response, string) {
@@ -269,7 +269,7 @@ func Get(t *testing.T, ce *CaddyEdge, proto Proto, host, path string) (*http.Res
 // for the Edge and the credential for the Outpost.
 func (d DeclaredEdge) Outpost(t *testing.T, name string) (state.DeclaredOutpost, string) {
 	t.Helper()
-	cred, pub, err := credential.Mint(d.key, name, "127.0.0.1", d.port)
+	cred, pub, err := credential.Mint(d.Key, name, "127.0.0.1", d.Port)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -277,7 +277,7 @@ func (d DeclaredEdge) Outpost(t *testing.T, name string) (state.DeclaredOutpost,
 }
 
 func (d DeclaredEdge) Options(opts EdgeOptions) EdgeOptions {
-	opts.Key, opts.WireGuardPort = &d.key, d.port
+	opts.Key, opts.WireGuardPort = &d.Key, d.Port
 	return opts
 }
 

@@ -29,7 +29,7 @@ func TestFirstRequestToARoutedHostnameGetsAPebbleCertificate(t *testing.T) {
 		if err := leaf.VerifyHostname("app.test"); err != nil {
 			t.Errorf("%s: %v", proto, err)
 		}
-		if _, err := leaf.Verify(verifyOpts(pb, resp.TLS.PeerCertificates[1:])); err != nil {
+		if _, err := leaf.Verify(VerifyOpts(pb, resp.TLS.PeerCertificates[1:])); err != nil {
 			t.Errorf("%s: certificate is not Pebble's: %v", proto, err)
 		}
 	}

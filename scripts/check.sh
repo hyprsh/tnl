@@ -16,7 +16,9 @@ for tags in nomysql nomysql,outpost; do
   go tool staticcheck -tags "$tags" ./...
 done
 
-# Includes the Caddy suite (internal/harness/caddy_suite_test.go, about 40 s).
+# Includes the Caddy suite (internal/harness/caddysuite/caddy_suite_test.go, about
+# 40 s). The harness tests are split over internal/harness and its subpackages
+# so that go test runs them side by side.
 # Caddy is upgraded only in a PR of its own, so that suite can vouch for it.
 go test -timeout 15m -tags nomysql "$@" ./...
 # The Outpost build's own CLI tests (its refusals).

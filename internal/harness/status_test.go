@@ -24,11 +24,11 @@ func TestStatusOfAHealthyEdgePrintsTheSummaryAndNothingNeedsAttention(t *testing
 	if len(s.Attention) != 0 {
 		t.Fatalf("attention: %+v", s.Attention)
 	}
-	if s.Version != harnessVersion || s.Build != "full" || s.Outposts.Online != 1 || s.Outposts.NotJoined != 1 ||
+	if s.Version != HarnessVersion || s.Build != "full" || s.Outposts.Online != 1 || s.Outposts.NotJoined != 1 ||
 		s.Routes != 1 || s.Zones != 1 || s.StateDir != re.StateDir || s.WireGuardPort == 0 || s.KeyFingerprint == "" {
 		t.Errorf("summary: %+v", s)
 	}
-	for _, want := range []string{"tnl " + harnessVersion + " (full, test)", "Outposts:", "1 online, 1 not joined", "\nNothing needs attention\n"} {
+	for _, want := range []string{"tnl " + HarnessVersion + " (full, test)", "Outposts:", "1 online, 1 not joined", "\nNothing needs attention\n"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("no %q in\n%s", want, text)
 		}
@@ -41,7 +41,7 @@ func TestStatusNamesAnOfflineOutpostAnIncompatibleOneAndAWaitingLine(t *testing.
 	re := StartEdgeWith(t, EdgeOptions{OfflineAfter: ShortOfflineAfter})
 	re.AddZone(t, "test")
 	gone := re.JoinOutpost(t, "gone")
-	old, err := re.TryConnectWith(t, "old", re.AddOutpost(t, "old"), mustTempDir(t), ConnectOptions{JoinTimeout: 3 * time.Second, Version: harnessVersion})
+	old, err := re.TryConnectWith(t, "old", re.AddOutpost(t, "old"), MustTempDir(t), ConnectOptions{JoinTimeout: 3 * time.Second, Version: HarnessVersion})
 	if err != nil {
 		t.Fatal(err)
 	}
