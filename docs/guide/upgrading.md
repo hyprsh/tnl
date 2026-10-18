@@ -21,7 +21,7 @@ Pin an exact `X.Y.Z` wherever you want to choose the moment of an upgrade.
 
 - They open with the compatibility line, the same one `tnl version` prints.
 - A major's notes lead with an **Upgrading from 1.x** section (for 2.0, from 1.x), which says what changes and in what order to do it.
-- Any release that migrates a state file says so; see [The Outpost's state file](#the-outposts-state-file).
+- Any release that migrates a state file says so; see [The Outpost's state file](#the-outposts-state-file) and [The Edge's state file](#the-edges-state-file).
 
 ## Which versions work together
 
@@ -104,4 +104,4 @@ What comes back depends on how the Edge was set up:
 - **A declared Edge** (`TNL_ZONE_*` and `TNL_OUTPOST_*`, with its key from `--key-file` or `TNL_KEY`) whose Outposts hold credentials and declare their Routes comes back by itself: the Zones and Outposts come from the settings, and each Outpost sends its Declaration again.
 - **Otherwise,** add the Outposts again with `tnl outpost add`, which makes new tokens, and add their Routes again. Each Outpost joins with its new token.
 
-Lost without a declaration: the Outposts, their Routes, the Zones and the Hostnames on hold.
+Lost without a declaration: the Outposts, their Routes, the Zones and the Declaration lines that wait.
