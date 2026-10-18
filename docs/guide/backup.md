@@ -37,7 +37,7 @@ What you lose:
 - Outposts added or rekeyed after the backup need `outpost add` or `rekey` again.
 - Route and Zone changes made after the backup are gone.
 
-There is no migration of an older backup before 1.0. An Edge refuses a `state.json` whose schema version isn't the one it runs, so restore with the version that took the backup.
+An Edge migrates an older backup when it starts, as it does its own state, and keeps the old file as `state.json.v<n>`; see [The Edge's state file](upgrading.md#the-edges-state-file). It refuses a newer one, so restore with a tnl at least as new as the one that took the backup.
 
 ## Restore without `caddy/`
 
