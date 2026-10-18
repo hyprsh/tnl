@@ -90,11 +90,5 @@ func TestRouteRmHostnameAnswers404AndUnknownIsRefused(t *testing.T) {
 
 func waitForLive(t *testing.T, svc *Service, n int) {
 	t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
-	for svc.Live() != n {
-		if time.Now().After(deadline) {
-			t.Fatalf("the Service has %d open connections, want %d", svc.Live(), n)
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
+	WaitFor(t, fmt.Sprintf("the Service to have %d open connections", n), 10*time.Second, func() bool { return svc.Live() == n })
 }
