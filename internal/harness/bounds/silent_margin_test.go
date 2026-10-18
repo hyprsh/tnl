@@ -55,6 +55,7 @@ func TestPausesLongerThanTheBoundAreNotCutAtTheSpecsProportions(t *testing.T) {
 				if _, err := io.ReadFull(resp.Body, make([]byte, 1)); err != nil {
 					t.Fatal(err)
 				}
+				// A real pause, longer than the bound, that the transfer must survive.
 				time.Sleep(4 * marginBound)
 				n, err := io.Copy(io.Discard, resp.Body)
 				if err != nil || n+1 != bigBody {

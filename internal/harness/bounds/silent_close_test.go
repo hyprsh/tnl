@@ -46,13 +46,13 @@ func newSilentService(t *testing.T, pause time.Duration) *silentService {
 	})
 	mux.HandleFunc("/upload-late", func(w http.ResponseWriter, r *http.Request) {
 		n, _ := io.Copy(io.Discard, r.Body)
-		time.Sleep(s.pause)
+		time.Sleep(s.pause) // the Service is slow to answer, by design
 		io.WriteString(w, "got "+strconv.Itoa(int(n)))
 	})
 	mux.HandleFunc("/upload-stall", func(w http.ResponseWriter, r *http.Request) {
 		first := make([]byte, 1)
 		io.ReadFull(r.Body, first)
-		time.Sleep(s.pause)
+		time.Sleep(s.pause) // the Service stops reading, by design
 		n, _ := io.Copy(io.Discard, r.Body)
 		io.WriteString(w, "got "+strconv.Itoa(int(n)+1))
 	})
@@ -147,7 +147,7 @@ func TestAnUploadEndsWithinTheSilenceBoundWhenTheOutpostGoesQuiet(t *testing.T) 
 			if _, err := pw.Write(make([]byte, 16<<10)); err != nil {
 				return
 			}
-			time.Sleep(10 * time.Millisecond)
+			time.Sleep(10 * time.Millisecond) // paces the upload
 		}
 	}()
 	select {
@@ -248,6 +248,7 @@ func TestAVisitorThatStopsReadingADownloadLongerThanTheBoundIsNotCut(t *testing.
 	if _, err := io.ReadFull(resp.Body, first); err != nil {
 		t.Fatal(err)
 	}
+	// A real pause, longer than the silence bound, that the download must survive.
 	time.Sleep(3 * testSilentAfter)
 	n, err := io.Copy(io.Discard, resp.Body)
 	if err != nil || n+1 != bigBody {

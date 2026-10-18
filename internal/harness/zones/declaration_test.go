@@ -162,6 +162,7 @@ func TestAnUnchangedDeclarationIsNotSentAgain(t *testing.T) {
 	j.Stop()
 	reconnect(t, re, "nas", j.StateDir, ConnectOptions{Declaration: lines})
 	// Many pings later (every 100 ms), the Edge still saw one send.
+	// (Waits to show that nothing more is sent, so no condition ends it.)
 	time.Sleep(1500 * time.Millisecond)
 	if n := countLines(elog, "declaration applied"); n != 1 {
 		t.Fatalf("the Declaration was sent %d times", n)

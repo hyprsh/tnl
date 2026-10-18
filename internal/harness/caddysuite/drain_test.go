@@ -22,10 +22,11 @@ import (
 type drainService struct {
 	*Service
 	bodyStarted chan struct{}
+	hanging     chan struct{} // one value per request that reached /hang
 }
 
 func newDrainService(t *testing.T) *drainService {
-	d := &drainService{bodyStarted: make(chan struct{}, 8)}
+	d := &drainService{bodyStarted: make(chan struct{}, 8), hanging: make(chan struct{}, 8)}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/events", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -40,7 +41,10 @@ func newDrainService(t *testing.T) *drainService {
 		n, _ := io.Copy(io.Discard, r.Body)
 		io.WriteString(w, "got "+strconv.Itoa(int(n)+1))
 	})
-	mux.HandleFunc("/hang", func(w http.ResponseWriter, r *http.Request) { <-r.Context().Done() })
+	mux.HandleFunc("/hang", func(w http.ResponseWriter, r *http.Request) {
+		d.hanging <- struct{}{}
+		<-r.Context().Done()
+	})
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) { io.WriteString(w, "ok") })
 	d.Service = NewHTTPService(t, mux)
 	return d
@@ -145,7 +149,7 @@ func TestARequestStillRunningAfterTheDrainIsClosed(t *testing.T) {
 	// the SIGTERM test above keeps every protocol.
 	for _, proto := range []Proto{H1, H3} {
 		t.Run(string(proto), func(t *testing.T) {
-			re, _, logs := drainEdge(t, 300*time.Millisecond)
+			re, svc, logs := drainEdge(t, 300*time.Millisecond)
 			client := re.Caddy.Client(t, proto)
 			var wg sync.WaitGroup
 			wg.Add(1)
@@ -163,7 +167,11 @@ func TestARequestStillRunningAfterTheDrainIsClosed(t *testing.T) {
 				}
 				failed <- err
 			}()
-			time.Sleep(500 * time.Millisecond) // let the request reach the Service
+			select {
+			case <-svc.hanging:
+			case <-time.After(5 * time.Second):
+				t.Fatal("the request did not reach the Service")
+			}
 			start := time.Now()
 			re.Stop()
 			if took := time.Since(start); took > 6*time.Second {

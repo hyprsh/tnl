@@ -77,7 +77,7 @@ func TestARestartOrdersNothingForHostnamesAStoredWildcardCovers(t *testing.T) {
 	re.Stop()
 
 	again := StartEdgeWith(t, EdgeOptions{StateDir: dir, WireGuardPort: port, Pebble: pb})
-	time.Sleep(3 * time.Second)
+	time.Sleep(3 * time.Second) // shows that no order is placed, so no condition ends the wait
 	if n := pb.Orders(); n != orders {
 		t.Errorf("the restart made %d orders for covered Hostnames", n-orders)
 	}

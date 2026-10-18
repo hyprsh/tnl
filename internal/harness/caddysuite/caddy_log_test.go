@@ -70,7 +70,7 @@ func TestFailedHTTP3HandshakeAndUnknownSNIStayBelowInfo(t *testing.T) {
 		c.Close()
 		t.Fatal("handshake for an unrouted Hostname succeeded")
 	}
-	time.Sleep(300 * time.Millisecond) // the server logs after the client has failed
+	time.Sleep(300 * time.Millisecond) // the server logs after the client has failed; the test is that no loud line follows, so no condition ends the wait
 
 	if loud := loudLines(buf.String()); len(loud) != before {
 		t.Errorf("failed handshakes logged at info or above:\n%s", strings.Join(loud[before:], "\n"))

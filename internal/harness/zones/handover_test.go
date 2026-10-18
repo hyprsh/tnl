@@ -83,7 +83,7 @@ func TestWithTwoOutpostsWaitingForOneHostnameTheFirstToDeclareItGetsIt(t *testin
 	// "zeta" declares first although "alpha" sorts first.
 	re.ConnectWith(t, "zeta", re.AddOutpost(t, "zeta"), ConnectOptions{Declaration: line})
 	waitWaiting(t, re, "zeta", Photos)
-	time.Sleep(5 * time.Millisecond)
+	time.Sleep(5 * time.Millisecond) // zeta and alpha must declare at distinct times; the order is the test
 	re.ConnectWith(t, "alpha", re.AddOutpost(t, "alpha"), ConnectOptions{Declaration: line})
 	waitWaiting(t, re, "alpha", Photos)
 
@@ -244,7 +244,7 @@ func TestAWaitingLineWarnsOnBothSidesAndRemindsOnAShortenedClock(t *testing.T) {
 			countLines(olog, "level=info", "Route now applies", "variable=TNL_ROUTE_PHOTOS") == 1
 	})
 	n := countLines(elog, "declared line still waits")
-	time.Sleep(time.Second)
+	time.Sleep(time.Second) // shows that no more reminders come, so no condition ends the wait
 	if countLines(elog, "declared line still waits") != n {
 		t.Fatal("the Edge kept reminding about a line that applies")
 	}

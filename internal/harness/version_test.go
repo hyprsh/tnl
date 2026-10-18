@@ -63,7 +63,8 @@ func TestAnOutpostOutsideTheVersionWindowIsIncompatible(t *testing.T) {
 		t.Fatalf("API call: %v, want %q", err, want)
 	}
 	// The Edge's pong tells the Outpost, which says so once.
-	time.Sleep(500 * time.Millisecond)
+	WaitFor(t, "the warning", 5*time.Second, func() bool { return strings.Contains(log.String(), "outpost is incompatible") })
+	time.Sleep(500 * time.Millisecond) // shows that it comes once, so no condition ends the wait
 	if n := strings.Count(log.String(), "outpost is incompatible"); n != 1 {
 		t.Fatalf("%d warnings, want 1:\n%s", n, log)
 	}
@@ -117,7 +118,7 @@ func TestAnOutpostRefusesAnEdgeOfAnOlderMajor(t *testing.T) {
 		t.Fatalf("error line: %q", line)
 	}
 	// It does not exit, and says it once.
-	time.Sleep(time.Second)
+	time.Sleep(time.Second) // shows that it is said once and the Outpost stays up, so no condition ends the wait
 	if n := strings.Count(log.String(), "this Edge is too old for this Outpost"); n != 1 {
 		t.Fatalf("%d errors, want 1:\n%s", n, log)
 	}

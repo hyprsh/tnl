@@ -217,7 +217,7 @@ func TestRestartingWithAZoneLinesModeChangedSwitchesWithoutACertificateError(t *
 		re = StartEdgeWith(t, opts)
 		v := startPoller(t, re, "app.example.test")
 		WaitFor(t, "the switch to "+step.mode, 20*time.Second, step.done)
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(500 * time.Millisecond) // lets the poller keep handshaking past the switch, to catch a late failure
 		if n, fails := v.finish(); len(fails) != 0 || n < 5 {
 			t.Fatalf("%s: %d of %d handshakes failed, first: %v", step.mode, len(fails), n, fails)
 		}
@@ -376,7 +376,7 @@ func TestNoLogLineCarriesATokenAKeyOrACredential(t *testing.T) {
 	}))
 	j := re.ConnectCredential(t, "nas", cred, ConnectOptions{LogOut: olog})
 	defer j.Stop()
-	time.Sleep(300 * time.Millisecond)
+	time.Sleep(300 * time.Millisecond) // lets the first pings log; the test is that none carries a secret
 	edgeKey, _ := d.Key.MarshalText()
 	outKey, _ := credentialKey(t, cred).MarshalText()
 	for name, log := range map[string]*LockedBuf{"Edge": elog, "Outpost": olog} {
@@ -429,7 +429,7 @@ func TestRestartingWithAnUnchangedZoneLineLogsNoDNSWarning(t *testing.T) {
 	elog = new(LockedBuf)
 	opts.LogOut, opts.StateDir = elog, re.StateDir
 	StartEdgeWith(t, opts)
-	time.Sleep(2 * time.Second)
+	time.Sleep(2 * time.Second) // shows that no warning comes, so no condition ends the wait
 	if n := countLines(elog, "level=warn", "doesn't resolve"); n != 0 {
 		t.Fatalf("%d DNS warnings at the restart:\n%s", n, elog)
 	}
