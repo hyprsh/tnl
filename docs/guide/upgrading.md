@@ -64,11 +64,22 @@ Both sides refuse fields they don't know, on the API, the tnl header, the ping, 
 
 A newer tnl migrates the Outpost's `state.json` when it starts, logs that at `info` and keeps the old file as `state.json.v<n>`, where `n` is the schema it had. An older tnl refuses a schema it doesn't know and leaves the file alone. To downgrade, stop the Outpost, put `state.json.v<n>` back as `state.json`, and start the older tnl.
 
-The Edge's `state.json` is not migrated before 1.0: a tnl refuses an Edge state, or a backup, whose schema it doesn't know. For an older one, see [The Edge across a breaking 0.x minor](#the-edge-across-a-breaking-0x-minor).
+## The Edge's state file
 
-## The Edge across a breaking 0.x minor
+The Edge migrates its `state.json` the same way, and a restored backup too: a newer Edge migrates an older schema when it starts, logs that at `info` and keeps the old file as `state.json.v<n>`. Going from 0.1.x to 0.2 migrates schema 2 to 3:
 
-The Edge's `state.json` is not migrated before 1.0. When a 0.x minor changes its schema (the release notes say so), the new Edge refuses the old file: "…it was written by an older tnl and can't be migrated before 1.0; back it up and start from an empty state directory". The way forward is to start over. Deleting only `state.json` is not enough: the Edge refuses again, naming the files it found beside it, such as `caddy/`. Empty the whole state directory.
+1. Stop the Edge.
+2. Back up the state directory (`tnl backup` while it runs, or a copy of the directory).
+3. Start the new version. It migrates `state.json`.
+4. Upgrade every Outpost.
+
+To downgrade, stop the Edge, put `state.json.v2` back as `state.json`, and start the 0.1.x Edge. Changes made since the migration are lost.
+
+**HSTS stays off on migrated Routes.** A 0.1.x Edge sent no `Strict-Transport-Security` header, and schema 3 added the per-Route `no_hsts`, so the migration sets it on every Route and every declared line. Turn HSTS on for a Route with `tnl route edit <hostname> --no-hsts=false` (see [Routes](routes.md#options)); a browser that has seen the header keeps it for a year. A declared Route is different: when its Outpost declares again, and its Declaration differs from the migrated one, which it does unless it also says `--no-hsts`, the Route takes the options of the Declaration and HSTS comes on. To keep HSTS off on a declared Route, add `--no-hsts` to its line when you upgrade the Outpost (a 0.1.x Outpost does not know the option).
+
+## When the Edge cannot migrate its state
+
+A `state.json` older than the migrations (schema 1, which no release wrote) is refused: "…it was written by an older tnl and can't be migrated before 1.0; back it up and start from an empty state directory". The way forward is to start over. Deleting only `state.json` is not enough: the Edge refuses again, naming the files it found beside it, such as `caddy/`. Empty the whole state directory.
 
 1. Stop the Edge.
 2. Back up the state directory. `tnl backup` does it while the Edge runs; a copy of the directory after the stop does too.
