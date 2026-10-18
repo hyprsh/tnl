@@ -73,7 +73,7 @@ func Decode(raw []byte, name string, version int, v any) error {
 		return fmt.Errorf("%s is not valid JSON: %w", name, err)
 	}
 	if head.Version != version {
-		return unknownSchema(name, head.Version, version)
+		return &SchemaError{Name: name, Have: head.Version, Known: version}
 	}
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.DisallowUnknownFields()

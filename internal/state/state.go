@@ -430,31 +430,31 @@ func parseKey(entry, field, s string) (keys.Key, error) {
 	return k, nil
 }
 
-// steps are the Edge's migrations of state.json, one per schema that has a
+// stateSteps are the Edge's migrations of state.json, one per schema that has a
 // successor. Schema 1 never shipped in a release and has no step. Schema 3 only
 // added the optional no_hsts of Routes and declared lines, and a 0.1.x Edge sent
 // no HSTS, so every migrated Route and line has it off until the operator turns
 // it on.
-var steps = statefile.Steps{
+var stateSteps = statefile.Steps{
 	2: func(doc map[string]any) error {
-		routes, _ := doc["routes"].([]any)
-		for _, r := range routes {
-			if m, ok := r.(map[string]any); ok {
-				m["no_hsts"] = true
-			}
-		}
+		setNoHSTS(doc["routes"])
 		decls, _ := doc["declarations"].([]any)
 		for _, d := range decls {
 			dm, _ := d.(map[string]any)
-			lines, _ := dm["routes"].([]any)
-			for _, l := range lines {
-				if m, ok := l.(map[string]any); ok {
-					m["no_hsts"] = true
-				}
-			}
+			setNoHSTS(dm["routes"])
 		}
 		return nil
 	},
+}
+
+// setNoHSTS sets no_hsts on each object of a JSON array of Routes or lines.
+func setNoHSTS(list any) {
+	items, _ := list.([]any)
+	for _, it := range items {
+		if m, ok := it.(map[string]any); ok {
+			m["no_hsts"] = true
+		}
+	}
 }
 
 // startOverRefusal words the refusal of a state.json older than any step: the

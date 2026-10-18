@@ -76,7 +76,7 @@ func OpenWithKey(dir string, log *slog.Logger, key *keys.Key, source string) (*S
 	}
 
 	if _, err := os.Stat(s.path()); err == nil {
-		from, err := statefile.Migrate(s.path(), FileName, Version, steps)
+		from, err := statefile.Migrate(s.path(), FileName, Version, stateSteps)
 		if err != nil {
 			return nil, startOverRefusal(err)
 		}
