@@ -20,6 +20,31 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+      # A change to docs, the release manifest or the Compose examples only (a
+      # release PR, or its merge) gets the docs scope; anything else, or a push
+      # whose base is unknown, gets every check.
+      - id: scope
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            base=HEAD^1 # the PR's merge commit; its first parent is the base
+          else
+            base=$BEFORE
+          fi
+          if git cat-file -e "$base^{commit}" 2>/dev/null; then
+            scope=$(git diff --name-only "$base" HEAD | scripts/ci-scope.sh)
+          else
+            scope=full
+          fi
+          echo "scope: $scope"
+          echo "scope=$scope" >> "$GITHUB_OUTPUT"
       # gofmt, go vet and staticcheck for both builds, the tests (with the Caddy
       # suite) and the Outpost-only link check. Agents run the same script.
-      - run: scripts/check.sh
+      - if: steps.scope.outputs.scope != 'docs'
+        run: scripts/check.sh
+      # The tests that read docs/spec/v1.md and the Compose examples.
+      - if: steps.scope.outputs.scope == 'docs'
+        run: |
+          go test -tags nomysql ./cmd/tnl ./packaging
+          go test -tags nomysql,outpost ./cmd/tnl
