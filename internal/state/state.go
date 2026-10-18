@@ -430,17 +430,49 @@ func parseKey(entry, field, s string) (keys.Key, error) {
 	return k, nil
 }
 
+// steps are the Edge's migrations of state.json, one per schema that has a
+// successor. Schema 1 never shipped in a release and has no step. Schema 3 only
+// added the optional no_hsts of Routes and declared lines, and a 0.1.x Edge sent
+// no HSTS, so every migrated Route and line has it off until the operator turns
+// it on.
+var steps = statefile.Steps{
+	2: func(doc map[string]any) error {
+		routes, _ := doc["routes"].([]any)
+		for _, r := range routes {
+			if m, ok := r.(map[string]any); ok {
+				m["no_hsts"] = true
+			}
+		}
+		decls, _ := doc["declarations"].([]any)
+		for _, d := range decls {
+			dm, _ := d.(map[string]any)
+			lines, _ := dm["routes"].([]any)
+			for _, l := range lines {
+				if m, ok := l.(map[string]any); ok {
+					m["no_hsts"] = true
+				}
+			}
+		}
+		return nil
+	},
+}
+
+// startOverRefusal words the refusal of a state.json older than any step: the
+// way forward, before 1.0, is to start over. Any other error is returned as it
+// is. This text goes when the Edge can migrate every schema it ever wrote.
+func startOverRefusal(err error) error {
+	var se *statefile.SchemaError
+	if errors.As(err, &se) && se.Older() {
+		return fmt.Errorf("%s has schema version %d; this tnl knows version %d: it was written by an older tnl and can't be migrated before 1.0; back it up and start from an empty state directory (see docs/guide/upgrading.md)", se.Name, se.Have, se.Known)
+	}
+	return err
+}
+
 // decode reads and checks a whole state.json. It never returns part of one.
 func decode(raw []byte) (*State, error) {
 	var d diskState
 	if err := statefile.Decode(raw, FileName, Version, &d); err != nil {
-		var se *statefile.SchemaError
-		if errors.As(err, &se) && se.Older() {
-			// The Edge's state is not migrated before 1.0, and the way forward is
-			// to start over. This text goes when the Edge starts migrating.
-			return nil, fmt.Errorf("%s has schema version %d; this tnl knows version %d: it was written by an older tnl and can't be migrated before 1.0; back it up and start from an empty state directory (see docs/guide/upgrading.md)", se.Name, se.Have, se.Known)
-		}
-		return nil, err
+		return nil, startOverRefusal(err)
 	}
 	s := &State{Version: d.Version, NextAddr: d.NextAddr}
 	var err error

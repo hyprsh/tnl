@@ -9,7 +9,7 @@ import (
 
 func TestAnOlderSchemaIsRefusedWithTheWayToStartOver(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, FileName), []byte(`{"version": 2}`), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, FileName), []byte(`{"version": 1}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	lg, _ := newLog()
@@ -17,7 +17,7 @@ func TestAnOlderSchemaIsRefusedWithTheWayToStartOver(t *testing.T) {
 	if err == nil {
 		t.Fatal("opened a state of an older schema")
 	}
-	want := "state.json has schema version 2; this tnl knows version 3: it was written by an older tnl and can't be migrated before 1.0; back it up and start from an empty state directory (see docs/guide/upgrading.md)"
+	want := "state.json has schema version 1; this tnl knows version 3: it was written by an older tnl and can't be migrated before 1.0; back it up and start from an empty state directory (see docs/guide/upgrading.md)"
 	if err.Error() != want {
 		t.Fatalf("got %q\nwant %q", err, want)
 	}

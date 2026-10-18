@@ -75,6 +75,16 @@ func OpenWithKey(dir string, log *slog.Logger, key *keys.Key, source string) (*S
 		}
 	}
 
+	if _, err := os.Stat(s.path()); err == nil {
+		from, err := statefile.Migrate(s.path(), FileName, Version, steps)
+		if err != nil {
+			return nil, startOverRefusal(err)
+		}
+		if from != 0 {
+			log.Info(fmt.Sprintf("migrated %s from schema %d to %d; the old file is kept as %s.v%d", FileName, from, Version, FileName, from))
+		}
+	}
+
 	raw, err := os.ReadFile(s.path())
 	switch {
 	case err == nil:
