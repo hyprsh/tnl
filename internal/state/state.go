@@ -5,6 +5,7 @@ package state
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/netip"
 	"slices"
@@ -433,6 +434,12 @@ func parseKey(entry, field, s string) (keys.Key, error) {
 func decode(raw []byte) (*State, error) {
 	var d diskState
 	if err := statefile.Decode(raw, FileName, Version, &d); err != nil {
+		var se *statefile.SchemaError
+		if errors.As(err, &se) && se.Older() {
+			// The Edge's state is not migrated before 1.0, and the way forward is
+			// to start over. This text goes when the Edge starts migrating.
+			return nil, fmt.Errorf("%s has schema version %d; this tnl knows version %d: it was written by an older tnl and can't be migrated before 1.0; back it up and start from an empty state directory (see docs/guide/upgrading.md)", se.Name, se.Have, se.Known)
+		}
 		return nil, err
 	}
 	s := &State{Version: d.Version, NextAddr: d.NextAddr}

@@ -65,12 +65,27 @@ func Migrate(path, name string, current int, steps Steps) (from int, err error) 
 	return head.Version, nil
 }
 
+// SchemaError is the refusal of a file whose schema this tnl doesn't read. A
+// caller that has something better to say about an older file (the Edge's, which
+// is not migrated before 1.0) finds it with errors.As.
+type SchemaError struct {
+	Name        string
+	Have, Known int
+}
+
+func (e *SchemaError) Error() string {
+	if e.Have > e.Known {
+		return fmt.Sprintf("%s has schema version %d; this tnl knows version %d: it was written by a newer tnl; upgrade this tnl", e.Name, e.Have, e.Known)
+	}
+	return fmt.Sprintf("%s has schema version %d; this tnl knows version %d: it was written by an older tnl and can't be migrated; start it with the tnl that wrote it", e.Name, e.Have, e.Known)
+}
+
+// Older reports whether the file's schema is older than this tnl knows.
+func (e *SchemaError) Older() bool { return e.Have < e.Known }
+
 // unknownSchema is the refusal of a file whose schema this tnl doesn't read. It
 // names both versions and the side to upgrade: a newer file wants a newer tnl;
 // an older one that can't be migrated wants the tnl that wrote it.
 func unknownSchema(name string, have, known int) error {
-	if have > known {
-		return fmt.Errorf("%s has schema version %d; this tnl knows version %d: it was written by a newer tnl; upgrade this tnl", name, have, known)
-	}
-	return fmt.Errorf("%s has schema version %d; this tnl knows version %d: it was written by an older tnl and can't be migrated; start it with the tnl that wrote it", name, have, known)
+	return &SchemaError{Name: name, Have: have, Known: known}
 }
