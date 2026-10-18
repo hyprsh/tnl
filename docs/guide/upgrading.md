@@ -64,7 +64,7 @@ Both sides refuse fields they don't know, on the API, the tnl header, the ping, 
 
 A newer tnl migrates the Outpost's `state.json` when it starts, logs that at `info` and keeps the old file as `state.json.v<n>`, where `n` is the schema it had. An older tnl refuses a schema it doesn't know and leaves the file alone. To downgrade, stop the Outpost, put `state.json.v<n>` back as `state.json`, and start the older tnl.
 
-The Edge's `state.json` is not migrated before 1.0: a tnl refuses an Edge state, or a backup, whose schema it doesn't know.
+The Edge's `state.json` is not migrated before 1.0: a tnl refuses an Edge state, or a backup, whose schema it doesn't know. For an older one, see [The Edge across a breaking 0.x minor](#the-edge-across-a-breaking-0x-minor).
 
 ## The Edge across a breaking 0.x minor
 
