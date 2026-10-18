@@ -1,7 +1,7 @@
 # An Outpost and the two Services it forwards to, on Compose's default network.
 services:
   tnl-outpost:
-    image: ghcr.io/hyprsh/tnl-outpost:0.2.0 # x-release-please-version
+    image: ghcr.io/hyprsh/tnl-outpost:0.2.1 # x-release-please-version
     container_name: tnl-outpost
     restart: unless-stopped
     environment:
