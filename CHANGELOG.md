@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.1](https://github.com/hyprsh/tnl/compare/v0.2.0...v0.2.1) (2026-10-18)
+
+
+### Features
+
+* **state:** migrate an Edge's schema 2 state.json to 3 on start, with HSTS off on the migrated Routes ([1042dc1](https://github.com/hyprsh/tnl/commit/1042dc175df30108e39d84613ca2fbef059e74ca))
+
+
+### Bug Fixes
+
+* **state:** name the files found beside a missing state.json, and point a schema-1 Edge at the start-over steps ([9e4959e](https://github.com/hyprsh/tnl/commit/9e4959ea8784541a49e42d845a7d033de862740b))
+
 ## [0.2.0](https://github.com/hyprsh/tnl/compare/v0.1.2...v0.2.0) (2026-10-18)
 
 
