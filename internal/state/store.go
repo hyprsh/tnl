@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -92,7 +93,7 @@ func OpenWithKey(dir string, log *slog.Logger, key *keys.Key, source string) (*S
 			return nil, err
 		}
 		if len(entries) > 0 {
-			return nil, fmt.Errorf("%s has files but no %s; refusing to create a new Edge over them", dir, FileName)
+			return nil, fmt.Errorf("%s has files but no %s (found %s); refusing to create a new Edge over them", dir, FileName, listNames(entries))
 		}
 		var priv, pub keys.Key
 		if key != nil {
@@ -192,4 +193,17 @@ func (s *Store) save(st *State) error {
 	}
 	s.last = data
 	return err
+}
+
+// listNames names up to five of a directory's entries, for a refusal.
+func listNames(entries []os.DirEntry) string {
+	var names []string
+	for i, e := range entries {
+		if i == 5 {
+			names = append(names, fmt.Sprintf("and %d more", len(entries)-5))
+			break
+		}
+		names = append(names, e.Name())
+	}
+	return strings.Join(names, ", ")
 }
