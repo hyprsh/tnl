@@ -21,8 +21,8 @@ This serves two Services from one Outpost called `nas`: Jellyfin at `media.examp
 ### 1. Make the keys, on the Edge host
 
 ```sh
-docker run --rm ghcr.io/hyprsh/tnl:0.1.2 keygen > tnl-key
-docker run --rm -v "$PWD/tnl-key:/key:ro" ghcr.io/hyprsh/tnl:0.1.2 \
+docker run --rm ghcr.io/hyprsh/tnl:0.2.0 keygen > tnl-key
+docker run --rm -v "$PWD/tnl-key:/key:ro" ghcr.io/hyprsh/tnl:0.2.0 \
   credential nas --address edge.example.com --key-file /key
 sudo chown 65532 tnl-key && sudo chmod 600 tnl-key
 ```
@@ -44,7 +44,7 @@ Next to `tnl-key`, save this as `compose.yaml`, with your address, Zone and the 
 # The Edge. Replace the address, the Zone and the Outpost's line with yours.
 services:
   tnl:
-    image: ghcr.io/hyprsh/tnl:0.1.2
+    image: ghcr.io/hyprsh/tnl:0.2.0
     container_name: tnl
     restart: unless-stopped
     stop_grace_period: 20s
@@ -82,7 +82,7 @@ Next to it, save this as `compose.yaml`:
 # An Outpost and the two Services it forwards to, on Compose's default network.
 services:
   tnl-outpost:
-    image: ghcr.io/hyprsh/tnl-outpost:0.1.2
+    image: ghcr.io/hyprsh/tnl-outpost:0.2.0
     container_name: tnl-outpost
     restart: unless-stopped
     environment:

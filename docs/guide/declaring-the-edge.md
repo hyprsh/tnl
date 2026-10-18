@@ -9,14 +9,14 @@ You need three things the Edge cannot make for itself, all made offline:
 1. **The Edge's private key,** so its public key is known before it first starts. `tnl keygen` prints one in `wg genkey` format:
 
    ```sh
-   docker run --rm ghcr.io/hyprsh/tnl:0.1.2 keygen > tnl-key
+   docker run --rm ghcr.io/hyprsh/tnl:0.2.0 keygen > tnl-key
    sudo chown 65532 tnl-key && sudo chmod 600 tnl-key   # the Edge runs as uid 65532 and reads the file as it is on the host
    ```
 
 2. **A line and a credential for each Outpost,** from the key:
 
    ```sh
-   docker run --rm -v "$PWD/tnl-key:/key:ro" ghcr.io/hyprsh/tnl:0.1.2 \
+   docker run --rm -v "$PWD/tnl-key:/key:ro" ghcr.io/hyprsh/tnl:0.2.0 \
      credential nas --address edge.example.com --key-file /key
    ```
 
