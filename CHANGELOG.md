@@ -7,7 +7,6 @@
 
 * **liveness:** the ping has a new field, which an older Edge refuses. Upgrade the Edge and every Outpost to the same 0.2 minor.
 * **route:** the Edge and every Outpost must be upgraded to the same 0.2 minor, and the Edge's state file moves to schema version 3, with no migration before 1.0: an Edge refuses a state.json of schema 2.
-* **skew:** footer), else the next patch. Its tests run in check.sh.
 
 ### Features
 
@@ -23,10 +22,6 @@
 * **route:** sort a Route's headers by name and name a pseudo-header as one ([98700b1](https://github.com/hyprsh/tnl/commit/98700b180018fe008b0e76c52349d1b52aa12c8c))
 * **scripts:** judge the skew check's window from 1.x as the version package does ([7d91f99](https://github.com/hyprsh/tnl/commit/7d91f99d8e52dad742cd60c4e376696a37936827))
 
-
-### Tests
-
-* **skew:** stamp the current tree with the version release-please gives it ([5b1a7f3](https://github.com/hyprsh/tnl/commit/5b1a7f33f1bc8d2388cf6fb529c252a83c33cd75))
 
 ## [0.1.2](https://github.com/hyprsh/tnl/compare/v0.1.1...v0.1.2) (2026-10-17)
 
