@@ -27,35 +27,46 @@ func TestARouteWithNoHSTSSendsNoneAndExtraHeadersGoOnProxiedRepliesOnly(t *testi
 		{Hostname: "dead.test", Outpost: o.Name, Service: closedAddr(t), NoHSTS: true, Headers: extra},
 		{Hostname: "deadhsts.test", Outpost: o.Name, Service: closedAddr(t), Headers: extra},
 	})
+	// A dead Service costs the Edge's whole dial retry budget (5 s) before its 502,
+	// so each protocol's checks run as subtests side by side.
 	for _, proto := range Protos {
-		resp, _ := get(t, ce, proto, "plain.test", "/")
-		if v := resp.Header.Values("Strict-Transport-Security"); len(v) != 0 {
-			t.Errorf("%s: --no-hsts Route sent HSTS %v", proto, v)
-		}
-		resp, _ = get(t, ce, proto, "extra.test", "/")
-		if got := resp.Header.Get("Content-Security-Policy"); got != "default-src 'self'" {
-			t.Errorf("%s: extra CSP = %q", proto, got)
-		}
-		if got := resp.Header.Get("Strict-Transport-Security"); got != wantHSTS {
-			t.Errorf("%s: HSTS = %q, want %q", proto, got, wantHSTS)
-		}
-		if got := resp.Header.Get("Permissions-Policy"); got != "camera=()" {
-			t.Errorf("%s: extra Permissions-Policy = %q", proto, got)
-		}
-		resp, _ = get(t, ce, proto, "extra.test", "/own")
-		if got := resp.Header.Values("Permissions-Policy"); len(got) != 1 || got[0] != "camera=(self)" {
-			t.Errorf("%s: the Service's own header lost: %v", proto, got)
-		}
+		t.Run(string(proto)+"/proxied", func(t *testing.T) {
+			t.Parallel()
+			resp, _ := get(t, ce, proto, "plain.test", "/")
+			if v := resp.Header.Values("Strict-Transport-Security"); len(v) != 0 {
+				t.Errorf("%s: --no-hsts Route sent HSTS %v", proto, v)
+			}
+			resp, _ = get(t, ce, proto, "extra.test", "/")
+			if got := resp.Header.Get("Content-Security-Policy"); got != "default-src 'self'" {
+				t.Errorf("%s: extra CSP = %q", proto, got)
+			}
+			if got := resp.Header.Get("Strict-Transport-Security"); got != wantHSTS {
+				t.Errorf("%s: HSTS = %q, want %q", proto, got, wantHSTS)
+			}
+			if got := resp.Header.Get("Permissions-Policy"); got != "camera=()" {
+				t.Errorf("%s: extra Permissions-Policy = %q", proto, got)
+			}
+			resp, _ = get(t, ce, proto, "extra.test", "/own")
+			if got := resp.Header.Values("Permissions-Policy"); len(got) != 1 || got[0] != "camera=(self)" {
+				t.Errorf("%s: the Service's own header lost: %v", proto, got)
+			}
+		})
 		// The Edge's own replies keep their fixed headers and get no extra ones.
-		resp, _ = getAccepting(t, ce, proto, "dead.test", "text/html")
-		assertOwn(t, string(proto)+" 502", resp.Header)
-		if resp.Header.Get("Permissions-Policy") != "" || len(resp.Header.Values("Strict-Transport-Security")) != 0 {
-			t.Errorf("%s: 502 of a --no-hsts Route: %v", proto, resp.Header)
-		}
-		resp, _ = getAccepting(t, ce, proto, "deadhsts.test", "text/html")
-		if resp.Header.Get("Strict-Transport-Security") != wantHSTS || resp.Header.Get("Permissions-Policy") != "" {
-			t.Errorf("%s: 502 headers: %v", proto, resp.Header)
-		}
+		t.Run(string(proto)+"/502 of a --no-hsts Route", func(t *testing.T) {
+			t.Parallel()
+			resp, _ := getAccepting(t, ce, proto, "dead.test", "text/html")
+			assertOwn(t, string(proto)+" 502", resp.Header)
+			if resp.Header.Get("Permissions-Policy") != "" || len(resp.Header.Values("Strict-Transport-Security")) != 0 {
+				t.Errorf("%s: 502 of a --no-hsts Route: %v", proto, resp.Header)
+			}
+		})
+		t.Run(string(proto)+"/502 of a Route with HSTS", func(t *testing.T) {
+			t.Parallel()
+			resp, _ := getAccepting(t, ce, proto, "deadhsts.test", "text/html")
+			if resp.Header.Get("Strict-Transport-Security") != wantHSTS || resp.Header.Get("Permissions-Policy") != "" {
+				t.Errorf("%s: 502 headers: %v", proto, resp.Header)
+			}
+		})
 	}
 }
 
