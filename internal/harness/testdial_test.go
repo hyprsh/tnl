@@ -12,7 +12,7 @@ import (
 
 func routeEditWarnings(t *testing.T, re *RealEdge, req api.RouteEditRequest) []string {
 	t.Helper()
-	r, err := api.Call[api.RouteEditReply](ctx(t), re.API, http.MethodPost, api.PathRouteEdit, req)
+	r, err := api.Call[api.RouteEditReply](Ctx(t), re.API, http.MethodPost, api.PathRouteEdit, req)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,11 +33,11 @@ func hasWarning(ws []string, parts ...string) bool {
 }
 
 func TestRouteAddForAServiceThatRefusesSavesTheRouteAndWarnsAtWarn(t *testing.T) {
-	log := new(lockedBuf)
+	log := new(LockedBuf)
 	re := StartEdgeWith(t, EdgeOptions{Pebble: StartPebble(t, PebbleOptions{}), LogOut: log, LogLevel: slog.LevelWarn})
 	re.AddZone(t, "test")
 	re.JoinOutpost(t, "nas")
-	addr := closedAddr(t)
+	addr := ClosedAddr(t)
 
 	r := re.AddRouteReply(t, "app.test", "http://"+addr, "nas")
 	if !hasWarning(r.Warnings.Warnings, addr, "doesn't answer", "refused") {
@@ -57,15 +57,15 @@ func TestRouteAddForAServiceThatRefusesSavesTheRouteAndWarnsAtWarn(t *testing.T)
 	}
 
 	// A Service that answers draws no warning.
-	svc := NewHTTPService(t, echoHost())
+	svc := NewHTTPService(t, EchoHost())
 	if r := re.AddRouteReply(t, "ok.test", "http://"+svc.Addr(), "nas"); len(r.Warnings.Warnings) != 0 {
 		t.Fatalf("warnings %q", r.Warnings.Warnings)
 	}
 }
 
 func TestVerifiedHTTPSServiceWithABadCertificateWarnsWithTheHint(t *testing.T) {
-	trusted := NewHTTPSService(t, echoHost())
-	untrusted := NewHTTPSService(t, echoHost())
+	trusted := NewHTTPSService(t, EchoHost())
+	untrusted := NewHTTPSService(t, EchoHost())
 	re := StartEdgeWith(t, EdgeOptions{Pebble: StartPebble(t, PebbleOptions{}), ServiceRoots: trusted.CA})
 	re.AddZone(t, "test")
 	re.JoinOutpost(t, "nas")
@@ -87,7 +87,7 @@ func TestRouteEditTestDialsOnlyWhenTheServiceChanged(t *testing.T) {
 	re := StartEdgeWith(t, EdgeOptions{Pebble: StartPebble(t, PebbleOptions{})})
 	re.AddZone(t, "test")
 	re.JoinOutpost(t, "nas")
-	re.AddRouteReply(t, "app.test", "http://"+closedAddr(t), "nas")
+	re.AddRouteReply(t, "app.test", "http://"+ClosedAddr(t), "nas")
 
 	if ws := routeEditWarnings(t, re, api.RouteEditRequest{Hostname: "app.test", HostHeader: ptr("internal.lan")}); len(ws) != 0 {
 		t.Fatalf("an option-only edit test-dialed: %q", ws)
@@ -96,21 +96,21 @@ func TestRouteEditTestDialsOnlyWhenTheServiceChanged(t *testing.T) {
 	if ws := routeEditWarnings(t, re, api.RouteEditRequest{Hostname: "app.test", Service: &same}); len(ws) != 0 {
 		t.Fatalf("an edit that kept the Service test-dialed: %q", ws)
 	}
-	other := "http://" + closedAddr(t)
+	other := "http://" + ClosedAddr(t)
 	if ws := routeEditWarnings(t, re, api.RouteEditRequest{Hostname: "app.test", Service: &other}); !hasWarning(ws, "doesn't answer") {
 		t.Fatalf("a changed Service did not warn: %q", ws)
 	}
 }
 
 func TestAllowlistRefusesAServiceOutsideItAndTheRequestIsNotRetried(t *testing.T) {
-	svc := NewHTTPService(t, echoHost())
+	svc := NewHTTPService(t, EchoHost())
 	re := StartEdgeWith(t, EdgeOptions{Pebble: StartPebble(t, PebbleOptions{})})
 	re.AddZone(t, "test")
 	list, err := allow.Parse("192.168.1.0/24,localhost:3000")
 	if err != nil {
 		t.Fatal(err)
 	}
-	outLog := new(lockedBuf)
+	outLog := new(LockedBuf)
 	tok := re.AddOutpost(t, "nas")
 	re.ConnectWith(t, "nas", tok, ConnectOptions{LogOut: outLog, Allow: list})
 	if !strings.Contains(outLog.String(), "allow=192.168.1.0/24,localhost:3000") {
@@ -127,7 +127,7 @@ func TestAllowlistRefusesAServiceOutsideItAndTheRequestIsNotRetried(t *testing.T
 
 	refusals := func() int { return strings.Count(outLog.String(), "allowlist refused") }
 	before := refusals()
-	if resp, _ := get(t, re.Caddy, H1, "app.test", "/"); resp.StatusCode != 502 {
+	if resp, _ := Get(t, re.Caddy, H1, "app.test", "/"); resp.StatusCode != 502 {
 		t.Fatalf("got %d, want 502", resp.StatusCode)
 	}
 	if n := refusals() - before; n != 1 {

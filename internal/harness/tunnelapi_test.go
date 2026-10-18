@@ -43,7 +43,7 @@ func TestOutpostReadsZonesAndRoutesThroughTheTunnelAsTheSocketAnswers(t *testing
 }
 
 func TestOutpostIsRefusedZoneAddAndOutpostAddAndTheLogNamesIt(t *testing.T) {
-	logs := &lockedBuf{}
+	logs := &LockedBuf{}
 	re := StartEdgeWith(t, EdgeOptions{LogOut: logs, LogLevel: slog.LevelWarn})
 	j := re.JoinOutpost(t, "laptop")
 	bg := context.Background()

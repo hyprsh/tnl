@@ -21,7 +21,7 @@ func TestFirstRequestToARoutedHostnameGetsAPebbleCertificate(t *testing.T) {
 	h.Edge.Routes.Swap([]routes.Route{{Hostname: "app.test", Outpost: o.Name, Service: svc.Addr()}})
 
 	for _, proto := range Protos {
-		resp, body := get(t, ce, proto, "app.test", "/")
+		resp, body := Get(t, ce, proto, "app.test", "/")
 		if resp.StatusCode != 200 || body != "hi" {
 			t.Fatalf("%s: got %d %q", proto, resp.StatusCode, body)
 		}
@@ -65,14 +65,14 @@ func TestPort80AnswersHTTP01AndStillRedirects(t *testing.T) {
 	h.Edge.Routes.Swap([]routes.Route{{Hostname: "localhost", Outpost: o.Name, Service: svc.Addr()}})
 
 	// Issuance only succeeds if port 80 answered Pebble's HTTP-01 request.
-	if resp, body := get(t, ce, H1, "localhost", "/"); resp.StatusCode != 200 || body != "hi" {
+	if resp, body := Get(t, ce, H1, "localhost", "/"); resp.StatusCode != 200 || body != "hi" {
 		t.Fatalf("got %d %q", resp.StatusCode, body)
 	}
 
 	// (Caddy tries TLS-ALPN-01 first, which Pebble can't reach here, and then
 	// falls back to HTTP-01, so more than one order is normal.)
 
-	req, _ := http.NewRequestWithContext(ctx(t), "GET", "http://localhost/some/path?a=1", nil)
+	req, _ := http.NewRequestWithContext(Ctx(t), "GET", "http://localhost/some/path?a=1", nil)
 	resp, err := ce.PlainClient().Do(req)
 	if err != nil {
 		t.Fatal(err)

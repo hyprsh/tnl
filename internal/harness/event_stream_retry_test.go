@@ -16,16 +16,16 @@ import (
 // retry interval, so an Offline Outpost costs the Edge a bounded number of log
 // lines: one request line per request, and nothing else (ADR 0013).
 func TestAnEventStreamClientHonouringRetryCostsOneLogLinePerRequest(t *testing.T) {
-	svc := eventService(t)
-	log := new(lockedBuf)
-	re := StartEdgeWith(t, EdgeOptions{Pebble: StartPebble(t, PebbleOptions{}), OfflineAfter: testOfflineAfter, LogOut: log, LogLevel: slog.LevelInfo})
+	svc := EventService(t)
+	log := new(LockedBuf)
+	re := StartEdgeWith(t, EdgeOptions{Pebble: StartPebble(t, PebbleOptions{}), OfflineAfter: ShortOfflineAfter, LogOut: log, LogLevel: slog.LevelInfo})
 	re.AddZone(t, "test")
 	o := re.JoinOutpost(t, "nas")
 	re.AddRoute(t, "app.test", "http://"+svc.Addr(), "nas")
-	get(t, re.Caddy, H1, "app.test", "/")
+	Get(t, re.Caddy, H1, "app.test", "/")
 	cutLink(t, o, re)
 	o.Stop()
-	waitFor(t, "the Outpost to be Offline", 5*testOfflineAfter, func() bool { return re.Liveness.State("nas") == liveness.Offline })
+	WaitFor(t, "the Outpost to be Offline", 5*ShortOfflineAfter, func() bool { return re.Liveness.State("nas") == liveness.Offline })
 	time.Sleep(300 * time.Millisecond) // the Edge logs the outage just after the state changes
 	before := len(strings.Split(strings.TrimSpace(log.String()), "\n"))
 
@@ -34,7 +34,7 @@ func TestAnEventStreamClientHonouringRetryCostsOneLogLinePerRequest(t *testing.T
 	var requests int
 	deadline := time.Now().Add(6 * time.Second)
 	for time.Now().Before(deadline) {
-		req, _ := http.NewRequestWithContext(ctx(t), "GET", "https://app.test/sse", nil)
+		req, _ := http.NewRequestWithContext(Ctx(t), "GET", "https://app.test/sse", nil)
 		req.Header.Set("Accept", "text/event-stream")
 		resp, err := re.Caddy.Client(t, H1).Do(req)
 		if err != nil {

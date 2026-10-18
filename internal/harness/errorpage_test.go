@@ -3,7 +3,6 @@ package harness
 import (
 	"context"
 	"io"
-	"log/slog"
 	"net"
 	"net/http"
 	"regexp"
@@ -13,36 +12,7 @@ import (
 	"time"
 
 	"github.com/hyprsh/tnl/internal/edge/routes"
-	"github.com/hyprsh/tnl/internal/logx"
 )
-
-// newLogCapture is a logger that writes the Edge's own format, at debug, into
-// a buffer the test reads.
-func newLogCapture() (*slog.Logger, *lockedBuf) {
-	c := new(lockedBuf)
-	return logx.New(logx.Options{Level: slog.LevelDebug, Out: c}), c
-}
-
-func getAccepting(t *testing.T, ce *CaddyEdge, proto Proto, host, accept string) (*http.Response, string) {
-	t.Helper()
-	req, err := http.NewRequestWithContext(ctx(t), "GET", "https://"+host+"/", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if accept != "" {
-		req.Header.Set("Accept", accept)
-	}
-	resp, err := ce.Client(t, proto).Do(req)
-	if err != nil {
-		t.Fatalf("%s: %v", proto, err)
-	}
-	defer resp.Body.Close()
-	b, err := io.ReadAll(resp.Body)
-	if err != nil {
-		t.Fatalf("%s: reading body: %v", proto, err)
-	}
-	return resp, string(b)
-}
 
 func assertAnonymous(t *testing.T, resp *http.Response, body string) {
 	t.Helper()
@@ -62,17 +32,17 @@ func assertAnonymous(t *testing.T, resp *http.Response, body string) {
 }
 
 func TestNoRouteGetsThe404Page(t *testing.T) {
-	log, lines := newLogCapture()
+	log, lines := NewLogCapture()
 	h := New(t)
 	ce := h.Edge.StartCaddy(t, CaddyOptions{Log: log})
 	for _, proto := range Protos {
-		resp, body := getAccepting(t, ce, proto, "other.test", "text/html")
+		resp, body := GetAccepting(t, ce, proto, "other.test", "text/html")
 		if resp.StatusCode != 404 || !strings.Contains(body, "Nothing is served at other.test") || !strings.Contains(body, "<style>") {
 			t.Fatalf("%s: got %d %q", proto, resp.StatusCode, body)
 		}
 		assertAnonymous(t, resp, body)
 
-		resp, body = getAccepting(t, ce, proto, "other.test", "")
+		resp, body = GetAccepting(t, ce, proto, "other.test", "")
 		if resp.StatusCode != 404 || body != "404 Nothing is served at other.test\n" {
 			t.Fatalf("%s: plain text: got %d %q", proto, resp.StatusCode, body)
 		}
@@ -84,18 +54,18 @@ func TestNoRouteGetsThe404Page(t *testing.T) {
 }
 
 func TestUnreachableServiceGetsThe502PageWithTheIDOfTheLog(t *testing.T) {
-	log, lines := newLogCapture()
+	log, lines := NewLogCapture()
 	h := New(t)
 	o := h.AddOutpost(t, OutpostOptions{Name: "home"})
 	ce := h.Edge.StartCaddy(t, CaddyOptions{Log: log})
-	closed := closedAddr(t)
+	closed := ClosedAddr(t)
 	h.Edge.Routes.Swap([]routes.Route{
 		{Hostname: "refused.test", Outpost: o.Name, Service: closed},
 		{Hostname: "ghost.test", Outpost: "no-such-outpost", Service: closed},
 	})
 	idRe := regexp.MustCompile(`[0-9a-f]{16}`)
 	for _, proto := range Protos {
-		resp, body := getAccepting(t, ce, proto, "ghost.test", "text/html")
+		resp, body := GetAccepting(t, ce, proto, "ghost.test", "text/html")
 		if resp.StatusCode != 503 || !strings.Contains(body, "ghost.test is offline") {
 			t.Fatalf("%s: got %d %q", proto, resp.StatusCode, body)
 		}
@@ -104,7 +74,7 @@ func TestUnreachableServiceGetsThe502PageWithTheIDOfTheLog(t *testing.T) {
 		if id == "" || !strings.Contains(lines.String(), "id="+id) {
 			t.Errorf("%s: the page's request ID %q is not in the log:\n%s", proto, id, lines.String())
 		}
-		resp, body = getAccepting(t, ce, proto, "ghost.test", "application/json")
+		resp, body = GetAccepting(t, ce, proto, "ghost.test", "application/json")
 		if resp.StatusCode != 503 || body != "503 ghost.test is offline\n" {
 			t.Fatalf("%s: plain text: got %d %q", proto, resp.StatusCode, body)
 		}
@@ -112,14 +82,14 @@ func TestUnreachableServiceGetsThe502PageWithTheIDOfTheLog(t *testing.T) {
 }
 
 func TestRefusedServiceLogsItsReasonAfterTheRetries(t *testing.T) {
-	log, lines := newLogCapture()
+	log, lines := NewLogCapture()
 	h := New(t)
 	o := h.AddOutpost(t, OutpostOptions{Name: "home"})
 	ce := h.Edge.StartCaddy(t, CaddyOptions{Log: log})
-	h.Edge.Routes.Swap([]routes.Route{{Hostname: "refused.test", Outpost: o.Name, Service: closedAddr(t)}})
+	h.Edge.Routes.Swap([]routes.Route{{Hostname: "refused.test", Outpost: o.Name, Service: ClosedAddr(t)}})
 
 	start := time.Now()
-	resp, body := getAccepting(t, ce, H1, "refused.test", "text/html")
+	resp, body := GetAccepting(t, ce, H1, "refused.test", "text/html")
 	took := time.Since(start)
 	if resp.StatusCode != 502 || !strings.Contains(body, "refused.test") {
 		t.Fatalf("got %d %q", resp.StatusCode, body)
@@ -138,7 +108,7 @@ func TestRefusedServiceLogsItsReasonAfterTheRetries(t *testing.T) {
 }
 
 func TestServiceThatStartsListeningLaterIsServed(t *testing.T) {
-	addr := closedAddr(t)
+	addr := ClosedAddr(t)
 	h := New(t)
 	o := h.AddOutpost(t, OutpostOptions{Name: "home"})
 	ce := h.Edge.StartCaddy(t, CaddyOptions{})
@@ -155,7 +125,7 @@ func TestServiceThatStartsListeningLaterIsServed(t *testing.T) {
 		srv.Serve(ln)
 	}()
 	start := time.Now()
-	resp, body := getAccepting(t, ce, H1, "late.test", "text/html")
+	resp, body := GetAccepting(t, ce, H1, "late.test", "text/html")
 	if resp.StatusCode != 200 || body != "finally" {
 		t.Fatalf("got %d %q", resp.StatusCode, body)
 	}
@@ -178,7 +148,7 @@ func TestTimeoutIsNotRetried(t *testing.T) {
 	h.Edge.Routes.Swap([]routes.Route{{Hostname: "slow.test", Outpost: o.Name, Service: "10.0.0.1:80"}})
 
 	start := time.Now()
-	resp, _ := getAccepting(t, ce, H1, "slow.test", "text/html")
+	resp, _ := GetAccepting(t, ce, H1, "slow.test", "text/html")
 	if resp.StatusCode != 502 {
 		t.Fatalf("got %d, want 502", resp.StatusCode)
 	}
@@ -193,17 +163,17 @@ func TestTimeoutIsNotRetried(t *testing.T) {
 }
 
 func TestEventStreamToADownServiceGetsRetryAndIsClosed(t *testing.T) {
-	log, lines := newLogCapture()
+	log, lines := NewLogCapture()
 	h := New(t)
 	o := h.AddOutpost(t, OutpostOptions{Name: "home"})
 	ce := h.Edge.StartCaddy(t, CaddyOptions{Log: log})
 	h.Edge.Routes.Swap([]routes.Route{
-		{Hostname: "down.test", Outpost: o.Name, Service: closedAddr(t)},
-		{Hostname: "ghost.test", Outpost: "no-such-outpost", Service: closedAddr(t)},
+		{Hostname: "down.test", Outpost: o.Name, Service: ClosedAddr(t)},
+		{Hostname: "ghost.test", Outpost: "no-such-outpost", Service: ClosedAddr(t)},
 	})
 	for host, status := range map[string]string{"ghost.test": "status=503", "down.test": "status=502"} {
 		for _, proto := range Protos {
-			req, _ := http.NewRequestWithContext(ctx(t), "GET", "https://"+host+"/events", nil)
+			req, _ := http.NewRequestWithContext(Ctx(t), "GET", "https://"+host+"/events", nil)
 			req.Header.Set("Accept", "text/event-stream")
 			resp, err := ce.Client(t, proto).Do(req)
 			if err != nil {

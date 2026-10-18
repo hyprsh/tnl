@@ -62,7 +62,7 @@ func TestRouteAddReturnsOnceTheCertificateIsIssued(t *testing.T) {
 func TestRouteAddWarnsWhenTheCARefusesAndALaterRetryObtainsIt(t *testing.T) {
 	pb := StartPebble(t, PebbleOptions{})
 	pb.Refuse(true)
-	log := new(lockedBuf)
+	log := new(LockedBuf)
 	opts := EdgeOptions{Pebble: pb, CertWait: 3 * time.Second, LogOut: log, LogLevel: slog.LevelWarn}
 	e := StartEdgeWith(t, opts)
 	e.AddZone(t, "example.test")
@@ -80,7 +80,7 @@ func TestRouteAddWarnsWhenTheCARefusesAndALaterRetryObtainsIt(t *testing.T) {
 		t.Fatal("the Route was not saved")
 	}
 	// The Edge logs the first failed attempt at warn, and the CLI's warning too.
-	waitFor(t, "the failure line", 10*time.Second, func() bool {
+	WaitFor(t, "the failure line", 10*time.Second, func() bool {
 		return strings.Contains(log.String(), `msg="certificate attempt failed"`) && strings.Contains(log.String(), "level=warn")
 	})
 
@@ -90,7 +90,7 @@ func TestRouteAddWarnsWhenTheCARefusesAndALaterRetryObtainsIt(t *testing.T) {
 	e.Stop()
 	opts.StateDir = dir
 	e2 := StartEdgeWith(t, opts)
-	waitFor(t, "the certificate after the retry", 30*time.Second, func() bool {
+	WaitFor(t, "the certificate after the retry", 30*time.Second, func() bool {
 		st, _ := e2.Certs.Status("app.example.test")
 		return st.Obtained == 1 && !st.NotAfter.IsZero()
 	})

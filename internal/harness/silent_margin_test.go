@@ -44,7 +44,7 @@ func TestPausesLongerThanTheBoundAreNotCutAtTheSpecsProportions(t *testing.T) {
 			client := re.Caddy.Client(t, H1)
 
 			t.Run("download", func(t *testing.T) {
-				req, _ := http.NewRequestWithContext(ctxFor(t, 60*time.Second), "GET", "https://app.test/download", nil)
+				req, _ := http.NewRequestWithContext(CtxFor(t, 60*time.Second), "GET", "https://app.test/download", nil)
 				resp, err := client.Do(req)
 				if err != nil {
 					t.Fatal(err)
@@ -60,7 +60,7 @@ func TestPausesLongerThanTheBoundAreNotCutAtTheSpecsProportions(t *testing.T) {
 				}
 			})
 			t.Run("upload", func(t *testing.T) {
-				req, _ := http.NewRequestWithContext(ctxFor(t, 60*time.Second), "POST", "https://app.test/upload-stall", zeros(bigBody))
+				req, _ := http.NewRequestWithContext(CtxFor(t, 60*time.Second), "POST", "https://app.test/upload-stall", zeros(bigBody))
 				req.ContentLength = bigBody
 				start := time.Now()
 				resp, err := client.Do(req)

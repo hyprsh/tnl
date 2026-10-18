@@ -36,7 +36,7 @@ func loudLines(s string) []string {
 }
 
 func TestFailedHTTP3HandshakeAndUnknownSNIStayBelowInfo(t *testing.T) {
-	buf := &lockedBuf{}
+	buf := &LockedBuf{}
 	lg := logx.New(logx.Options{Level: slog.LevelDebug, Out: buf})
 	h := New(t)
 	pb := StartPebble(t, PebbleOptions{})
@@ -76,7 +76,7 @@ func TestFailedHTTP3HandshakeAndUnknownSNIStayBelowInfo(t *testing.T) {
 }
 
 func TestGoLogPackageComesOutThroughTnlsLogger(t *testing.T) {
-	buf := &lockedBuf{}
+	buf := &LockedBuf{}
 	lg := logx.New(logx.Options{Level: slog.LevelDebug, Out: buf})
 	old := slog.Default()
 	slog.SetDefault(lg)

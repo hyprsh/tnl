@@ -21,7 +21,7 @@ const dnsToken = "cf-T0KEN-0123456789abcdef"
 
 func zoneAddWildcard(t *testing.T, re *RealEdge, name, provider, token string) (api.ZoneAddReply, error) {
 	t.Helper()
-	return api.Call[api.ZoneAddReply](ctx(t), re.API, http.MethodPost, api.PathZones, api.ZoneAddRequest{Name: name, Provider: provider, Token: token})
+	return api.Call[api.ZoneAddReply](Ctx(t), re.API, http.MethodPost, api.PathZones, api.ZoneAddRequest{Name: name, Provider: provider, Token: token})
 }
 
 // servedNames dials the Edge's HTTPS port with the SNI and returns the DNS
@@ -70,7 +70,7 @@ func TestZoneAddWildcardObtainsTheWildcardAndARouteUnderItServesWithIt(t *testin
 		t.Errorf("route warnings: %v", rr.Warnings.Warnings)
 	}
 	for _, proto := range Protos {
-		if resp, body := get(t, re.Caddy, proto, "app.lab.example.test", "/"); resp.StatusCode != 200 || body != "hello" {
+		if resp, body := Get(t, re.Caddy, proto, "app.lab.example.test", "/"); resp.StatusCode != 200 || body != "hello" {
 			t.Fatalf("%s: %d %q", proto, resp.StatusCode, body)
 		}
 	}
@@ -81,7 +81,7 @@ func TestZoneAddWildcardObtainsTheWildcardAndARouteUnderItServesWithIt(t *testin
 		t.Errorf("the Route under the wildcard ordered a certificate: %d orders", n-orders)
 	}
 	// zone ls shows the provider and never the token.
-	zl, err := api.Call[api.ZoneList](ctx(t), re.API, http.MethodGet, api.PathZones, struct{}{})
+	zl, err := api.Call[api.ZoneList](Ctx(t), re.API, http.MethodGet, api.PathZones, struct{}{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +135,7 @@ func TestZoneAddWildcardRefusesAnUnknownProviderAndAMissingToken(t *testing.T) {
 func TestTheTokenIsInNoCaddyConfigNoLogAndNoError(t *testing.T) {
 	fake := StartFakeDNS(t, "example.test", dnsToken)
 	fake.FailChallenges()
-	logs := new(lockedBuf)
+	logs := new(LockedBuf)
 	re := StartEdgeWith(t, EdgeOptions{Pebble: StartPebble(t, PebbleOptions{}), LogOut: logs, LogLevel: slog.LevelDebug, CertWait: 3 * time.Second})
 
 	r, err := zoneAddWildcard(t, re, "example.test", "fake", dnsToken)
@@ -198,7 +198,7 @@ func TestRouteAddBelowTheWildcardGetsItsOwnCertificateAndTheCTNote(t *testing.T)
 	if names := servedNames(t, re, "a.b.example.test"); !slices.Contains(names, "a.b.example.test") {
 		t.Errorf("served with %v", names)
 	}
-	if resp, body := get(t, re.Caddy, H2, "a.b.example.test", "/"); resp.StatusCode != 200 || body != "hello" {
+	if resp, body := Get(t, re.Caddy, H2, "a.b.example.test", "/"); resp.StatusCode != 200 || body != "hello" {
 		t.Errorf("%d %q", resp.StatusCode, body)
 	}
 }
@@ -206,7 +206,7 @@ func TestRouteAddBelowTheWildcardGetsItsOwnCertificateAndTheCTNote(t *testing.T)
 // Adding and removing a wildcard Zone reload Caddy, and an SSE stream on
 // another Route survives both, on every protocol.
 func TestWildcardZoneAddAndRmReloadWithoutCuttingAnSSEStream(t *testing.T) {
-	stream := NewHTTPService(t, http.HandlerFunc(sseHandler))
+	stream := NewHTTPService(t, http.HandlerFunc(SSEHandler))
 	StartFakeDNS(t, "example.test", dnsToken)
 	re := StartEdgeWith(t, EdgeOptions{Pebble: StartPebble(t, PebbleOptions{})})
 	re.AddZone(t, "other.test")
@@ -214,7 +214,7 @@ func TestWildcardZoneAddAndRmReloadWithoutCuttingAnSSEStream(t *testing.T) {
 	re.AddRoute(t, "s.other.test", "http://"+stream.Addr(), "nas")
 
 	open := func(proto Proto) func() bool {
-		req, _ := http.NewRequestWithContext(ctx(t), "GET", "https://s.other.test/sse", nil)
+		req, _ := http.NewRequestWithContext(Ctx(t), "GET", "https://s.other.test/sse", nil)
 		resp, err := re.Caddy.Client(t, proto).Do(req)
 		if err != nil {
 			t.Fatalf("%s: %v", proto, err)

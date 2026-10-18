@@ -24,7 +24,7 @@ func TestRouteAddMakesAServiceAnswerOverEveryHTTPVersion(t *testing.T) {
 	re.AddRoute(t, "app.test", "http://"+svc.Addr(), "nas")
 
 	for _, proto := range Protos {
-		resp, body := get(t, re.Caddy, proto, "app.test", "/")
+		resp, body := Get(t, re.Caddy, proto, "app.test", "/")
 		if resp.StatusCode != 200 || body != "hello from app.test" {
 			t.Fatalf("%s: got %d %q", proto, resp.StatusCode, body)
 		}
@@ -48,7 +48,7 @@ func TestAddingARouteDoesNotReloadCaddyAndLeavesAnOpenEventStreamUp(t *testing.T
 
 	// The first request pays for the certificate (the wait at `route add` comes
 	// in slice 5), which an HTTP/3 handshake would not outlast.
-	get(t, re.Caddy, H1, "app.test", "/nope")
+	Get(t, re.Caddy, H1, "app.test", "/nope")
 	loads := caddyx.Loads()
 	done := make(chan map[Proto]sseRun, 1)
 	go func() {
@@ -59,7 +59,7 @@ func TestAddingARouteDoesNotReloadCaddyAndLeavesAnOpenEventStreamUp(t *testing.T
 	re.AddRoute(t, "two.test", "http://"+svc.Addr(), "nas")
 	// This request waits for the new Hostname's certificate, so the streams
 	// outlive it. The Service has no /nope, so its 404 shows the Route works.
-	if resp, body := get(t, re.Caddy, H1, "two.test", "/nope"); resp.StatusCode != 404 {
+	if resp, body := Get(t, re.Caddy, H1, "two.test", "/nope"); resp.StatusCode != 404 {
 		t.Fatalf("two.test: got %d %q", resp.StatusCode, body)
 	}
 	res := <-done
@@ -81,7 +81,7 @@ func TestRoutesSurviveAnEdgeRestart(t *testing.T) {
 	re.Stop()
 
 	again := StartEdgeWith(t, EdgeOptions{StateDir: re.StateDir, Pebble: StartPebble(t, PebbleOptions{})})
-	list, err := api.Call[api.RouteList](ctx(t), again.API, http.MethodGet, api.PathRoutes, nil)
+	list, err := api.Call[api.RouteList](Ctx(t), again.API, http.MethodGet, api.PathRoutes, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -25,7 +25,7 @@ func (nowhere) LookupNetIP(_ context.Context, _, host string) ([]netip.Addr, err
 // warning and the real Edge logs it at warn with the actor.
 func TestRealEdgeWildcardZoneAddWarnsAndLogs(t *testing.T) {
 	StartFakeDNS(t, "example.test", dnsToken)
-	log := new(lockedBuf)
+	log := new(LockedBuf)
 	e := StartEdgeWith(t, EdgeOptions{Pebble: StartPebble(t, PebbleOptions{}), Resolver: nowhere{}, LogOut: log, LogLevel: slog.LevelWarn})
 	z, err := zoneAddWildcard(t, e, "example.test", "fake", dnsToken)
 	if err != nil {
@@ -63,7 +63,7 @@ func TestRealEdgeZoneAddNoWarningWhenNamesPointAtTheEdge(t *testing.T) {
 // A per-hostname Zone needs only each Hostname to point at the Edge, so a
 // wildcard record pointing elsewhere is no reason to warn.
 func TestRealEdgePerHostnameZoneAddGivesNoDNSWarning(t *testing.T) {
-	log := new(lockedBuf)
+	log := new(LockedBuf)
 	e := StartEdgeWith(t, EdgeOptions{Resolver: nowhere{}, LogOut: log, LogLevel: slog.LevelWarn})
 	z, err := api.Call[api.ZoneAddReply](context.Background(), e.API, http.MethodPost, api.PathZones, api.ZoneAddRequest{Name: "example.com"})
 	if err != nil {

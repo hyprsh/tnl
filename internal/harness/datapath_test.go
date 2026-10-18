@@ -11,19 +11,12 @@ import (
 	"github.com/hyprsh/tnl/internal/wire"
 )
 
-func ctx(t *testing.T) context.Context {
-	t.Helper()
-	c, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	t.Cleanup(cancel)
-	return c
-}
-
 func TestBytesFlowBothWaysAfterOK(t *testing.T) {
 	svc := NewEchoService(t)
 	h := New(t)
 	o := h.AddOutpost(t, OutpostOptions{})
 
-	conn, err := h.Edge.Dial(ctx(t), o, wire.Header{Service: svc.Addr(), Hostname: "app.example.com", RequestID: "r1"})
+	conn, err := h.Edge.Dial(Ctx(t), o, wire.Header{Service: svc.Addr(), Hostname: "app.example.com", RequestID: "r1"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,7 +43,7 @@ func TestRepliesBeforeAnyRequestByte(t *testing.T) {
 	t.Cleanup(func() { ln.Close() })
 	h := New(t)
 	o := h.AddOutpost(t, OutpostOptions{})
-	conn, err := h.Edge.Dial(ctx(t), o, wire.Header{Service: ln.Addr().String()})
+	conn, err := h.Edge.Dial(Ctx(t), o, wire.Header{Service: ln.Addr().String()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,7 +52,7 @@ func TestRepliesBeforeAnyRequestByte(t *testing.T) {
 
 func dialReason(t *testing.T, h *Harness, o *Outpost, service string) wire.Reason {
 	t.Helper()
-	_, err := h.Edge.Dial(ctx(t), o, wire.Header{Service: service})
+	_, err := h.Edge.Dial(Ctx(t), o, wire.Header{Service: service})
 	var de *DialError
 	if !errors.As(err, &de) {
 		t.Fatalf("err = %v, want a *DialError", err)
@@ -109,7 +102,7 @@ func TestBlackholedAddressGivesTimeout(t *testing.T) {
 func TestUnknownMarkerIsRefused(t *testing.T) {
 	h := New(t)
 	o := h.AddOutpost(t, OutpostOptions{Version: "0.1.0"})
-	rp := h.Edge.Raw(t, ctx(t), o, []byte("GET / HTTP/1.1\r\nHost: x\r\n\r\n"))
+	rp := h.Edge.Raw(t, Ctx(t), o, []byte("GET / HTTP/1.1\r\nHost: x\r\n\r\n"))
 	if rp.Status != wire.StatusUnsupported || rp.Version != "0.1.0" {
 		t.Fatalf("reply = %+v, want unsupported 0.1.0", rp)
 	}
@@ -119,7 +112,7 @@ func TestUnknownFieldIsRefused(t *testing.T) {
 	h := New(t)
 	o := h.AddOutpost(t, OutpostOptions{Version: "0.1.0"})
 	raw := []byte{'t', 'n', 'l', 0, 1, 1, 3, 'a', ':', '1', 99, 1, 'x', 0}
-	rp := h.Edge.Raw(t, ctx(t), o, raw)
+	rp := h.Edge.Raw(t, Ctx(t), o, raw)
 	if rp.Status != wire.StatusUnsupported || rp.Version != "0.1.0" {
 		t.Fatalf("reply = %+v, want unsupported 0.1.0", rp)
 	}
@@ -128,7 +121,7 @@ func TestUnknownFieldIsRefused(t *testing.T) {
 func TestSlowHeaderIsCutOff(t *testing.T) {
 	h := New(t)
 	o := h.AddOutpost(t, OutpostOptions{HeaderTimeout: 200 * time.Millisecond})
-	conn, err := h.Edge.Net.DialContextTCPAddrPort(ctx(t), o.DataAddr())
+	conn, err := h.Edge.Net.DialContextTCPAddrPort(Ctx(t), o.DataAddr())
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -47,11 +47,11 @@ func TestEdgeRepliesCarryHardenedHeadersAndNoServer(t *testing.T) {
 	h := New(t)
 	h.AddOutpost(t, OutpostOptions{Name: "home"})
 	ce := h.Edge.StartCaddy(t, CaddyOptions{})
-	h.Edge.Routes.Swap([]routes.Route{{Hostname: "ghost.test", Outpost: "no-such-outpost", Service: closedAddr(t)}})
+	h.Edge.Routes.Swap([]routes.Route{{Hostname: "ghost.test", Outpost: "no-such-outpost", Service: ClosedAddr(t)}})
 	for _, proto := range Protos {
 		for _, accept := range []string{"text/html", "", "text/event-stream"} {
 			for _, host := range []string{"other.test", "ghost.test"} {
-				resp, _ := getAccepting(t, ce, proto, host, accept)
+				resp, _ := GetAccepting(t, ce, proto, host, accept)
 				assertOwn(t, string(proto)+" "+host+" "+accept, resp.Header)
 			}
 		}
@@ -59,7 +59,7 @@ func TestEdgeRepliesCarryHardenedHeadersAndNoServer(t *testing.T) {
 }
 
 func TestProxiedRepliesHaveHSTSAndNoVia(t *testing.T) {
-	h := edgeWithService(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	h := EdgeWithService(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/own" {
 			w.Header().Set("Strict-Transport-Security", "max-age=60; includeSubDomains")
 			w.Header().Set("Server", "nginx")
@@ -68,7 +68,7 @@ func TestProxiedRepliesHaveHSTSAndNoVia(t *testing.T) {
 		w.Write([]byte("ok"))
 	}))
 	for _, proto := range Protos {
-		resp, _ := get(t, h.Edge.Caddy, proto, "app.test", "/plain")
+		resp, _ := Get(t, h.Edge.Caddy, proto, "app.test", "/plain")
 		if got := resp.Header.Get("Strict-Transport-Security"); got != wantHSTS {
 			t.Errorf("%s: HSTS = %q, want %q", proto, got, wantHSTS)
 		}
@@ -80,7 +80,7 @@ func TestProxiedRepliesHaveHSTSAndNoVia(t *testing.T) {
 		}
 		assertNoCaddy(t, string(proto), resp.Header)
 
-		resp, _ = get(t, h.Edge.Caddy, proto, "app.test", "/own")
+		resp, _ = Get(t, h.Edge.Caddy, proto, "app.test", "/own")
 		if got := resp.Header.Get("Strict-Transport-Security"); got != "max-age=60; includeSubDomains" {
 			t.Errorf("%s: the Service's HSTS = %q", proto, got)
 		}
@@ -91,8 +91,8 @@ func TestProxiedRepliesHaveHSTSAndNoVia(t *testing.T) {
 }
 
 func TestRedirectHasNoHSTSNoServerAndHardenedHeaders(t *testing.T) {
-	h := edgeWithService(t, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
-	req, _ := http.NewRequestWithContext(ctx(t), "GET", "http://app.test/x", nil)
+	h := EdgeWithService(t, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	req, _ := http.NewRequestWithContext(Ctx(t), "GET", "http://app.test/x", nil)
 	resp, err := h.Edge.Caddy.PlainClient().Do(req)
 	if err != nil {
 		t.Fatal(err)
@@ -111,20 +111,20 @@ func TestRedirectHasNoHSTSNoServerAndHardenedHeaders(t *testing.T) {
 // own reply, with the hardened headers and no Server header, not Caddy's 502; an
 // event stream gets 200 and retry: (ADR 0013).
 func TestADroppedConnectionIsAnEdgeReplyNotCaddys502(t *testing.T) {
-	h := edgeWithService(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	h := EdgeWithService(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		c, _, err := w.(http.Hijacker).Hijack()
 		if err == nil {
 			c.Close()
 		}
 	}))
 	for _, proto := range Protos {
-		resp, body := getAccepting(t, h.Edge.Caddy, proto, "app.test", "text/html")
+		resp, body := GetAccepting(t, h.Edge.Caddy, proto, "app.test", "text/html")
 		if resp.StatusCode != 502 || !strings.Contains(body, "<style>") {
 			t.Errorf("%s: got %d %q, want the Edge's 502 page", proto, resp.StatusCode, body)
 		}
 		assertOwn(t, string(proto)+" 502", resp.Header)
 
-		resp, body = getAccepting(t, h.Edge.Caddy, proto, "app.test", "text/event-stream")
+		resp, body = GetAccepting(t, h.Edge.Caddy, proto, "app.test", "text/event-stream")
 		if resp.StatusCode != 200 || !strings.Contains(body, "retry: ") {
 			t.Errorf("%s: event stream got %d %q, want 200 and retry:", proto, resp.StatusCode, body)
 		}

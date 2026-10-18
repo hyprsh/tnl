@@ -13,69 +13,65 @@ func ptr[T any](v T) *T { return &v }
 
 func routeEdit(t *testing.T, re *RealEdge, req api.RouteEditRequest) error {
 	t.Helper()
-	_, err := api.Call[api.RouteInfo](ctx(t), re.API, http.MethodPost, api.PathRouteEdit, req)
+	_, err := api.Call[api.RouteInfo](Ctx(t), re.API, http.MethodPost, api.PathRouteEdit, req)
 	return err
 }
 
-func echoHost() http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, r.Host) })
-}
-
 func TestHTTPSServiceIsServedVerifiedAndRefusedWhenItsCertificateDoesNotVerify(t *testing.T) {
-	trusted := NewHTTPSService(t, echoHost())
-	untrusted := NewHTTPSService(t, echoHost())
+	trusted := NewHTTPSService(t, EchoHost())
+	untrusted := NewHTTPSService(t, EchoHost())
 	re := StartEdgeWith(t, EdgeOptions{Pebble: StartPebble(t, PebbleOptions{}), ServiceRoots: trusted.CA})
 	re.AddZone(t, "test")
 	re.JoinOutpost(t, "nas")
 	re.AddRoute(t, "ok.test", "https://"+trusted.Addr(), "nas")
 	re.AddRoute(t, "bad.test", "https://"+untrusted.Addr(), "nas")
 
-	if resp, body := get(t, re.Caddy, H1, "ok.test", "/"); resp.StatusCode != 200 || body != "ok.test" {
+	if resp, body := Get(t, re.Caddy, H1, "ok.test", "/"); resp.StatusCode != 200 || body != "ok.test" {
 		t.Fatalf("trusted https Service: %d %q", resp.StatusCode, body)
 	}
-	if resp, _ := get(t, re.Caddy, H1, "bad.test", "/"); resp.StatusCode != 502 {
+	if resp, _ := Get(t, re.Caddy, H1, "bad.test", "/"); resp.StatusCode != 502 {
 		t.Fatalf("unverifiable certificate: got %d, want 502", resp.StatusCode)
 	}
 	if err := routeEdit(t, re, api.RouteEditRequest{Hostname: "bad.test", InsecureSkipVerify: ptr(true)}); err != nil {
 		t.Fatal(err)
 	}
-	if resp, _ := get(t, re.Caddy, H1, "bad.test", "/"); resp.StatusCode != 200 {
+	if resp, _ := Get(t, re.Caddy, H1, "bad.test", "/"); resp.StatusCode != 200 {
 		t.Fatalf("with --insecure-skip-verify: got %d, want 200", resp.StatusCode)
 	}
 	if err := routeEdit(t, re, api.RouteEditRequest{Hostname: "bad.test", InsecureSkipVerify: ptr(false)}); err != nil {
 		t.Fatal(err)
 	}
-	if resp, _ := get(t, re.Caddy, H1, "bad.test", "/"); resp.StatusCode != 502 {
+	if resp, _ := Get(t, re.Caddy, H1, "bad.test", "/"); resp.StatusCode != 502 {
 		t.Fatalf("after turning verification back on: got %d, want 502", resp.StatusCode)
 	}
 }
 
 func TestHostHeaderOverridesTheVisitorsHostUntilCleared(t *testing.T) {
-	svc := NewHTTPService(t, echoHost())
+	svc := NewHTTPService(t, EchoHost())
 	re := StartEdgeWith(t, EdgeOptions{Pebble: StartPebble(t, PebbleOptions{})})
 	re.AddZone(t, "test")
 	re.JoinOutpost(t, "nas")
-	_, err := api.Call[api.RouteInfo](ctx(t), re.API, http.MethodPost, api.PathRoutes,
+	_, err := api.Call[api.RouteInfo](Ctx(t), re.API, http.MethodPost, api.PathRoutes,
 		api.RouteAddRequest{Hostname: "a.test", Service: "http://" + svc.Addr(), Outpost: "nas", HostHeader: "internal.lan"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, body := get(t, re.Caddy, H1, "a.test", "/"); body != "internal.lan" {
+	if _, body := Get(t, re.Caddy, H1, "a.test", "/"); body != "internal.lan" {
 		t.Fatalf("the Service saw Host %q, want internal.lan", body)
 	}
 	if err := routeEdit(t, re, api.RouteEditRequest{Hostname: "a.test", HostHeader: ptr("other.lan")}); err != nil {
 		t.Fatal(err)
 	}
-	if _, body := get(t, re.Caddy, H1, "a.test", "/"); body != "other.lan" {
+	if _, body := Get(t, re.Caddy, H1, "a.test", "/"); body != "other.lan" {
 		t.Fatalf("after edit the Service saw Host %q", body)
 	}
 	if err := routeEdit(t, re, api.RouteEditRequest{Hostname: "a.test", HostHeader: ptr("")}); err != nil {
 		t.Fatal(err)
 	}
-	if _, body := get(t, re.Caddy, H1, "a.test", "/"); body != "a.test" {
+	if _, body := Get(t, re.Caddy, H1, "a.test", "/"); body != "a.test" {
 		t.Fatalf("after clearing the Service saw Host %q, want the Visitor's", body)
 	}
-	list, err := api.Call[api.RouteList](ctx(t), re.API, http.MethodGet, api.PathRoutes, nil)
+	list, err := api.Call[api.RouteList](Ctx(t), re.API, http.MethodGet, api.PathRoutes, nil)
 	if err != nil || len(list.Routes[0].Options) != 0 {
 		t.Fatalf("options after clearing: %v %v", list, err)
 	}
@@ -89,7 +85,7 @@ func TestRouteEditChangesServiceAndOutpostAndClosesOnlyItsOwnStream(t *testing.T
 			fmt.Fprint(w, "ok")
 			return
 		}
-		sseHandler(w, r)
+		SSEHandler(w, r)
 	}))
 	re := StartEdgeWith(t, EdgeOptions{Pebble: StartPebble(t, PebbleOptions{})})
 	re.AddZone(t, "test")
@@ -97,9 +93,9 @@ func TestRouteEditChangesServiceAndOutpostAndClosesOnlyItsOwnStream(t *testing.T
 	re.JoinOutpost(t, "pi")
 	re.AddRoute(t, "a.test", "http://"+svcA.Addr(), "nas")
 	re.AddRoute(t, "s.test", "http://"+stream.Addr(), "nas")
-	get(t, re.Caddy, H1, "a.test", "/")
-	get(t, re.Caddy, H1, "s.test", "/")
-	nextS := openStream(t, re, "s.test")
+	Get(t, re.Caddy, H1, "a.test", "/")
+	Get(t, re.Caddy, H1, "s.test", "/")
+	nextS := OpenStream(t, re, "s.test")
 	if !nextS() {
 		t.Fatal("stream did not start")
 	}
@@ -107,7 +103,7 @@ func TestRouteEditChangesServiceAndOutpostAndClosesOnlyItsOwnStream(t *testing.T
 	if err := routeEdit(t, re, api.RouteEditRequest{Hostname: "a.test", Service: ptr("http://" + svcB.Addr())}); err != nil {
 		t.Fatal(err)
 	}
-	if _, body := get(t, re.Caddy, H1, "a.test", "/"); body != "B" {
+	if _, body := Get(t, re.Caddy, H1, "a.test", "/"); body != "B" {
 		t.Fatalf("after changing the Service: %q", body)
 	}
 	for range 2 {
@@ -126,7 +122,7 @@ func TestRouteEditChangesServiceAndOutpostAndClosesOnlyItsOwnStream(t *testing.T
 		// The first edit's stream is the one opened above; later ones open anew.
 		next := nextS
 		if edit.HostHeader == nil {
-			next = openStream(t, re, "s.test")
+			next = OpenStream(t, re, "s.test")
 		}
 		if !next() {
 			t.Fatal("stream did not start")
@@ -142,7 +138,7 @@ func TestRouteEditChangesServiceAndOutpostAndClosesOnlyItsOwnStream(t *testing.T
 			t.Fatalf("edit %+v did not close the stream", edit)
 		}
 	}
-	list, err := api.Call[api.RouteList](ctx(t), re.API, http.MethodGet, api.PathRoutes, nil)
+	list, err := api.Call[api.RouteList](Ctx(t), re.API, http.MethodGet, api.PathRoutes, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

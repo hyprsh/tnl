@@ -13,8 +13,6 @@ import (
 	"github.com/hyprsh/tnl/internal/remind"
 )
 
-const photos = "photos.test"
-
 func holder(re *RealEdge, host string) string {
 	r, ok := re.Store.Snapshot().Route(host)
 	if !ok {
@@ -25,18 +23,18 @@ func holder(re *RealEdge, host string) string {
 
 func waitHolder(t *testing.T, re *RealEdge, host, want string) {
 	t.Helper()
-	waitFor(t, host+" to be held by "+want, 10*time.Second, func() bool { return holder(re, host) == want })
+	WaitFor(t, host+" to be held by "+want, 10*time.Second, func() bool { return holder(re, host) == want })
 }
 
 func waitWaiting(t *testing.T, re *RealEdge, outpost, host string) {
 	t.Helper()
-	waitFor(t, outpost+" to wait for "+host, 10*time.Second, func() bool {
+	WaitFor(t, outpost+" to wait for "+host, 10*time.Second, func() bool {
 		return re.Store.Snapshot().WaitingReason(outpost, host) != "" && len(re.Store.Snapshot().DeclarationOf(outpost)) > 0
 	})
 }
 
 func TestMovingAServiceBetweenOutpostsWorksWhicheverOutpostChangesFirst(t *testing.T) {
-	svc := NewHTTPService(t, echoHost())
+	svc := NewHTTPService(t, EchoHost())
 	for _, tc := range []struct {
 		name      string
 		newboxNow bool // newbox declares while nas still holds it
@@ -44,28 +42,28 @@ func TestMovingAServiceBetweenOutpostsWorksWhicheverOutpostChangesFirst(t *testi
 		t.Run(tc.name, func(t *testing.T) {
 			re := StartEdgeWith(t, EdgeOptions{})
 			re.AddZone(t, "test")
-			line := func(label string) []outpostLine {
-				return []outpostLine{DeclaredLine(label, photos, "http://"+svc.Addr())}
+			line := func(label string) []OutpostLine {
+				return []OutpostLine{DeclaredLine(label, Photos, "http://"+svc.Addr())}
 			}
 			nas := re.ConnectWith(t, "nas", re.AddOutpost(t, "nas"), ConnectOptions{Declaration: line("PHOTOS")})
-			waitHolder(t, re, photos, "nas")
+			waitHolder(t, re, Photos, "nas")
 			newboxTok := re.AddOutpost(t, "newbox")
 
 			if tc.newboxNow {
 				re.ConnectWith(t, "newbox", newboxTok, ConnectOptions{Declaration: line("PHOTOS")})
-				waitWaiting(t, re, "newbox", photos)
-				if holder(re, photos) != "nas" {
-					t.Fatalf("holder %s", holder(re, photos))
+				waitWaiting(t, re, "newbox", Photos)
+				if holder(re, Photos) != "nas" {
+					t.Fatalf("holder %s", holder(re, Photos))
 				}
 				nas.Stop()
 				reconnect(t, re, "nas", nas.StateDir, ConnectOptions{})
 			} else {
 				nas.Stop()
 				reconnect(t, re, "nas", nas.StateDir, ConnectOptions{})
-				waitFor(t, "the Hostname to be free", 10*time.Second, func() bool { return holder(re, photos) == "" })
+				WaitFor(t, "the Hostname to be free", 10*time.Second, func() bool { return holder(re, Photos) == "" })
 				re.ConnectWith(t, "newbox", newboxTok, ConnectOptions{Declaration: line("PHOTOS")})
 			}
-			waitHolder(t, re, photos, "newbox")
+			waitHolder(t, re, Photos, "newbox")
 			if re.Store.Snapshot().Declares("nas") {
 				t.Fatal("nas still declares")
 			}
@@ -74,71 +72,71 @@ func TestMovingAServiceBetweenOutpostsWorksWhicheverOutpostChangesFirst(t *testi
 }
 
 func TestWithTwoOutpostsWaitingForOneHostnameTheFirstToDeclareItGetsIt(t *testing.T) {
-	svc := NewHTTPService(t, echoHost())
+	svc := NewHTTPService(t, EchoHost())
 	re := StartEdgeWith(t, EdgeOptions{})
 	re.AddZone(t, "test")
-	line := []outpostLine{DeclaredLine("PHOTOS", photos, "http://"+svc.Addr())}
+	line := []OutpostLine{DeclaredLine("PHOTOS", Photos, "http://"+svc.Addr())}
 	nas := re.ConnectWith(t, "nas", re.AddOutpost(t, "nas"), ConnectOptions{Declaration: line})
-	waitHolder(t, re, photos, "nas")
+	waitHolder(t, re, Photos, "nas")
 	// "zeta" declares first although "alpha" sorts first.
 	re.ConnectWith(t, "zeta", re.AddOutpost(t, "zeta"), ConnectOptions{Declaration: line})
-	waitWaiting(t, re, "zeta", photos)
+	waitWaiting(t, re, "zeta", Photos)
 	time.Sleep(5 * time.Millisecond)
 	re.ConnectWith(t, "alpha", re.AddOutpost(t, "alpha"), ConnectOptions{Declaration: line})
-	waitWaiting(t, re, "alpha", photos)
+	waitWaiting(t, re, "alpha", Photos)
 
 	nas.Stop()
 	reconnect(t, re, "nas", nas.StateDir, ConnectOptions{})
-	waitHolder(t, re, photos, "zeta")
-	if re.Store.Snapshot().WaitingReason("alpha", photos) == "" {
+	waitHolder(t, re, Photos, "zeta")
+	if re.Store.Snapshot().WaitingReason("alpha", Photos) == "" {
 		t.Fatal("alpha got the Hostname too")
 	}
 }
 
 func TestRouteRmThatFreesAHostnameSaysWhoServesItNow(t *testing.T) {
-	svc := NewHTTPService(t, echoHost())
+	svc := NewHTTPService(t, EchoHost())
 	re := StartEdgeWith(t, EdgeOptions{})
 	re.AddZone(t, "test")
 	re.JoinOutpost(t, "nas")
-	re.AddRoute(t, photos, "http://"+svc.Addr(), "nas")
-	re.ConnectWith(t, "newbox", re.AddOutpost(t, "newbox"), ConnectOptions{Declaration: []outpostLine{DeclaredLine("PHOTOS", photos, "http://"+svc.Addr())}})
-	waitWaiting(t, re, "newbox", photos)
+	re.AddRoute(t, Photos, "http://"+svc.Addr(), "nas")
+	re.ConnectWith(t, "newbox", re.AddOutpost(t, "newbox"), ConnectOptions{Declaration: []OutpostLine{DeclaredLine("PHOTOS", Photos, "http://"+svc.Addr())}})
+	waitWaiting(t, re, "newbox", Photos)
 
-	reply, err := api.Call[api.RouteRmReply](ctx(t), re.API, http.MethodPost, api.PathRouteRm, api.RouteRmRequest{Hostname: photos})
+	reply, err := api.Call[api.RouteRmReply](Ctx(t), re.API, http.MethodPost, api.PathRouteRm, api.RouteRmRequest{Hostname: Photos})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got := reply.Lines(); len(got) != 1 || got[0] != "newbox declared photos.test and now serves it" {
 		t.Fatalf("lines %q", got)
 	}
-	if holder(re, photos) != "newbox" {
-		t.Fatalf("holder %q", holder(re, photos))
+	if holder(re, Photos) != "newbox" {
+		t.Fatalf("holder %q", holder(re, Photos))
 	}
 }
 
 func TestOutpostRmAndADroppedLineHandOverToo(t *testing.T) {
-	svc := NewHTTPService(t, echoHost())
+	svc := NewHTTPService(t, EchoHost())
 	re := StartEdgeWith(t, EdgeOptions{})
 	re.AddZone(t, "test")
 	re.JoinOutpost(t, "nas")
-	re.AddRoute(t, photos, "http://"+svc.Addr(), "nas")
-	re.ConnectWith(t, "newbox", re.AddOutpost(t, "newbox"), ConnectOptions{Declaration: []outpostLine{DeclaredLine("PHOTOS", photos, "http://"+svc.Addr())}})
-	waitWaiting(t, re, "newbox", photos)
+	re.AddRoute(t, Photos, "http://"+svc.Addr(), "nas")
+	re.ConnectWith(t, "newbox", re.AddOutpost(t, "newbox"), ConnectOptions{Declaration: []OutpostLine{DeclaredLine("PHOTOS", Photos, "http://"+svc.Addr())}})
+	waitWaiting(t, re, "newbox", Photos)
 
-	reply, err := api.Call[api.OutpostRmReply](ctx(t), re.API, http.MethodPost, api.PathOutpostRm, api.OutpostRmRequest{Name: "nas", WithRoutes: true})
+	reply, err := api.Call[api.OutpostRmReply](Ctx(t), re.API, http.MethodPost, api.PathOutpostRm, api.OutpostRmRequest{Name: "nas", WithRoutes: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(reply.Served) != 1 || reply.Served[0] != (api.Served{Outpost: "newbox", Hostname: photos}) || holder(re, photos) != "newbox" {
-		t.Fatalf("reply %+v, holder %q", reply, holder(re, photos))
+	if len(reply.Served) != 1 || reply.Served[0] != (api.Served{Outpost: "newbox", Hostname: Photos}) || holder(re, Photos) != "newbox" {
+		t.Fatalf("reply %+v, holder %q", reply, holder(re, Photos))
 	}
 }
 
 func TestAZoneAddTurnsAWaitingLineIntoARouteAndZoneRmWithRoutesSendsItBack(t *testing.T) {
-	svc := NewHTTPService(t, echoHost())
+	svc := NewHTTPService(t, EchoHost())
 	re := StartEdgeWith(t, EdgeOptions{})
 	re.AddZone(t, "test")
-	re.ConnectWith(t, "newbox", re.AddOutpost(t, "newbox"), ConnectOptions{Declaration: []outpostLine{
+	re.ConnectWith(t, "newbox", re.AddOutpost(t, "newbox"), ConnectOptions{Declaration: []OutpostLine{
 		DeclaredLine("A", "a.test", "http://"+svc.Addr()),
 		DeclaredLine("B", "b.other", "http://"+svc.Addr()),
 	}})
@@ -147,7 +145,7 @@ func TestAZoneAddTurnsAWaitingLineIntoARouteAndZoneRmWithRoutesSendsItBack(t *te
 		t.Fatalf("reason %q", got)
 	}
 
-	add, err := api.Call[api.ZoneAddReply](ctx(t), re.API, http.MethodPost, api.PathZones, api.ZoneAddRequest{Name: "other"})
+	add, err := api.Call[api.ZoneAddReply](Ctx(t), re.API, http.MethodPost, api.PathZones, api.ZoneAddRequest{Name: "other"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -158,7 +156,7 @@ func TestAZoneAddTurnsAWaitingLineIntoARouteAndZoneRmWithRoutesSendsItBack(t *te
 		t.Fatal("b.other is not a Route")
 	}
 
-	rm, err := api.Call[api.ZoneRmReply](ctx(t), re.API, http.MethodPost, api.PathZoneRm, api.ZoneRmRequest{Name: "other", WithRoutes: true})
+	rm, err := api.Call[api.ZoneRmReply](Ctx(t), re.API, http.MethodPost, api.PathZoneRm, api.ZoneRmRequest{Name: "other", WithRoutes: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -170,19 +168,19 @@ func TestAZoneAddTurnsAWaitingLineIntoARouteAndZoneRmWithRoutesSendsItBack(t *te
 }
 
 func TestNoRouteAddTakesAHostnameThatIsBeingFreedForAWaitingLine(t *testing.T) {
-	svc := NewHTTPService(t, echoHost())
+	svc := NewHTTPService(t, EchoHost())
 	re := StartEdgeWith(t, EdgeOptions{})
 	re.AddZone(t, "test")
 	re.JoinOutpost(t, "nas")
 	const n = 8
-	var lines []outpostLine
+	var lines []OutpostLine
 	for i := 0; i < n; i++ {
 		host := fmt.Sprintf("h%d.test", i)
 		re.AddRoute(t, host, "http://"+svc.Addr(), "nas")
 		lines = append(lines, DeclaredLine(fmt.Sprintf("H%d", i), host, "http://"+svc.Addr()))
 	}
 	re.ConnectWith(t, "newbox", re.AddOutpost(t, "newbox"), ConnectOptions{Declaration: lines})
-	waitFor(t, "every line to wait", 10*time.Second, func() bool { return len(re.Store.Snapshot().DeclarationOf("newbox")) == n })
+	WaitFor(t, "every line to wait", 10*time.Second, func() bool { return len(re.Store.Snapshot().DeclarationOf("newbox")) == n })
 
 	var rivalWon atomic.Int32
 	var wg sync.WaitGroup
@@ -193,7 +191,7 @@ func TestNoRouteAddTakesAHostnameThatIsBeingFreedForAWaitingLine(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			<-start
-			if _, err := api.Call[api.RouteRmReply](ctx(t), re.API, http.MethodPost, api.PathRouteRm, api.RouteRmRequest{Hostname: host}); err != nil {
+			if _, err := api.Call[api.RouteRmReply](Ctx(t), re.API, http.MethodPost, api.PathRouteRm, api.RouteRmRequest{Hostname: host}); err != nil {
 				t.Error(err)
 			}
 		}()
@@ -202,7 +200,7 @@ func TestNoRouteAddTakesAHostnameThatIsBeingFreedForAWaitingLine(t *testing.T) {
 			go func() {
 				defer wg.Done()
 				<-start
-				_, err := api.Call[api.RouteAddReply](ctx(t), re.API, http.MethodPost, api.PathRoutes, api.RouteAddRequest{Hostname: host, Service: "http://" + svc.Addr(), Outpost: "nas"})
+				_, err := api.Call[api.RouteAddReply](Ctx(t), re.API, http.MethodPost, api.PathRoutes, api.RouteAddRequest{Hostname: host, Service: "http://" + svc.Addr(), Outpost: "nas"})
 				if err == nil {
 					rivalWon.Add(1)
 				}
@@ -222,25 +220,25 @@ func TestNoRouteAddTakesAHostnameThatIsBeingFreedForAWaitingLine(t *testing.T) {
 }
 
 func TestAWaitingLineWarnsOnBothSidesAndRemindsOnAShortenedClock(t *testing.T) {
-	svc := NewHTTPService(t, echoHost())
-	elog, olog := new(lockedBuf), new(lockedBuf)
+	svc := NewHTTPService(t, EchoHost())
+	elog, olog := new(LockedBuf), new(LockedBuf)
 	re := StartEdgeWith(t, EdgeOptions{LogOut: elog, LogLevel: slog.LevelInfo, Reminders: remind.Schedule{Every: 300 * time.Millisecond}})
 	re.AddZone(t, "test")
 	re.JoinOutpost(t, "nas")
-	re.AddRoute(t, photos, "http://"+svc.Addr(), "nas")
-	re.ConnectWith(t, "newbox", re.AddOutpost(t, "newbox"), ConnectOptions{LogOut: olog, Declaration: []outpostLine{DeclaredLine("PHOTOS", photos, "http://"+svc.Addr())}})
+	re.AddRoute(t, Photos, "http://"+svc.Addr(), "nas")
+	re.ConnectWith(t, "newbox", re.AddOutpost(t, "newbox"), ConnectOptions{LogOut: olog, Declaration: []OutpostLine{DeclaredLine("PHOTOS", Photos, "http://"+svc.Addr())}})
 
-	waitFor(t, "the Edge's warn, reminders and the Outpost's warn", 10*time.Second, func() bool {
-		return countLines(elog, "level=warn", "declared line waits", photos, "held by Outpost nas") == 1 &&
-			countLines(elog, "level=warn", "declared line still waits", photos) >= 2 &&
-			countLines(olog, "level=warn", "variable=TNL_ROUTE_PHOTOS", photos) >= 1
+	WaitFor(t, "the Edge's warn, reminders and the Outpost's warn", 10*time.Second, func() bool {
+		return countLines(elog, "level=warn", "declared line waits", Photos, "held by Outpost nas") == 1 &&
+			countLines(elog, "level=warn", "declared line still waits", Photos) >= 2 &&
+			countLines(olog, "level=warn", "variable=TNL_ROUTE_PHOTOS", Photos) >= 1
 	})
 
-	if _, err := api.Call[api.RouteRmReply](ctx(t), re.API, http.MethodPost, api.PathRouteRm, api.RouteRmRequest{Hostname: photos}); err != nil {
+	if _, err := api.Call[api.RouteRmReply](Ctx(t), re.API, http.MethodPost, api.PathRouteRm, api.RouteRmRequest{Hostname: Photos}); err != nil {
 		t.Fatal(err)
 	}
-	waitFor(t, "the info lines", 10*time.Second, func() bool {
-		return countLines(elog, "level=info", "declared line applies", "outpost=newbox", photos) == 1 &&
+	WaitFor(t, "the info lines", 10*time.Second, func() bool {
+		return countLines(elog, "level=info", "declared line applies", "outpost=newbox", Photos) == 1 &&
 			countLines(olog, "level=info", "Route now applies", "variable=TNL_ROUTE_PHOTOS") == 1
 	})
 	n := countLines(elog, "declared line still waits")

@@ -11,7 +11,7 @@ import (
 )
 
 // requestLines returns the log lines the Edge wrote about requests.
-func requestLines(lines *lockedBuf) []string {
+func requestLines(lines *LockedBuf) []string {
 	var out []string
 	for _, l := range strings.Split(lines.String(), "\n") {
 		if strings.Contains(l, "msg=request") {
@@ -23,7 +23,7 @@ func requestLines(lines *lockedBuf) []string {
 
 func visit(t *testing.T, ce *CaddyEdge, proto Proto, host, pathAndQuery string, hdr map[string]string) (int, string) {
 	t.Helper()
-	req, err := http.NewRequestWithContext(ctx(t), "GET", "https://"+host+pathAndQuery, nil)
+	req, err := http.NewRequestWithContext(Ctx(t), "GET", "https://"+host+pathAndQuery, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,7 +40,7 @@ func visit(t *testing.T, ce *CaddyEdge, proto Proto, host, pathAndQuery string, 
 }
 
 func TestA404InsideAZoneIsInfoAndOutsideEveryZoneIsDebug(t *testing.T) {
-	log, lines := newLogCapture()
+	log, lines := NewLogCapture()
 	h := New(t)
 	ce := h.Edge.StartCaddy(t, CaddyOptions{Log: log, InZone: func(host string) bool { return host == "inside.test" }})
 	visit(t, ce, H1, "inside.test", "/", nil)
@@ -64,11 +64,11 @@ func TestA404InsideAZoneIsInfoAndOutsideEveryZoneIsDebug(t *testing.T) {
 }
 
 func TestEverySelfMadeResponseGetsOneLineWithTheSpecsFields(t *testing.T) {
-	log, lines := newLogCapture()
+	log, lines := NewLogCapture()
 	h := New(t)
 	o := h.AddOutpost(t, OutpostOptions{Name: "home"})
 	ce := h.Edge.StartCaddy(t, CaddyOptions{Log: log})
-	h.Edge.Routes.Swap([]routes.Route{{Hostname: "ghost.test", Outpost: "gone", Service: closedAddr(t)}, {Hostname: "down.test", Outpost: o.Name, Service: closedAddr(t)}})
+	h.Edge.Routes.Swap([]routes.Route{{Hostname: "ghost.test", Outpost: "gone", Service: ClosedAddr(t)}, {Hostname: "down.test", Outpost: o.Name, Service: ClosedAddr(t)}})
 	visit(t, ce, H2, "ghost.test", "/page?secret=1", map[string]string{"Cookie": "sid=abc", "User-Agent": "agent-007", "Referer": "https://ref.example/"})
 	got := requestLines(lines)
 	if len(got) != 1 {
@@ -101,7 +101,7 @@ func successfulRequests(t *testing.T, access bool) {
 		io.WriteString(w, "hello")
 	}))
 	{
-		log, lines := newLogCapture()
+		log, lines := NewLogCapture()
 		h := New(t)
 		o := h.AddOutpost(t, OutpostOptions{Name: "home"})
 		ce := h.Edge.StartCaddy(t, CaddyOptions{Log: log, AccessLog: access})

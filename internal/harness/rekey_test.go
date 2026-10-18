@@ -15,14 +15,14 @@ import (
 // A WireGuard rekey in a running Outpost is not a restart: the session id in
 // its pings stays the same, and the Edge closes nothing.
 func TestARekeyWithoutARestartClosesNothing(t *testing.T) {
-	svc := eventService(t)
-	logs := new(lockedBuf)
+	svc := EventService(t)
+	logs := new(LockedBuf)
 	re := StartEdgeWith(t, EdgeOptions{Pebble: StartPebble(t, PebbleOptions{}), LogOut: logs, LogLevel: slog.LevelInfo})
 	re.AddZone(t, "test")
 	o := re.JoinOutpost(t, "nas")
 	re.AddRoute(t, "app.test", "http://"+svc.Addr(), "nas")
-	get(t, re.Caddy, H1, "app.test", "/")
-	next := openStream(t, re, "app.test")
+	Get(t, re.Caddy, H1, "app.test", "/")
+	next := OpenStream(t, re, "app.test")
 	if !next() {
 		t.Fatal("the stream did not start")
 	}
