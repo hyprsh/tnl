@@ -16,6 +16,7 @@ import (
 // the Outpost's own ring and must deliver a followed line as it is logged. The
 // follow runs through render.Logs, the code the command runs.
 func TestFollowingAnOutpostsLogsDeliversNewLinesAsTheyAreLogged(t *testing.T) {
+	t.Parallel()
 	re := StartEdgeWith(t, EdgeOptions{})
 	re.AddZone(t, "test")
 	nas := re.ConnectWith(t, "nas", re.AddOutpost(t, "nas"), ConnectOptions{})

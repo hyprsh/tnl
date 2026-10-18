@@ -36,6 +36,7 @@ func waitWaiting(t *testing.T, re *RealEdge, outpost, host string) {
 }
 
 func TestMovingAServiceBetweenOutpostsWorksWhicheverOutpostChangesFirst(t *testing.T) {
+	t.Parallel()
 	svc := NewHTTPService(t, EchoHost())
 	for _, tc := range []struct {
 		name      string
@@ -74,6 +75,7 @@ func TestMovingAServiceBetweenOutpostsWorksWhicheverOutpostChangesFirst(t *testi
 }
 
 func TestWithTwoOutpostsWaitingForOneHostnameTheFirstToDeclareItGetsIt(t *testing.T) {
+	t.Parallel()
 	svc := NewHTTPService(t, EchoHost())
 	re := StartEdgeWith(t, EdgeOptions{})
 	re.AddZone(t, "test")
@@ -96,6 +98,7 @@ func TestWithTwoOutpostsWaitingForOneHostnameTheFirstToDeclareItGetsIt(t *testin
 }
 
 func TestRouteRmThatFreesAHostnameSaysWhoServesItNow(t *testing.T) {
+	t.Parallel()
 	svc := NewHTTPService(t, EchoHost())
 	re := StartEdgeWith(t, EdgeOptions{})
 	re.AddZone(t, "test")
@@ -117,6 +120,7 @@ func TestRouteRmThatFreesAHostnameSaysWhoServesItNow(t *testing.T) {
 }
 
 func TestOutpostRmAndADroppedLineHandOverToo(t *testing.T) {
+	t.Parallel()
 	svc := NewHTTPService(t, EchoHost())
 	re := StartEdgeWith(t, EdgeOptions{})
 	re.AddZone(t, "test")
@@ -135,6 +139,7 @@ func TestOutpostRmAndADroppedLineHandOverToo(t *testing.T) {
 }
 
 func TestAZoneAddTurnsAWaitingLineIntoARouteAndZoneRmWithRoutesSendsItBack(t *testing.T) {
+	t.Parallel()
 	svc := NewHTTPService(t, EchoHost())
 	re := StartEdgeWith(t, EdgeOptions{})
 	re.AddZone(t, "test")
@@ -170,6 +175,7 @@ func TestAZoneAddTurnsAWaitingLineIntoARouteAndZoneRmWithRoutesSendsItBack(t *te
 }
 
 func TestNoRouteAddTakesAHostnameThatIsBeingFreedForAWaitingLine(t *testing.T) {
+	t.Parallel()
 	svc := NewHTTPService(t, EchoHost())
 	re := StartEdgeWith(t, EdgeOptions{})
 	re.AddZone(t, "test")

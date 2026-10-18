@@ -10,6 +10,7 @@ import (
 // The slice-1 join, end to end: `outpost add` on the running Edge, then the
 // Outpost connects with the token, and the Edge reaches a Service through it.
 func TestEdgeReachesAServiceThroughAnOutpostThatJoinedWithAToken(t *testing.T) {
+	t.Parallel()
 	svc := NewEchoService(t)
 	re := StartEdge(t)
 	j := re.JoinOutpost(t, "laptop")
@@ -32,6 +33,7 @@ func TestEdgeReachesAServiceThroughAnOutpostThatJoinedWithAToken(t *testing.T) {
 }
 
 func TestSecondOutpostGetsTheNextAddressAndAlsoWorks(t *testing.T) {
+	t.Parallel()
 	svc := NewEchoService(t)
 	re := StartEdge(t)
 	re.JoinOutpost(t, "laptop")

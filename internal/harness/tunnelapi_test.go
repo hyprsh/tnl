@@ -15,6 +15,7 @@ import (
 )
 
 func TestOutpostReadsZonesAndRoutesThroughTheTunnelAsTheSocketAnswers(t *testing.T) {
+	t.Parallel()
 	re := StartEdge(t)
 	re.AddZone(t, "example.com")
 	j := re.JoinOutpost(t, "laptop")
@@ -43,6 +44,7 @@ func TestOutpostReadsZonesAndRoutesThroughTheTunnelAsTheSocketAnswers(t *testing
 }
 
 func TestOutpostIsRefusedZoneAddAndOutpostAddAndTheLogNamesIt(t *testing.T) {
+	t.Parallel()
 	logs := &LockedBuf{}
 	re := StartEdgeWith(t, EdgeOptions{LogOut: logs, LogLevel: slog.LevelWarn})
 	j := re.JoinOutpost(t, "laptop")
@@ -67,6 +69,7 @@ func TestOutpostIsRefusedZoneAddAndOutpostAddAndTheLogNamesIt(t *testing.T) {
 }
 
 func TestTheTunnelAPIListensOnNoHostAddress(t *testing.T) {
+	t.Parallel()
 	StartEdge(t)
 	c, err := net.Dial("tcp", "127.0.0.1:"+strconv.Itoa(api.TunnelPort))
 	if err == nil {

@@ -39,6 +39,7 @@ func mustContain(t *testing.T, text string, wants ...string) {
 // A healthy Outpost shows both sides, its Routes and its declared lines, and
 // nothing needs attention, which is exit 0.
 func TestStatusOfAHealthyOutpostShowsBothSides(t *testing.T) {
+	t.Parallel()
 	svc := NewHTTPService(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 	re := StartEdgeWith(t, EdgeOptions{})
 	re.AddZone(t, "test")
@@ -81,6 +82,7 @@ func TestStatusOfAnOutpostWhoseEdgeIsStoppedSaysSo(t *testing.T) {
 
 // A waiting declared line needs attention, and says why.
 func TestStatusOfAnOutpostWithAWaitingLineNeedsAttention(t *testing.T) {
+	t.Parallel()
 	svc := NewHTTPService(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 	re := StartEdgeWith(t, EdgeOptions{})
 	re.AddZone(t, "test")

@@ -99,6 +99,7 @@ func TestOutpostLsShowsOnlineOfflineIncompatibleAndNotJoined(t *testing.T) {
 // Right after an Edge restart, an Outpost not yet heard from is online with
 // nothing seen; once it pings, its time, endpoint and version fill in.
 func TestOutpostLsAfterARestartShowsDashesUntilTheOutpostIsHeard(t *testing.T) {
+	t.Parallel()
 	re := StartEdge(t)
 	j := re.JoinOutpost(t, "nas")
 	if err := j.Stop(); err != nil {
@@ -114,6 +115,7 @@ func TestOutpostLsAfterARestartShowsDashesUntilTheOutpostIsHeard(t *testing.T) {
 }
 
 func TestRouteLsAndZoneLsOnAnOutpostPrintWhatTheEdgePrints(t *testing.T) {
+	t.Parallel()
 	svc := NewHTTPService(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 	re := StartEdge(t)
 	re.AddZone(t, "test")

@@ -8,6 +8,7 @@ import (
 )
 
 func TestARestartedOutpostWarnsAboutALineThatStillWaits(t *testing.T) {
+	t.Parallel()
 	svc := NewHTTPService(t, EchoHost())
 	re := StartEdgeWith(t, EdgeOptions{})
 	re.AddZone(t, "test")
