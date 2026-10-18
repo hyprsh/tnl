@@ -255,14 +255,15 @@ func runSkew(t *testing.T, join skewStep, then *skewStep, serve bool) {
 		t.Helper()
 		var code int
 		var got string
-		deadline := time.Now().Add(45 * time.Second)
-		for time.Now().Before(deadline) {
-			if code, got = status(); code == want {
-				return
+		defer func() {
+			if t.Failed() {
+				t.Logf("a Visitor got %d %q, want %d\nEdge:\n%s\nOutpost:\n%s", code, got, want, edgeProc.out, outProc.out)
 			}
-			time.Sleep(250 * time.Millisecond)
-		}
-		t.Fatalf("a Visitor got %d %q, want %d\nEdge:\n%s\nOutpost:\n%s", code, got, want, edgeProc.out, outProc.out)
+		}()
+		WaitFor(t, fmt.Sprintf("a Visitor to get %d", want), 45*time.Second, func() bool {
+			code, got = status()
+			return code == want
+		})
 	}
 	waitStatus(200)
 

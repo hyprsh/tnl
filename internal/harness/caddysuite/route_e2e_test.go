@@ -1,6 +1,7 @@
 package caddysuite
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"testing"
@@ -94,11 +95,5 @@ func TestRoutesSurviveAnEdgeRestart(t *testing.T) {
 
 func waitForConns(t *testing.T, svc *Service, n int) {
 	t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
-	for svc.Conns() < n {
-		if time.Now().After(deadline) {
-			t.Fatalf("the Service saw %d connections, want %d", svc.Conns(), n)
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
+	WaitFor(t, fmt.Sprintf("the Service to see %d connections", n), 10*time.Second, func() bool { return svc.Conns() >= n })
 }

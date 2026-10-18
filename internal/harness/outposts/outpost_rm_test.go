@@ -152,15 +152,8 @@ func TestRekeyStopsTheOldKeyAtOnceAndTheNewTokenKeepsNameAddressAndRoutes(t *tes
 	if len(after.Outposts) != 1 || after.Outposts[0].Address != before.Address || len(after.Routes) != 1 || after.Outposts[0].PublicKey == before.PublicKey {
 		t.Fatalf("state after rejoin %+v", after)
 	}
-	deadline := time.Now().Add(10 * time.Second)
-	for {
+	WaitFor(t, "the Route to serve again", 10*time.Second, func() bool {
 		r, _ := Get(t, re.Caddy, H1, "a.test", "/")
-		if r.StatusCode == 200 {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("the Route does not serve again: %d", r.StatusCode)
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
+		return r.StatusCode == 200
+	})
 }
