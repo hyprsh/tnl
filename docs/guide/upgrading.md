@@ -65,3 +65,32 @@ Both sides refuse fields they don't know, on the API, the tnl header, the ping, 
 A newer tnl migrates the Outpost's `state.json` when it starts, logs that at `info` and keeps the old file as `state.json.v<n>`, where `n` is the schema it had. An older tnl refuses a schema it doesn't know and leaves the file alone. To downgrade, stop the Outpost, put `state.json.v<n>` back as `state.json`, and start the older tnl.
 
 The Edge's `state.json` is not migrated before 1.0: a tnl refuses an Edge state, or a backup, whose schema it doesn't know.
+
+## The Edge across a breaking 0.x minor
+
+The Edge's `state.json` is not migrated before 1.0. When a 0.x minor changes its schema (the release notes say so), the new Edge refuses the old file: "…it was written by an older tnl and can't be migrated before 1.0; back it up and start from an empty state directory". The way forward is to start over. Deleting only `state.json` is not enough: the Edge refuses again, naming the files it found beside it, such as `caddy/`. Empty the whole state directory.
+
+1. Stop the Edge.
+2. Back up the state directory. `tnl backup` does it while the Edge runs; a copy of the directory after the stop does too.
+3. Empty the state directory, `caddy/` included. The Edge then orders its certificates again, one per Hostname or wildcard, which is well inside Let's Encrypt's limits.
+4. Start the new version.
+5. Upgrade every Outpost.
+
+The state directory is `/var/lib/tnl` for both: the volume mounted there under Docker Compose, the directory itself under systemd. Under systemd, with the Edge stopped:
+
+```sh
+sudo systemctl stop tnl-edge
+sudo cp -a /var/lib/tnl /root/tnl-state-backup
+sudo find /var/lib/tnl -mindepth 1 -delete
+# run the install line for the new version, then
+sudo systemctl start tnl-edge
+```
+
+Under Compose, stop the container, copy the volume's contents out and empty it (a throwaway container that mounts the volume does both), then change the image tag and start it.
+
+What comes back depends on how the Edge was set up:
+
+- **A declared Edge** (`TNL_ZONE_*` and `TNL_OUTPOST_*`, with its key from `--key-file` or `TNL_KEY`) whose Outposts hold credentials and declare their Routes comes back by itself: the Zones and Outposts come from the settings, and each Outpost sends its Declaration again.
+- **Otherwise,** add the Outposts again with `tnl outpost add`, which makes new tokens, and add their Routes again. Each Outpost joins with its new token.
+
+Lost without a declaration: the Outposts, their Routes, the Zones and the Hostnames on hold.
