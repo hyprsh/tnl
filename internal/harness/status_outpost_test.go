@@ -51,12 +51,12 @@ func TestStatusOfAHealthyOutpostShowsBothSides(t *testing.T) {
 		s, text = outpostStatus(t, nas)
 		return len(s.Routes) == 1
 	})
-	if len(s.Attention) != 0 || s.Name != "nas" || s.Version != harnessVersion || s.Edge.State != api.TunnelUp ||
-		s.Edge.Version != harnessVersion || s.Edge.LastAnswer == nil || s.StateDir != nas.StateDir || s.TunnelAddress == "" ||
+	if len(s.Attention) != 0 || s.Name != "nas" || s.Version != HarnessVersion || s.Edge.State != api.TunnelUp ||
+		s.Edge.Version != HarnessVersion || s.Edge.LastAnswer == nil || s.StateDir != nas.StateDir || s.TunnelAddress == "" ||
 		s.Edge.Address != "127.0.0.1" || s.Edge.IP != "127.0.0.1" || s.Routes[0].Hostname != Photos {
 		t.Errorf("status: %+v", s)
 	}
-	mustContain(t, text, "Outpost nas, tnl "+harnessVersion+" (outpost, test)", "Tunnel:           up", "Routes\n  "+Photos,
+	mustContain(t, text, "Outpost nas, tnl "+HarnessVersion+" (outpost, test)", "Tunnel:           up", "Routes\n  "+Photos,
 		"Declared\n  TNL_ROUTE_PHOTOS: "+Photos, "\nNothing needs attention\n")
 }
 
@@ -104,7 +104,7 @@ func TestStatusOfAnOutpostWithAWaitingLineNeedsAttention(t *testing.T) {
 // relay says it in the Edge's words.
 func TestStatusOfAnIncompatibleOutpostNeedsAttention(t *testing.T) {
 	re := StartEdgeWith(t, EdgeOptions{Version: "0.3.4", OfflineAfter: ShortOfflineAfter})
-	nas, err := re.TryConnectWith(t, "nas", re.AddOutpost(t, "nas"), mustTempDir(t), ConnectOptions{JoinTimeout: 3 * time.Second, Version: "0.3.1"})
+	nas, err := re.TryConnectWith(t, "nas", re.AddOutpost(t, "nas"), MustTempDir(t), ConnectOptions{JoinTimeout: 3 * time.Second, Version: "0.3.1"})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -59,7 +59,7 @@ func TestJoinSwapsInTheOutpostsOwnKeyAndForgetsTheOneTimeKey(t *testing.T) {
 		t.Fatalf("an Outpost that hasn't joined holds the one-time public key and the expiry: %+v", o)
 	}
 
-	dir := mustTempDir(t)
+	dir := MustTempDir(t)
 	j := re.Connect(t, "laptop", tokText, dir)
 
 	state := outpostStateFile(t, dir)
@@ -98,9 +98,9 @@ func TestJoinSwapsInTheOutpostsOwnKeyAndForgetsTheOneTimeKey(t *testing.T) {
 func TestASecondConnectWithTheSameTokenFailsAndTheFirstKeepsWorking(t *testing.T) {
 	re := StartEdge(t)
 	tok := re.AddOutpost(t, "laptop")
-	first := re.Connect(t, "laptop", tok, mustTempDir(t))
+	first := re.Connect(t, "laptop", tok, MustTempDir(t))
 
-	dir := mustTempDir(t)
+	dir := MustTempDir(t)
 	if _, err := re.TryConnectWith(t, "laptop", tok, dir, ConnectOptions{JoinTimeout: 2 * time.Second}); err == nil {
 		t.Fatal("the used token joined a second Outpost")
 	}
@@ -114,7 +114,7 @@ func TestATokenPastItsTTLIsRefusedAndTheStateDirectoryIsUntouched(t *testing.T) 
 	re := StartEdge(t)
 	tok := re.AddOutpostTTL(t, "laptop", "50ms")
 	time.Sleep(150 * time.Millisecond)
-	dir := mustTempDir(t)
+	dir := MustTempDir(t)
 	_, err := re.TryConnect(t, "laptop", tok, dir)
 	if err == nil || !strings.Contains(err.Error(), "expired") {
 		t.Fatalf("err = %v", err)
@@ -127,7 +127,7 @@ func TestATokenPastItsTTLIsRefusedAndTheStateDirectoryIsUntouched(t *testing.T) 
 func TestRestartWithTheSameTokenStillSetReconnectsFromTheState(t *testing.T) {
 	re := StartEdge(t)
 	tok := re.AddOutpost(t, "laptop")
-	dir := mustTempDir(t)
+	dir := MustTempDir(t)
 	j := re.Connect(t, "laptop", tok, dir)
 	before := outpostStateFile(t, dir)
 	j.Stop()
@@ -149,7 +149,7 @@ func TestRestartWithTheSameTokenStillSetReconnectsFromTheState(t *testing.T) {
 func TestATokenForAnotherOutpostJoinsAsThatOutpostAndReplacesTheState(t *testing.T) {
 	re := StartEdge(t)
 	tok := re.AddOutpost(t, "laptop")
-	dir := mustTempDir(t)
+	dir := MustTempDir(t)
 	re.Connect(t, "laptop", tok, dir).Stop()
 	tok2 := re.AddOutpost(t, "nas")
 
@@ -172,7 +172,7 @@ func TestAJoinedOutpostCallingTheJoinPathAgainGets403(t *testing.T) {
 	re := StartEdge(t)
 	j := re.JoinOutpost(t, "laptop")
 	_, pub, _ := keys.Generate()
-	req := api.JoinRequest{PublicKey: pub, Version: harnessVersion}
+	req := api.JoinRequest{PublicKey: pub, Version: HarnessVersion}
 	var ae *api.Error
 	_, err := api.Call[api.JoinReply](context.Background(), j.API, http.MethodPost, api.PathJoin, req)
 	if !errors.As(err, &ae) || ae.Status != http.StatusForbidden {
@@ -188,7 +188,7 @@ func TestTheStartLogLineCarriesTheOutpostsName(t *testing.T) {
 	re := StartEdge(t)
 	tok := re.AddOutpost(t, "laptop")
 	logs := &LockedBuf{}
-	if _, err := re.TryConnectWith(t, "laptop", tok, mustTempDir(t), ConnectOptions{LogOut: logs}); err != nil {
+	if _, err := re.TryConnectWith(t, "laptop", tok, MustTempDir(t), ConnectOptions{LogOut: logs}); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(logs.String(), "name=laptop") {

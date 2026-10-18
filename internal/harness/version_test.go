@@ -36,7 +36,7 @@ func TestAnOutpostOutsideTheVersionWindowIsIncompatible(t *testing.T) {
 	re := StartEdgeWith(t, EdgeOptions{Pebble: StartPebble(t, PebbleOptions{}), Version: "0.3.4", LogOut: log, LogLevel: slog.LevelInfo})
 	re.AddZone(t, "test")
 	tok := re.AddOutpost(t, "nas")
-	j, err := re.TryConnectWith(t, "nas", tok, mustTempDir(t), ConnectOptions{JoinTimeout: 3 * time.Second, Version: "0.3.1"})
+	j, err := re.TryConnectWith(t, "nas", tok, MustTempDir(t), ConnectOptions{JoinTimeout: 3 * time.Second, Version: "0.3.1"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,13 +92,13 @@ func TestAnOutpostOutsideTheVersionWindowIsIncompatible(t *testing.T) {
 func TestAnOutpostRefusesAnEdgeOfAnOlderMajor(t *testing.T) {
 	re := StartEdgeWith(t, EdgeOptions{Version: "1.4.2"})
 	tok := re.AddOutpost(t, "nas")
-	_, err := re.TryConnectWith(t, "nas", tok, mustTempDir(t), ConnectOptions{Version: "2.0.0"})
+	_, err := re.TryConnectWith(t, "nas", tok, MustTempDir(t), ConnectOptions{Version: "2.0.0"})
 	if err == nil || !strings.Contains(err.Error(), "1.4.2") || !strings.Contains(err.Error(), "2.0.0") {
 		t.Fatalf("join: %v", err)
 	}
 
 	// Joined to an Edge 2.0.0 and met again as 1.4.2 after a rollback.
-	dir := mustTempDir(t)
+	dir := MustTempDir(t)
 	re2 := StartEdgeWith(t, EdgeOptions{Version: "2.0.0"})
 	j, err := re2.TryConnectWith(t, "nas", re2.AddOutpost(t, "nas"), dir, ConnectOptions{Version: "2.0.0"})
 	if err != nil {
