@@ -7,6 +7,9 @@ set -eu
 script="$(pwd)/scripts/next-release.sh"
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/tnl-next.XXXXXX")
 trap 'rm -rf "$tmp"' EXIT INT TERM
+# The scratch repos commit, and a CI runner has no git identity of its own.
+export GIT_AUTHOR_NAME=test GIT_AUTHOR_EMAIL=test@example.com
+export GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.com
 fail=0
 
 # check TAG MESSAGE WANT: MESSAGE is printf %b (\n is a newline); an empty
