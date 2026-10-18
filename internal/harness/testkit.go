@@ -19,7 +19,6 @@ import (
 	"github.com/hyprsh/tnl/internal/edge/routes"
 	"github.com/hyprsh/tnl/internal/keys"
 	"github.com/hyprsh/tnl/internal/logx"
-	"github.com/hyprsh/tnl/internal/outpost"
 	"github.com/hyprsh/tnl/internal/render"
 	"github.com/hyprsh/tnl/internal/state"
 )
@@ -29,6 +28,7 @@ import (
 // and outposts) so that `go test` runs them side by side; the other packages
 // dot-import this one.
 
+// CtxFor is a context that ends after d, or when the test does.
 func CtxFor(t *testing.T, d time.Duration) context.Context {
 	t.Helper()
 	c, cancel := context.WithTimeout(context.Background(), d)
@@ -36,14 +36,11 @@ func CtxFor(t *testing.T, d time.Duration) context.Context {
 	return c
 }
 
+// Ctx is CtxFor 20 seconds, the budget of one request in a test.
 func Ctx(t *testing.T) context.Context {
 	t.Helper()
-	c, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	t.Cleanup(cancel)
-	return c
+	return CtxFor(t, 20*time.Second)
 }
-
-type OutpostLine = outpost.DeclaredRoute
 
 // WaitServed waits until the Visitor's request for host gets an answer: a
 // declared Hostname's certificate is obtained in the background, so the first
@@ -77,25 +74,11 @@ func NewDeclaredEdge(t *testing.T) DeclaredEdge {
 	return DeclaredEdge{Key: priv, Port: freePort(t, true)}
 }
 
+// GetAccepting is Get of "/" with accept as the Accept header, unless it is
+// empty.
 func GetAccepting(t *testing.T, ce *CaddyEdge, proto Proto, host, accept string) (*http.Response, string) {
 	t.Helper()
-	req, err := http.NewRequestWithContext(Ctx(t), "GET", "https://"+host+"/", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if accept != "" {
-		req.Header.Set("Accept", accept)
-	}
-	resp, err := ce.Client(t, proto).Do(req)
-	if err != nil {
-		t.Fatalf("%s: %v", proto, err)
-	}
-	defer resp.Body.Close()
-	b, err := io.ReadAll(resp.Body)
-	if err != nil {
-		t.Fatalf("%s: reading body: %v", proto, err)
-	}
-	return resp, string(b)
+	return get(t, ce, proto, host, "/", accept)
 }
 
 // NewLogCapture is a logger that writes the Edge's own format, at debug, into
@@ -105,6 +88,7 @@ func NewLogCapture() (*slog.Logger, *LockedBuf) {
 	return logx.New(logx.Options{Level: slog.LevelDebug, Out: c}), c
 }
 
+// Photos is the Hostname most tests give their Route.
 const Photos = "photos.test"
 
 // ClosedAddr is a loopback host:port nothing listens on.
@@ -141,27 +125,19 @@ func EdgePeers(t *testing.T, re *RealEdge) []string {
 	return ks
 }
 
+// EventService is a Service that streams events on /sse and answers "ok" on
+// any other path.
 func EventService(t *testing.T) *Service {
 	return NewHTTPService(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/sse" {
 			fmt.Fprint(w, "ok")
 			return
 		}
-		w.Header().Set("Content-Type", "text/event-stream")
-		rc := http.NewResponseController(w)
-		for {
-			if _, err := fmt.Fprint(w, "data: x\n\n"); err != nil || rc.Flush() != nil {
-				return
-			}
-			select {
-			case <-time.After(20 * time.Millisecond):
-			case <-r.Context().Done():
-				return
-			}
-		}
+		SSEHandler(w, r)
 	}))
 }
 
+// LineWith returns the first line of log that contains sub, or "".
 func LineWith(log, sub string) string {
 	for _, l := range strings.Split(log, "\n") {
 		if strings.Contains(l, sub) {
@@ -171,6 +147,8 @@ func LineWith(log, sub string) string {
 	return ""
 }
 
+// ShortOfflineAfter is an Edge's offline threshold short enough for a test to
+// wait out.
 const ShortOfflineAfter = 600 * time.Millisecond
 
 func WaitFor(t *testing.T, what string, within time.Duration, cond func() bool) {
@@ -184,6 +162,7 @@ func WaitFor(t *testing.T, what string, within time.Duration, cond func() bool) 
 	}
 }
 
+// EchoHost is a handler that answers with the Host the request named.
 func EchoHost() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, r.Host) })
 }
@@ -221,6 +200,8 @@ func SSEHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// EdgeStatus reads the Edge's status through its API, with the text
+// `tnl status` prints for it.
 func EdgeStatus(t *testing.T, re *RealEdge) (api.EdgeStatus, string) {
 	t.Helper()
 	s, err := api.Call[api.EdgeStatus](Ctx(t), re.API, http.MethodGet, api.PathStatus, nil)
@@ -249,9 +230,17 @@ func EdgeWithService(t *testing.T, handler http.Handler) *Harness {
 // Get makes a GET to https://host/path as a Visitor on proto.
 func Get(t *testing.T, ce *CaddyEdge, proto Proto, host, path string) (*http.Response, string) {
 	t.Helper()
+	return get(t, ce, proto, host, path, "")
+}
+
+func get(t *testing.T, ce *CaddyEdge, proto Proto, host, path, accept string) (*http.Response, string) {
+	t.Helper()
 	req, err := http.NewRequestWithContext(Ctx(t), "GET", "https://"+host+path, nil)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if accept != "" {
+		req.Header.Set("Accept", accept)
 	}
 	resp, err := ce.Client(t, proto).Do(req)
 	if err != nil {
@@ -276,6 +265,7 @@ func (d DeclaredEdge) Outpost(t *testing.T, name string) (state.DeclaredOutpost,
 	return state.DeclaredOutpost{Name: name, Key: pub}, cred.Encode()
 }
 
+// Options sets the Edge's key and WireGuard port in opts to the declared ones.
 func (d DeclaredEdge) Options(opts EdgeOptions) EdgeOptions {
 	opts.Key, opts.WireGuardPort = &d.Key, d.Port
 	return opts

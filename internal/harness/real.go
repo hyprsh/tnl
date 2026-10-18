@@ -323,6 +323,9 @@ type ConnectOptions struct {
 	NoHandshake bool
 }
 
+// OutpostLine is one line of an Outpost's Declaration, as DeclaredLine makes it.
+type OutpostLine = outpost.DeclaredRoute
+
 // DeclaredLine makes a line of an Outpost's Declaration, labelled as the
 // variable TNL_ROUTE_<label> would be.
 func DeclaredLine(label, hostname, service string) outpost.DeclaredRoute {
