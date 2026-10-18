@@ -28,7 +28,7 @@ func TestAnEventStreamClientHonouringRetryCostsOneLogLinePerRequest(t *testing.T
 	cutLink(t, o, re)
 	o.Stop()
 	WaitFor(t, "the Outpost to be Offline", 5*ShortOfflineAfter, func() bool { return re.Liveness.State("nas") == liveness.Offline })
-	WaitFor(t, "the Edge to log the outage", 5*time.Second, func() bool { return strings.Contains(log.String(), "outpost offline") })
+	WaitFor(t, "the Edge to log the outage", 5*time.Second, func() bool { return strings.Contains(log.String(), `msg="outpost offline"`) })
 	before := len(strings.Split(strings.TrimSpace(log.String()), "\n"))
 
 	// The client reads the reply to its end and reconnects after the delay the
