@@ -81,22 +81,22 @@ func newSilentService(t *testing.T, pause time.Duration) *silentService {
 	return s
 }
 
-func silentEdge(t *testing.T, svc *silentService) (*RealEdge, *JoinedOutpost, *lockedBuf) {
+func silentEdge(t *testing.T, svc *silentService) (*RealEdge, *JoinedOutpost, *LockedBuf) {
 	t.Helper()
 	return silentEdgeWith(t, svc, EdgeOptions{SilentAfter: testSilentAfter})
 }
 
 // silentEdgeWith is silentEdge with the options the test needs, over the
 // Pebble, the log and the level it always sets.
-func silentEdgeWith(t *testing.T, svc *silentService, opts EdgeOptions) (*RealEdge, *JoinedOutpost, *lockedBuf) {
+func silentEdgeWith(t *testing.T, svc *silentService, opts EdgeOptions) (*RealEdge, *JoinedOutpost, *LockedBuf) {
 	t.Helper()
-	logs := new(lockedBuf)
+	logs := new(LockedBuf)
 	opts.Pebble, opts.LogOut, opts.LogLevel = StartPebble(t, PebbleOptions{}), logs, slog.LevelInfo
 	re := StartEdgeWith(t, opts)
 	re.AddZone(t, "test")
 	o := re.JoinOutpost(t, "nas")
 	re.AddRoute(t, "app.test", "http://"+svc.Addr(), "nas")
-	get(t, re.Caddy, H1, "app.test", "/")
+	Get(t, re.Caddy, H1, "app.test", "/")
 	return re, o, logs
 }
 
@@ -119,7 +119,7 @@ func TestAnUploadEndsWithinTheSilenceBoundWhenTheOutpostGoesQuiet(t *testing.T) 
 	client := re.Caddy.Client(t, H1)
 
 	pr, pw := io.Pipe()
-	req, _ := http.NewRequestWithContext(ctx(t), "POST", "https://app.test/upload", pr)
+	req, _ := http.NewRequestWithContext(Ctx(t), "POST", "https://app.test/upload", pr)
 	type result struct {
 		code int
 		err  error
@@ -163,7 +163,7 @@ func TestAnUploadEndsWithinTheSilenceBoundWhenTheOutpostGoesQuiet(t *testing.T) 
 	if re.Liveness.State("nas") == liveness.Offline {
 		t.Fatal("the Outpost went Offline first: the test shows nothing about the silence bound")
 	}
-	waitFor(t, "a request line saying connection lost", 3*time.Second, func() bool {
+	WaitFor(t, "a request line saying connection lost", 3*time.Second, func() bool {
 		return strings.Contains(logs.String(), "reason=\"connection lost\"")
 	})
 }
@@ -173,7 +173,7 @@ func TestAnUploadEndsWithinTheSilenceBoundWhenTheOutpostGoesQuiet(t *testing.T) 
 func TestAStreamCutBySilenceIsLoggedAsOutpostSilent(t *testing.T) {
 	svc := newSilentService(t, 0)
 	re, o, logs := silentEdge(t, svc)
-	next := openStream(t, re, "app.test")
+	next := OpenStream(t, re, "app.test")
 	if !next() {
 		t.Fatal("the stream did not start")
 	}
@@ -187,7 +187,7 @@ func TestAStreamCutBySilenceIsLoggedAsOutpostSilent(t *testing.T) {
 	if re.Liveness.State("nas") == liveness.Offline {
 		t.Fatal("the Outpost went Offline first")
 	}
-	waitFor(t, "the request line", 3*time.Second, func() bool {
+	WaitFor(t, "the request line", 3*time.Second, func() bool {
 		return strings.Contains(logs.String(), "reason=\"outpost silent\"")
 	})
 }
@@ -197,7 +197,7 @@ func TestAStreamCutBySilenceIsLoggedAsOutpostSilent(t *testing.T) {
 func TestASlowServiceThatAnswersAfterTheBoundIsNotCut(t *testing.T) {
 	svc := newSilentService(t, 3*testSilentAfter)
 	re, _, _ := silentEdge(t, svc)
-	req, _ := http.NewRequestWithContext(ctx(t), "POST", "https://app.test/upload-late", strings.NewReader("hello"))
+	req, _ := http.NewRequestWithContext(Ctx(t), "POST", "https://app.test/upload-late", strings.NewReader("hello"))
 	resp, err := re.Caddy.Client(t, H1).Do(req)
 	if err != nil {
 		t.Fatal(err)
@@ -215,7 +215,7 @@ func TestASlowServiceThatAnswersAfterTheBoundIsNotCut(t *testing.T) {
 func TestAServiceThatStopsReadingAnUploadLongerThanTheBoundIsNotCut(t *testing.T) {
 	svc := newSilentService(t, 3*testSilentAfter)
 	re, _, _ := silentEdge(t, svc)
-	req, _ := http.NewRequestWithContext(ctx(t), "POST", "https://app.test/upload-stall", zeros(bigBody))
+	req, _ := http.NewRequestWithContext(Ctx(t), "POST", "https://app.test/upload-stall", zeros(bigBody))
 	req.ContentLength = bigBody
 	start := time.Now()
 	resp, err := re.Caddy.Client(t, H1).Do(req)
@@ -236,7 +236,7 @@ func TestAServiceThatStopsReadingAnUploadLongerThanTheBoundIsNotCut(t *testing.T
 func TestAVisitorThatStopsReadingADownloadLongerThanTheBoundIsNotCut(t *testing.T) {
 	svc := newSilentService(t, 0)
 	re, _, _ := silentEdge(t, svc)
-	req, _ := http.NewRequestWithContext(ctx(t), "GET", "https://app.test/download", nil)
+	req, _ := http.NewRequestWithContext(Ctx(t), "GET", "https://app.test/download", nil)
 	resp, err := re.Caddy.Client(t, H1).Do(req)
 	if err != nil {
 		t.Fatal(err)

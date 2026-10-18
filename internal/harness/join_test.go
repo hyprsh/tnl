@@ -17,7 +17,7 @@ func TestEdgeReachesAServiceThroughAnOutpostThatJoinedWithAToken(t *testing.T) {
 	if j.Addr.String() != "100.64.0.2" {
 		t.Errorf("first Outpost got %s", j.Addr)
 	}
-	conn, err := re.Dial(ctx(t), j.Outpost, wire.Header{Service: svc.Addr(), Hostname: "app.example.com"})
+	conn, err := re.Dial(Ctx(t), j.Outpost, wire.Header{Service: svc.Addr(), Hostname: "app.example.com"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,7 +39,7 @@ func TestSecondOutpostGetsTheNextAddressAndAlsoWorks(t *testing.T) {
 	if j.Addr.String() != "100.64.0.3" {
 		t.Errorf("second Outpost got %s", j.Addr)
 	}
-	conn, err := re.Dial(ctx(t), j.Outpost, wire.Header{Service: svc.Addr()})
+	conn, err := re.Dial(Ctx(t), j.Outpost, wire.Header{Service: svc.Addr()})
 	if err != nil {
 		t.Fatal(err)
 	}

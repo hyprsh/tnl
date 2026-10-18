@@ -25,10 +25,10 @@ func refusal(t *testing.T, err error, status int, want ...string) {
 
 func TestOutpostAddsARouteThroughItselfAndTheEdgeServesItAndLogsTheActor(t *testing.T) {
 	svc := NewHTTPService(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("hello")) }))
-	var edgeLog lockedBuf
+	var edgeLog LockedBuf
 	re := StartEdgeWith(t, EdgeOptions{Pebble: StartPebble(t, PebbleOptions{}), LogOut: &edgeLog})
 	re.AddZone(t, "test")
-	var outLog lockedBuf
+	var outLog LockedBuf
 	tok := re.AddOutpost(t, "nas")
 	nas, err := re.TryConnectWith(t, "nas", tok, mustTempDir(t), ConnectOptions{LogOut: &outLog})
 	if err != nil {
@@ -36,16 +36,16 @@ func TestOutpostAddsARouteThroughItselfAndTheEdgeServesItAndLogsTheActor(t *test
 	}
 
 	// The Outpost's CLI asks the relay for its role, and the Edge fills in the caller.
-	info, err := api.Call[api.Info](ctx(t), nas.CLI, http.MethodGet, api.PathInfo, nil)
+	info, err := api.Call[api.Info](Ctx(t), nas.CLI, http.MethodGet, api.PathInfo, nil)
 	if err != nil || info.Role != api.RoleOutpost {
 		t.Fatalf("info: %+v %v", info, err)
 	}
-	_, err = api.Call[api.RouteInfo](ctx(t), nas.CLI, http.MethodPost, api.PathRoutes,
+	_, err = api.Call[api.RouteInfo](Ctx(t), nas.CLI, http.MethodPost, api.PathRoutes,
 		api.RouteAddRequest{Hostname: "a.test", Service: "http://" + svc.Addr()})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if resp, body := get(t, re.Caddy, H1, "a.test", "/"); resp.StatusCode != 200 || body != "hello" {
+	if resp, body := Get(t, re.Caddy, H1, "a.test", "/"); resp.StatusCode != 200 || body != "hello" {
 		t.Fatalf("Route served %d %q", resp.StatusCode, body)
 	}
 	if !strings.Contains(edgeLog.String(), "actor=outpost:nas") {
@@ -56,20 +56,20 @@ func TestOutpostAddsARouteThroughItselfAndTheEdgeServesItAndLogsTheActor(t *test
 	}
 
 	// Edit and remove its own Route; ls shows the same as the Edge's.
-	if _, err := api.Call[api.RouteInfo](ctx(t), nas.CLI, http.MethodPost, api.PathRouteEdit,
+	if _, err := api.Call[api.RouteInfo](Ctx(t), nas.CLI, http.MethodPost, api.PathRouteEdit,
 		api.RouteEditRequest{Hostname: "a.test", HostHeader: ptr("x.lan")}); err != nil {
 		t.Fatal(err)
 	}
-	mine, _ := api.Call[api.RouteList](ctx(t), nas.CLI, http.MethodGet, api.PathRoutes, nil)
-	edges, _ := api.Call[api.RouteList](ctx(t), re.API, http.MethodGet, api.PathRoutes, nil)
+	mine, _ := api.Call[api.RouteList](Ctx(t), nas.CLI, http.MethodGet, api.PathRoutes, nil)
+	edges, _ := api.Call[api.RouteList](Ctx(t), re.API, http.MethodGet, api.PathRoutes, nil)
 	if len(mine.Routes) != 1 || len(edges.Routes) != 1 || mine.Routes[0].Hostname != edges.Routes[0].Hostname || strings.Join(mine.Routes[0].Options, " ") != "host-header=x.lan" {
 		t.Fatalf("ls: %+v vs %+v", mine, edges)
 	}
-	zs, err := api.Call[api.ZoneList](ctx(t), nas.CLI, http.MethodGet, api.PathZones, nil)
+	zs, err := api.Call[api.ZoneList](Ctx(t), nas.CLI, http.MethodGet, api.PathZones, nil)
 	if err != nil || len(zs.Zones) != 1 || zs.Zones[0].Name != "test" {
 		t.Fatalf("zone ls: %+v %v", zs, err)
 	}
-	if _, err := api.Call[api.RouteRmReply](ctx(t), nas.CLI, http.MethodPost, api.PathRouteRm, api.RouteRmRequest{Hostname: "a.test"}); err != nil {
+	if _, err := api.Call[api.RouteRmReply](Ctx(t), nas.CLI, http.MethodPost, api.PathRouteRm, api.RouteRmRequest{Hostname: "a.test"}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -83,7 +83,7 @@ func TestAnOutpostCannotTouchAnotherOutpostsRoutesOrHostnames(t *testing.T) {
 	re.AddRoute(t, "lap.test", "http://127.0.0.1:1", "laptop")
 
 	call := func(path string, req any) error {
-		_, err := api.Call[api.RouteInfo](ctx(t), nas.CLI, http.MethodPost, path, req)
+		_, err := api.Call[api.RouteInfo](Ctx(t), nas.CLI, http.MethodPost, path, req)
 		return err
 	}
 	// A held Hostname is not taken, and the refusal names its holder.
@@ -95,7 +95,7 @@ func TestAnOutpostCannotTouchAnotherOutpostsRoutesOrHostnames(t *testing.T) {
 	refusal(t, call(api.PathRouteEdit, api.RouteEditRequest{Hostname: "nas.test", Outpost: ptr("laptop")}), 403, "laptop")
 	refusal(t, call(api.PathRoutes, api.RouteAddRequest{Hostname: "new.test", Service: "http://127.0.0.1:2", Outpost: "laptop"}), 403, "laptop")
 
-	list, _ := api.Call[api.RouteList](ctx(t), re.API, http.MethodGet, api.PathRoutes, nil)
+	list, _ := api.Call[api.RouteList](Ctx(t), re.API, http.MethodGet, api.PathRoutes, nil)
 	if len(list.Routes) != 2 || list.Routes[0].Outpost != "laptop" || list.Routes[1].Outpost != "nas" ||
 		list.Routes[0].Options != nil || list.Routes[1].Options != nil {
 		t.Fatalf("Routes changed: %+v", list.Routes)
@@ -108,7 +108,7 @@ func TestRouteCommandsOnAnOutpostSayNotConnectedWhenTheEdgeIsDown(t *testing.T) 
 	nas := re.JoinOutpost(t, "nas")
 	re.Stop()
 	start := time.Now()
-	_, err := api.Call[api.RouteList](ctx(t), nas.CLI, http.MethodGet, api.PathRoutes, nil)
+	_, err := api.Call[api.RouteList](Ctx(t), nas.CLI, http.MethodGet, api.PathRoutes, nil)
 	if err == nil || !strings.Contains(err.Error(), "Outpost not connected") {
 		t.Fatalf("got %v", err)
 	}
@@ -122,12 +122,12 @@ func TestACLIOfAnotherVersionIsRefusedBeforeAnythingIsSent(t *testing.T) {
 	re.AddZone(t, "test")
 	nas := re.JoinOutpost(t, "nas")
 	old := &api.Client{StateDir: nas.StateDir, Version: "v0.0.1"}
-	_, err := api.Call[api.RouteInfo](ctx(t), old, http.MethodPost, api.PathRoutes, api.RouteAddRequest{Hostname: "a.test", Service: "http://127.0.0.1:2"})
+	_, err := api.Call[api.RouteInfo](Ctx(t), old, http.MethodPost, api.PathRoutes, api.RouteAddRequest{Hostname: "a.test", Service: "http://127.0.0.1:2"})
 	want := "this `tnl` is v0.0.1 but the running Outpost is " + harnessVersion + "; restart it (`sudo systemctl restart tnl-outpost`)"
 	if err == nil || err.Error() != want {
 		t.Fatalf("got %v, want %q", err, want)
 	}
-	if list, _ := api.Call[api.RouteList](ctx(t), re.API, http.MethodGet, api.PathRoutes, nil); len(list.Routes) != 0 {
+	if list, _ := api.Call[api.RouteList](Ctx(t), re.API, http.MethodGet, api.PathRoutes, nil); len(list.Routes) != 0 {
 		t.Fatalf("a Route was added: %+v", list)
 	}
 }

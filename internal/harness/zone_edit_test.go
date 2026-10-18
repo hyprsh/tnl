@@ -19,7 +19,7 @@ import (
 
 func zoneEdit(t *testing.T, re *RealEdge, req api.ZoneEditRequest) (api.ZoneEditReply, error) {
 	t.Helper()
-	return api.Call[api.ZoneEditReply](ctx(t), re.API, http.MethodPost, api.PathZoneEdit, req)
+	return api.Call[api.ZoneEditReply](Ctx(t), re.API, http.MethodPost, api.PathZoneEdit, req)
 }
 
 // poller is a Visitor that opens a new TLS connection to each Hostname over and
@@ -124,7 +124,7 @@ func TestZoneEditSwitchesModesWithoutATLSError(t *testing.T) {
 	if z := re.Store.Snapshot().Zones; len(z) != 1 || z[0].Token != dnsToken || z[0].Provider != "fake" {
 		t.Fatalf("the state: %+v", z)
 	}
-	if resp, body := get(t, re.Caddy, H2, "app.example.test", "/"); resp.StatusCode != 200 || body != "hello" {
+	if resp, body := Get(t, re.Caddy, H2, "app.example.test", "/"); resp.StatusCode != 200 || body != "hello" {
 		t.Fatalf("wildcard: %d %q", resp.StatusCode, body)
 	}
 	// A new Route in the wildcard Zone is served by the wildcard, with no order.
@@ -155,7 +155,7 @@ func TestZoneEditSwitchesModesWithoutATLSError(t *testing.T) {
 	if re.Certs.Managing() != 2 {
 		t.Errorf("managing %d after switching back", re.Certs.Managing())
 	}
-	if resp, body := get(t, re.Caddy, H1, "new.example.test", "/"); resp.StatusCode != 200 || body != "hello" {
+	if resp, body := Get(t, re.Caddy, H1, "new.example.test", "/"); resp.StatusCode != 200 || body != "hello" {
 		t.Fatalf("per-Hostname again: %d %q", resp.StatusCode, body)
 	}
 	data, err := os.ReadFile(re.StateDir + "/state.json")
@@ -200,7 +200,7 @@ func TestAddingANestedWildcardZoneMovesTheRoutesWithoutATLSError(t *testing.T) {
 	if re.Certs.Managing() != 0 {
 		t.Errorf("%d Hostnames still renew their own certificate", re.Certs.Managing())
 	}
-	if resp, body := get(t, re.Caddy, H2, "app.lab.example.test", "/"); resp.StatusCode != 200 || body != "hello" {
+	if resp, body := Get(t, re.Caddy, H2, "app.lab.example.test", "/"); resp.StatusCode != 200 || body != "hello" {
 		t.Fatalf("%d %q", resp.StatusCode, body)
 	}
 	time.Sleep(300 * time.Millisecond)
@@ -219,7 +219,7 @@ func TestAddingANestedWildcardZoneMovesTheRoutesWithoutATLSError(t *testing.T) {
 // A bad token is refused and the old one stays. A good one replaces it with no
 // reload, so an open WebSocket-like stream stays open.
 func TestZoneEditTokenChecksThenReplacesWithoutAReload(t *testing.T) {
-	stream := NewHTTPService(t, http.HandlerFunc(sseHandler))
+	stream := NewHTTPService(t, http.HandlerFunc(SSEHandler))
 	fake := StartFakeDNS(t, "example.test", dnsToken)
 	re := StartEdgeWith(t, EdgeOptions{Pebble: StartPebble(t, PebbleOptions{})})
 	re.JoinOutpost(t, "nas")
@@ -227,7 +227,7 @@ func TestZoneEditTokenChecksThenReplacesWithoutAReload(t *testing.T) {
 		t.Fatal(err)
 	}
 	re.AddRoute(t, "s.example.test", "http://"+stream.Addr(), "nas")
-	next := openStream(t, re, "s.example.test")
+	next := OpenStream(t, re, "s.example.test")
 	if !next() {
 		t.Fatal("the stream did not start")
 	}

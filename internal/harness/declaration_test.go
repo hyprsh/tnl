@@ -9,10 +9,7 @@ import (
 
 	"github.com/hyprsh/tnl/internal/api"
 	"github.com/hyprsh/tnl/internal/declare"
-	"github.com/hyprsh/tnl/internal/outpost"
 )
-
-type outpostLine = outpost.DeclaredRoute
 
 // reconnect starts the Outpost again from its state directory.
 func reconnect(t *testing.T, re *RealEdge, name, stateDir string, opts ConnectOptions) *JoinedOutpost {
@@ -25,22 +22,6 @@ func reconnect(t *testing.T, re *RealEdge, name, stateDir string, opts ConnectOp
 	return j
 }
 
-// waitServed waits until the Visitor's request for host gets an answer: a
-// declared Hostname's certificate is obtained in the background, so the first
-// requests may find none yet.
-func waitServed(t *testing.T, re *RealEdge, host string) {
-	t.Helper()
-	waitFor(t, host+" to be served", 30*time.Second, func() bool {
-		req, _ := http.NewRequestWithContext(ctx(t), "GET", "https://"+host+"/", nil)
-		resp, err := re.Caddy.Client(t, H1).Do(req)
-		if err != nil {
-			return false
-		}
-		resp.Body.Close()
-		return resp.StatusCode == 200
-	})
-}
-
 func routeHosts(re *RealEdge) []string {
 	var hosts []string
 	for _, r := range re.Store.Snapshot().Routes {
@@ -49,7 +30,7 @@ func routeHosts(re *RealEdge) []string {
 	return hosts
 }
 
-func countLines(log *lockedBuf, parts ...string) int {
+func countLines(log *LockedBuf, parts ...string) int {
 	n := 0
 	for _, l := range strings.Split(log.String(), "\n") {
 		ok := l != ""
@@ -65,7 +46,7 @@ func countLines(log *lockedBuf, parts ...string) int {
 
 func sendDeclaration(t *testing.T, j *JoinedOutpost, lines ...declare.Line) api.DeclarationReply {
 	t.Helper()
-	r, err := api.Call[api.DeclarationReply](ctx(t), j.API, http.MethodPost, api.PathDeclaration, api.DeclarationRequest{Routes: lines})
+	r, err := api.Call[api.DeclarationReply](Ctx(t), j.API, http.MethodPost, api.PathDeclaration, api.DeclarationRequest{Routes: lines})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,45 +54,45 @@ func sendDeclaration(t *testing.T, j *JoinedOutpost, lines ...declare.Line) api.
 }
 
 func TestAnOutpostWithTwoRouteLinesServesBothWithNoRouteCall(t *testing.T) {
-	svc := NewHTTPService(t, echoHost())
+	svc := NewHTTPService(t, EchoHost())
 	re := StartEdgeWith(t, EdgeOptions{Pebble: StartPebble(t, PebbleOptions{})})
 	re.AddZone(t, "test")
 	tok := re.AddOutpost(t, "nas")
-	re.ConnectWith(t, "nas", tok, ConnectOptions{Declaration: []outpostLine{
+	re.ConnectWith(t, "nas", tok, ConnectOptions{Declaration: []OutpostLine{
 		DeclaredLine("A", "a.test", "http://"+svc.Addr()),
 		DeclaredLine("B", "b.test", "http://"+svc.Addr()),
 	}})
-	waitFor(t, "both lines to apply", 10*time.Second, func() bool { return len(re.Store.Snapshot().Routes) == 2 })
+	WaitFor(t, "both lines to apply", 10*time.Second, func() bool { return len(re.Store.Snapshot().Routes) == 2 })
 	for _, host := range []string{"a.test", "b.test"} {
-		waitServed(t, re, host)
-		if _, body := get(t, re.Caddy, H1, host, "/"); body != host {
+		WaitServed(t, re, host)
+		if _, body := Get(t, re.Caddy, H1, host, "/"); body != host {
 			t.Errorf("%s answered %q", host, body)
 		}
 	}
 }
 
 func TestRestartingWithOneLineChangedAndOneRemovedEditsAndRemovesExactlyThose(t *testing.T) {
-	svc := NewHTTPService(t, echoHost())
-	other := NewHTTPService(t, echoHost())
-	elog := new(lockedBuf)
+	svc := NewHTTPService(t, EchoHost())
+	other := NewHTTPService(t, EchoHost())
+	elog := new(LockedBuf)
 	re := StartEdgeWith(t, EdgeOptions{LogOut: elog, LogLevel: slog.LevelInfo})
 	re.AddZone(t, "test")
 	tok := re.AddOutpost(t, "nas")
-	j := re.ConnectWith(t, "nas", tok, ConnectOptions{Declaration: []outpostLine{
+	j := re.ConnectWith(t, "nas", tok, ConnectOptions{Declaration: []OutpostLine{
 		DeclaredLine("KEEP", "keep.test", "http://"+svc.Addr()),
 		DeclaredLine("EDIT", "edit.test", "http://"+svc.Addr()),
 		DeclaredLine("GONE", "gone.test", "http://"+svc.Addr()),
 	}})
-	waitFor(t, "three Routes", 10*time.Second, func() bool { return len(re.Store.Snapshot().Routes) == 3 })
+	WaitFor(t, "three Routes", 10*time.Second, func() bool { return len(re.Store.Snapshot().Routes) == 3 })
 	first := re.Store.Snapshot().DeclarationOf("nas")
 	j.Stop()
 
-	olog := new(lockedBuf)
-	reconnect(t, re, "nas", j.StateDir, ConnectOptions{LogOut: olog, Declaration: []outpostLine{
+	olog := new(LockedBuf)
+	reconnect(t, re, "nas", j.StateDir, ConnectOptions{LogOut: olog, Declaration: []OutpostLine{
 		DeclaredLine("KEEP", "keep.test", "http://"+svc.Addr()),
 		DeclaredLine("EDIT", "edit.test", "http://"+other.Addr()),
 	}})
-	waitFor(t, "the diff", 10*time.Second, func() bool {
+	WaitFor(t, "the diff", 10*time.Second, func() bool {
 		r, ok := re.Store.Snapshot().Route("edit.test")
 		return ok && r.Service == "http://"+other.Addr()
 	})
@@ -126,7 +107,7 @@ func TestRestartingWithOneLineChangedAndOneRemovedEditsAndRemovesExactlyThose(t 
 	if !st.DeclarationOf("nas")[1].Declared.Equal(first[1].Declared) {
 		t.Fatalf("keep.test was declared again: %v vs %v", st.DeclarationOf("nas"), first)
 	}
-	waitFor(t, "the Outpost's summary", 5*time.Second, func() bool {
+	WaitFor(t, "the Outpost's summary", 5*time.Second, func() bool {
 		return countLines(olog, "level=info", `msg="Declaration sent"`, "declared=2", "changed=1", "removed=1") == 1
 	})
 	if countLines(elog, "declared line changed", "edit.test") != 1 || countLines(elog, "declared line removed", "gone.test") != 1 {
@@ -137,21 +118,21 @@ func TestRestartingWithOneLineChangedAndOneRemovedEditsAndRemovesExactlyThose(t 
 func TestAnUnchangedLineKeepsItsOpenStreamWhenTheDeclarationChangesAroundIt(t *testing.T) {
 	svc := NewHTTPService(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/sse" {
-			sseHandler(w, r)
+			SSEHandler(w, r)
 			return
 		}
-		echoHost().ServeHTTP(w, r)
+		EchoHost().ServeHTTP(w, r)
 	}))
 	re := StartEdgeWith(t, EdgeOptions{Pebble: StartPebble(t, PebbleOptions{})})
 	re.AddZone(t, "test")
 	tok := re.AddOutpost(t, "nas")
 	keep, edit := DeclaredLine("KEEP", "keep.test", "http://"+svc.Addr()), DeclaredLine("EDIT", "edit.test", "http://"+svc.Addr())
-	j := re.ConnectWith(t, "nas", tok, ConnectOptions{Declaration: []outpostLine{keep, edit}})
-	waitFor(t, "two Routes", 10*time.Second, func() bool { return len(re.Store.Snapshot().Routes) == 2 })
-	waitServed(t, re, "keep.test")
-	waitServed(t, re, "edit.test")
-	nextKeep := openStream(t, re, "keep.test")
-	nextEdit := openStream(t, re, "edit.test")
+	j := re.ConnectWith(t, "nas", tok, ConnectOptions{Declaration: []OutpostLine{keep, edit}})
+	WaitFor(t, "two Routes", 10*time.Second, func() bool { return len(re.Store.Snapshot().Routes) == 2 })
+	WaitServed(t, re, "keep.test")
+	WaitServed(t, re, "edit.test")
+	nextKeep := OpenStream(t, re, "keep.test")
+	nextEdit := OpenStream(t, re, "edit.test")
 	if !nextKeep() || !nextEdit() {
 		t.Fatal("a stream did not start")
 	}
@@ -164,18 +145,18 @@ func TestAnUnchangedLineKeepsItsOpenStreamWhenTheDeclarationChangesAroundIt(t *t
 	if !nextKeep() {
 		t.Fatal("the unchanged line's stream was cut")
 	}
-	waitFor(t, "the changed line's stream to end", 5*time.Second, func() bool { return !nextEdit() })
+	WaitFor(t, "the changed line's stream to end", 5*time.Second, func() bool { return !nextEdit() })
 }
 
 func TestAnUnchangedDeclarationIsNotSentAgain(t *testing.T) {
-	svc := NewHTTPService(t, echoHost())
-	elog := new(lockedBuf)
+	svc := NewHTTPService(t, EchoHost())
+	elog := new(LockedBuf)
 	re := StartEdgeWith(t, EdgeOptions{LogOut: elog, LogLevel: slog.LevelInfo})
 	re.AddZone(t, "test")
 	tok := re.AddOutpost(t, "nas")
-	lines := []outpostLine{DeclaredLine("A", "a.test", "http://"+svc.Addr())}
+	lines := []OutpostLine{DeclaredLine("A", "a.test", "http://"+svc.Addr())}
 	j := re.ConnectWith(t, "nas", tok, ConnectOptions{Declaration: lines})
-	waitFor(t, "the first send", 10*time.Second, func() bool { return countLines(elog, "declaration applied") == 1 })
+	WaitFor(t, "the first send", 10*time.Second, func() bool { return countLines(elog, "declaration applied") == 1 })
 	j.Stop()
 	reconnect(t, re, "nas", j.StateDir, ConnectOptions{Declaration: lines})
 	// Many pings later (every 100 ms), the Edge still saw one send.
@@ -186,13 +167,13 @@ func TestAnUnchangedDeclarationIsNotSentAgain(t *testing.T) {
 }
 
 func TestWhileAnOutpostDeclaresRouteAddEditAndRmAreRefusedFromBothSides(t *testing.T) {
-	svc := NewHTTPService(t, echoHost())
+	svc := NewHTTPService(t, EchoHost())
 	re := StartEdgeWith(t, EdgeOptions{})
 	re.AddZone(t, "test")
 	re.JoinOutpost(t, "pi")
 	tok := re.AddOutpost(t, "nas")
-	j := re.ConnectWith(t, "nas", tok, ConnectOptions{Declaration: []outpostLine{DeclaredLine("A", "a.test", "http://"+svc.Addr())}})
-	waitFor(t, "the Route", 10*time.Second, func() bool { return len(re.Store.Snapshot().Routes) == 1 })
+	j := re.ConnectWith(t, "nas", tok, ConnectOptions{Declaration: []OutpostLine{DeclaredLine("A", "a.test", "http://"+svc.Addr())}})
+	WaitFor(t, "the Route", 10*time.Second, func() bool { return len(re.Store.Snapshot().Routes) == 1 })
 	re.AddRoute(t, "pi.test", "http://"+svc.Addr(), "pi")
 
 	const msg = "nas declares its Routes; change `TNL_ROUTE_*` on nas and restart it"
@@ -202,25 +183,25 @@ func TestWhileAnOutpostDeclaresRouteAddEditAndRmAreRefusedFromBothSides(t *testi
 	for name, c := range map[string]*api.Client{"Edge host": re.API, "Outpost": j.CLI} {
 		calls := map[string]func() error{
 			"add": func() error {
-				_, err := api.Call[api.RouteAddReply](ctx(t), c, http.MethodPost, api.PathRoutes, api.RouteAddRequest{Hostname: "new.test", Service: svcURL, Outpost: nas})
+				_, err := api.Call[api.RouteAddReply](Ctx(t), c, http.MethodPost, api.PathRoutes, api.RouteAddRequest{Hostname: "new.test", Service: svcURL, Outpost: nas})
 				return err
 			},
 			"edit": func() error {
-				_, err := api.Call[api.RouteEditReply](ctx(t), c, http.MethodPost, api.PathRouteEdit, api.RouteEditRequest{Hostname: "a.test", Service: &other})
+				_, err := api.Call[api.RouteEditReply](Ctx(t), c, http.MethodPost, api.PathRouteEdit, api.RouteEditRequest{Hostname: "a.test", Service: &other})
 				return err
 			},
 			"rm": func() error {
-				_, err := api.Call[api.RouteRmReply](ctx(t), c, http.MethodPost, api.PathRouteRm, api.RouteRmRequest{Hostname: "a.test"})
+				_, err := api.Call[api.RouteRmReply](Ctx(t), c, http.MethodPost, api.PathRouteRm, api.RouteRmRequest{Hostname: "a.test"})
 				return err
 			},
 		}
 		if name == "Edge host" {
 			calls["move onto"] = func() error {
-				_, err := api.Call[api.RouteEditReply](ctx(t), c, http.MethodPost, api.PathRouteEdit, api.RouteEditRequest{Hostname: "pi.test", Outpost: &nas})
+				_, err := api.Call[api.RouteEditReply](Ctx(t), c, http.MethodPost, api.PathRouteEdit, api.RouteEditRequest{Hostname: "pi.test", Outpost: &nas})
 				return err
 			}
 			calls["move off"] = func() error {
-				_, err := api.Call[api.RouteEditReply](ctx(t), c, http.MethodPost, api.PathRouteEdit, api.RouteEditRequest{Hostname: "a.test", Outpost: &pi})
+				_, err := api.Call[api.RouteEditReply](Ctx(t), c, http.MethodPost, api.PathRouteEdit, api.RouteEditRequest{Hostname: "a.test", Outpost: &pi})
 				return err
 			}
 		}
@@ -237,29 +218,29 @@ func TestWhileAnOutpostDeclaresRouteAddEditAndRmAreRefusedFromBothSides(t *testi
 }
 
 func TestAnOutpostThatHadCLIRoutesLosesThemWhenItStartsDeclaringAndGetsThemBackWhenItStops(t *testing.T) {
-	svc := NewHTTPService(t, echoHost())
-	elog := new(lockedBuf)
+	svc := NewHTTPService(t, EchoHost())
+	elog := new(LockedBuf)
 	re := StartEdgeWith(t, EdgeOptions{LogOut: elog, LogLevel: slog.LevelInfo})
 	re.AddZone(t, "test")
 	j := re.JoinOutpost(t, "nas")
 	re.AddRoute(t, "cli.test", "http://"+svc.Addr(), "nas")
 	j.Stop()
 
-	olog := new(lockedBuf)
-	d := reconnect(t, re, "nas", j.StateDir, ConnectOptions{LogOut: olog, Declaration: []outpostLine{DeclaredLine("A", "a.test", "http://"+svc.Addr())}})
-	waitFor(t, "the switch", 10*time.Second, func() bool {
+	olog := new(LockedBuf)
+	d := reconnect(t, re, "nas", j.StateDir, ConnectOptions{LogOut: olog, Declaration: []OutpostLine{DeclaredLine("A", "a.test", "http://"+svc.Addr())}})
+	WaitFor(t, "the switch", 10*time.Second, func() bool {
 		_, cli := re.Store.Snapshot().Route("cli.test")
 		_, a := re.Store.Snapshot().Route("a.test")
 		return !cli && a
 	})
-	waitFor(t, "warn lines on both sides", 5*time.Second, func() bool {
+	WaitFor(t, "warn lines on both sides", 5*time.Second, func() bool {
 		return countLines(elog, "level=warn", "cli.test", "was removed") == 1 && countLines(olog, "level=warn", "cli.test", "was removed") == 1
 	})
 	d.Stop()
 
 	// An empty Declaration hands the Outpost back to the CLI.
 	reconnect(t, re, "nas", j.StateDir, ConnectOptions{})
-	waitFor(t, "the hand-back", 10*time.Second, func() bool { return len(re.Store.Snapshot().Routes) == 0 })
+	WaitFor(t, "the hand-back", 10*time.Second, func() bool { return len(re.Store.Snapshot().Routes) == 0 })
 	if re.Store.Snapshot().Declares("nas") {
 		t.Fatal("nas still declares")
 	}
@@ -267,11 +248,11 @@ func TestAnOutpostThatHadCLIRoutesLosesThemWhenItStartsDeclaringAndGetsThemBackW
 }
 
 func TestARefusedDeclarationChangesNothing(t *testing.T) {
-	svc := NewHTTPService(t, echoHost())
+	svc := NewHTTPService(t, EchoHost())
 	re := StartEdgeWith(t, EdgeOptions{})
 	re.AddZone(t, "test")
 	j := re.JoinOutpost(t, "nas")
-	_, err := api.Call[api.DeclarationReply](ctx(t), j.API, http.MethodPost, api.PathDeclaration, api.DeclarationRequest{Routes: []declare.Line{
+	_, err := api.Call[api.DeclarationReply](Ctx(t), j.API, http.MethodPost, api.PathDeclaration, api.DeclarationRequest{Routes: []declare.Line{
 		{Hostname: "a.test", Service: "http://" + svc.Addr()},
 		{Hostname: "b.test", Service: "ftp://x"},
 	}})
@@ -287,30 +268,30 @@ func TestALineWhoseServiceRefusesConnectionsIsAppliedAndItsTestDialWarnsInTheOut
 	re := StartEdgeWith(t, EdgeOptions{Pebble: StartPebble(t, PebbleOptions{})})
 	re.AddZone(t, "test")
 	tok := re.AddOutpost(t, "nas")
-	addr := closedAddr(t)
-	olog := new(lockedBuf)
-	re.ConnectWith(t, "nas", tok, ConnectOptions{LogOut: olog, Declaration: []outpostLine{DeclaredLine("A", "a.test", "http://"+addr)}})
-	waitFor(t, "the Route", 10*time.Second, func() bool { return len(re.Store.Snapshot().Routes) == 1 })
-	waitFor(t, "the warn line", 10*time.Second, func() bool {
+	addr := ClosedAddr(t)
+	olog := new(LockedBuf)
+	re.ConnectWith(t, "nas", tok, ConnectOptions{LogOut: olog, Declaration: []OutpostLine{DeclaredLine("A", "a.test", "http://"+addr)}})
+	WaitFor(t, "the Route", 10*time.Second, func() bool { return len(re.Store.Snapshot().Routes) == 1 })
+	WaitFor(t, "the warn line", 10*time.Second, func() bool {
 		return countLines(olog, "level=warn", addr, "doesn't answer") == 1
 	})
 }
 
 func TestOutpostRmDeletesTheDeclarationAndRekeyKeepsIt(t *testing.T) {
-	svc := NewHTTPService(t, echoHost())
+	svc := NewHTTPService(t, EchoHost())
 	re := StartEdgeWith(t, EdgeOptions{})
 	re.AddZone(t, "test")
 	tok := re.AddOutpost(t, "nas")
-	re.ConnectWith(t, "nas", tok, ConnectOptions{Declaration: []outpostLine{DeclaredLine("A", "a.test", "http://"+svc.Addr())}})
-	waitFor(t, "the Route", 10*time.Second, func() bool { return len(re.Store.Snapshot().Routes) == 1 })
+	re.ConnectWith(t, "nas", tok, ConnectOptions{Declaration: []OutpostLine{DeclaredLine("A", "a.test", "http://"+svc.Addr())}})
+	WaitFor(t, "the Route", 10*time.Second, func() bool { return len(re.Store.Snapshot().Routes) == 1 })
 
-	if _, err := api.Call[api.OutpostAddReply](ctx(t), re.API, http.MethodPost, api.PathOutpostRekey, api.OutpostRekeyRequest{Name: "nas"}); err != nil {
+	if _, err := api.Call[api.OutpostAddReply](Ctx(t), re.API, http.MethodPost, api.PathOutpostRekey, api.OutpostRekeyRequest{Name: "nas"}); err != nil {
 		t.Fatal(err)
 	}
 	if st := re.Store.Snapshot(); len(st.Routes) != 1 || len(st.DeclarationOf("nas")) != 1 {
 		t.Fatalf("rekey lost the Declaration: %+v", st)
 	}
-	if _, err := api.Call[api.OutpostRmReply](ctx(t), re.API, http.MethodPost, api.PathOutpostRm, api.OutpostRmRequest{Name: "nas", WithRoutes: true}); err != nil {
+	if _, err := api.Call[api.OutpostRmReply](Ctx(t), re.API, http.MethodPost, api.PathOutpostRm, api.OutpostRmRequest{Name: "nas", WithRoutes: true}); err != nil {
 		t.Fatal(err)
 	}
 	if st := re.Store.Snapshot(); len(st.Declarations) != 0 || len(st.Routes) != 0 {
@@ -319,7 +300,7 @@ func TestOutpostRmDeletesTheDeclarationAndRekeyKeepsIt(t *testing.T) {
 }
 
 func TestALineOutsideEveryZoneWaitsAndIsReportedToTheOutpost(t *testing.T) {
-	svc := NewHTTPService(t, echoHost())
+	svc := NewHTTPService(t, EchoHost())
 	re := StartEdgeWith(t, EdgeOptions{})
 	re.AddZone(t, "test")
 	j := re.JoinOutpost(t, "nas")
@@ -329,15 +310,15 @@ func TestALineOutsideEveryZoneWaitsAndIsReportedToTheOutpost(t *testing.T) {
 	if reply.Lines[1].Outcome != api.LineWaiting || reply.Lines[1].Reason != "outside every Zone" {
 		t.Fatalf("reply %+v", reply)
 	}
-	mine, err := api.Call[api.MyRoutes](ctx(t), j.API, http.MethodGet, api.PathDeclaration, nil)
+	mine, err := api.Call[api.MyRoutes](Ctx(t), j.API, http.MethodGet, api.PathDeclaration, nil)
 	if err != nil || len(mine.Routes) != 2 || mine.Routes[0].Waiting || !mine.Routes[1].Waiting {
 		t.Fatalf("%+v, %v", mine, err)
 	}
 	// Only an Outpost has a Declaration to send or Routes of its own to fetch.
-	if _, err := api.Call[api.MyRoutes](ctx(t), re.API, http.MethodGet, api.PathDeclaration, nil); err == nil {
+	if _, err := api.Call[api.MyRoutes](Ctx(t), re.API, http.MethodGet, api.PathDeclaration, nil); err == nil {
 		t.Fatal("local fetched an Outpost's Routes")
 	}
-	if _, err := api.Call[api.DeclarationReply](ctx(t), re.API, http.MethodPost, api.PathDeclaration, api.DeclarationRequest{}); err == nil {
+	if _, err := api.Call[api.DeclarationReply](Ctx(t), re.API, http.MethodPost, api.PathDeclaration, api.DeclarationRequest{}); err == nil {
 		t.Fatal("local sent a Declaration")
 	}
 }

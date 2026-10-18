@@ -116,13 +116,13 @@ func TestSkewAgainstTheLatestTag(t *testing.T) {
 
 type skewProc struct {
 	cmd  *exec.Cmd
-	out  *lockedBuf
+	out  *LockedBuf
 	done chan struct{}
 }
 
 func startSkewProc(t *testing.T, env []string, bin string, args ...string) *skewProc {
 	t.Helper()
-	p := &skewProc{out: new(lockedBuf), done: make(chan struct{})}
+	p := &skewProc{out: new(LockedBuf), done: make(chan struct{})}
 	p.cmd = exec.Command(bin, args...)
 	p.cmd.Env = env
 	p.cmd.Stdout, p.cmd.Stderr = p.out, p.out
@@ -185,7 +185,7 @@ func runSkew(t *testing.T, join skewStep, then *skewStep, serve bool) {
 	env := []string{"PATH=" + os.Getenv("PATH"), "HOME=" + short, "XDG_DATA_HOME=" + filepath.Join(short, "caddy")}
 
 	waitSocket := func(p *skewProc, dir, what string) {
-		waitFor(t, what, 30*time.Second, func() bool {
+		WaitFor(t, what, 30*time.Second, func() bool {
 			select {
 			case <-p.done:
 				t.Fatalf("%s exited:\n%s", what, p.out)
@@ -286,7 +286,7 @@ func runSkew(t *testing.T, join skewStep, then *skewStep, serve bool) {
 	}
 	waitStatus(503)
 	// The Outpost's own CLI goes through the Edge and is refused.
-	waitFor(t, "the Edge to refuse the Outpost's API call", 30*time.Second, func() bool {
+	WaitFor(t, "the Edge to refuse the Outpost's API call", 30*time.Second, func() bool {
 		out, err := skewCLI(then.outpost, outDir, "route", "ls")
 		return err != nil && strings.Contains(out, "doesn't accept this Outpost")
 	})

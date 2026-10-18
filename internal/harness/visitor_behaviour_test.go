@@ -20,29 +20,29 @@ func TestRouteSwapServesTheNextRequestWithoutAReload(t *testing.T) {
 	o := h.AddOutpost(t, OutpostOptions{Name: "home"})
 	ce := h.Edge.StartCaddy(t, CaddyOptions{})
 
-	if resp, _ := get(t, ce, H1, "app.test", "/"); resp.StatusCode != 404 {
+	if resp, _ := Get(t, ce, H1, "app.test", "/"); resp.StatusCode != 404 {
 		t.Fatalf("before any Route: %d, want 404", resp.StatusCode)
 	}
 	h.Edge.Routes.Swap([]routes.Route{{Hostname: "app.test", Outpost: o.Name, Service: a.Addr()}})
-	if _, body := get(t, ce, H1, "app.test", "/"); body != "a" {
+	if _, body := Get(t, ce, H1, "app.test", "/"); body != "a" {
 		t.Fatalf("got %q, want a", body)
 	}
 	// The same Hostname now points elsewhere: the pooled connection to a must not be used.
 	h.Edge.Routes.Swap([]routes.Route{{Hostname: "app.test", Outpost: o.Name, Service: b.Addr()}})
-	if _, body := get(t, ce, H1, "app.test", "/"); body != "b" {
+	if _, body := Get(t, ce, H1, "app.test", "/"); body != "b" {
 		t.Fatalf("got %q, want b", body)
 	}
 	h.Edge.Routes.Swap(nil)
-	if resp, _ := get(t, ce, H1, "app.test", "/"); resp.StatusCode != 404 {
+	if resp, _ := Get(t, ce, H1, "app.test", "/"); resp.StatusCode != 404 {
 		t.Fatalf("after the Route is gone: %d, want 404", resp.StatusCode)
 	}
 }
 
 func TestPort80RedirectsWithA308(t *testing.T) {
-	h := edgeWithService(t, http.NotFoundHandler())
+	h := EdgeWithService(t, http.NotFoundHandler())
 	ce := h.Edge.Caddy
 	for _, host := range []string{"app.test", "unrouted.test"} {
-		req, _ := http.NewRequestWithContext(ctx(t), "GET", "http://"+host+"/foo?a=1", nil)
+		req, _ := http.NewRequestWithContext(Ctx(t), "GET", "http://"+host+"/foo?a=1", nil)
 		resp, err := ce.PlainClient().Do(req)
 		if err != nil {
 			t.Fatal(err)
@@ -56,7 +56,7 @@ func TestPort80RedirectsWithA308(t *testing.T) {
 }
 
 func TestServiceSeesTheVisitorsHostAndForwardedHeadersButNoRequestID(t *testing.T) {
-	h := edgeWithService(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	h := EdgeWithService(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		hdr := r.Header.Clone()
 		hdr.Set("Seen-Host", r.Host)
 		json.NewEncoder(w).Encode(hdr)
@@ -64,7 +64,7 @@ func TestServiceSeesTheVisitorsHostAndForwardedHeadersButNoRequestID(t *testing.
 	hexID := regexp.MustCompile(`^[0-9a-f]{16}$`)
 	for _, proto := range Protos {
 		t.Run(string(proto), func(t *testing.T) {
-			_, body := get(t, h.Edge.Caddy, proto, "app.test", "/")
+			_, body := Get(t, h.Edge.Caddy, proto, "app.test", "/")
 			var hdr http.Header
 			if err := json.Unmarshal([]byte(body), &hdr); err != nil {
 				t.Fatal(err)
@@ -93,7 +93,7 @@ func TestEventStreamIsFlushedOnEveryWrite(t *testing.T) {
 	for _, proto := range Protos {
 		t.Run(string(proto), func(t *testing.T) {
 			next := make(chan struct{})
-			h := edgeWithService(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			h := EdgeWithService(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "text/event-stream")
 				fmt.Fprint(w, "data: one\n\n")
 				w.(http.Flusher).Flush()
@@ -103,7 +103,7 @@ func TestEventStreamIsFlushedOnEveryWrite(t *testing.T) {
 				case <-r.Context().Done():
 				}
 			}))
-			req, _ := http.NewRequestWithContext(ctx(t), "GET", "https://app.test/", nil)
+			req, _ := http.NewRequestWithContext(Ctx(t), "GET", "https://app.test/", nil)
 			resp, err := h.Edge.Caddy.Client(t, proto).Do(req)
 			if err != nil {
 				t.Fatal(err)
@@ -128,7 +128,7 @@ func TestEventStreamIsFlushedOnEveryWrite(t *testing.T) {
 func TestBodiesStreamUnbufferedBothWays(t *testing.T) {
 	// The Service answers after the first chunk of the upload and keeps reading.
 	// A buffering Edge would hold both until the upload ends.
-	h := edgeWithService(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	h := EdgeWithService(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.NewResponseController(w).EnableFullDuplex()
 		buf := make([]byte, 5)
 		io.ReadFull(r.Body, buf)
@@ -138,7 +138,7 @@ func TestBodiesStreamUnbufferedBothWays(t *testing.T) {
 	}))
 	pr, pw := io.Pipe()
 	defer pw.Close()
-	req, _ := http.NewRequestWithContext(ctx(t), "POST", "https://app.test/", pr)
+	req, _ := http.NewRequestWithContext(Ctx(t), "POST", "https://app.test/", pr)
 	go pw.Write([]byte("chunk"))
 	resp, err := h.Edge.Caddy.Client(t, H2).Do(req)
 	if err != nil {
@@ -153,7 +153,7 @@ func TestBodiesStreamUnbufferedBothWays(t *testing.T) {
 
 func TestReloadDoesNotBreakARunningStream(t *testing.T) {
 	next := make(chan struct{})
-	h := edgeWithService(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	h := EdgeWithService(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/stream" {
 			io.WriteString(w, "plain")
 			return
@@ -165,7 +165,7 @@ func TestReloadDoesNotBreakARunningStream(t *testing.T) {
 		fmt.Fprint(w, "data: two\n\n")
 	}))
 	ce := h.Edge.Caddy
-	req, _ := http.NewRequestWithContext(ctx(t), "GET", "https://app.test/stream", nil)
+	req, _ := http.NewRequestWithContext(Ctx(t), "GET", "https://app.test/stream", nil)
 	resp, err := ce.Client(t, H2).Do(req)
 	if err != nil {
 		t.Fatal(err)
@@ -182,7 +182,7 @@ func TestReloadDoesNotBreakARunningStream(t *testing.T) {
 	if line, err := br.ReadString('\n'); err != nil || line != "data: two\n" {
 		t.Fatalf("after reloads: %q, %v", line, err)
 	}
-	if _, body := get(t, ce, H1, "app.test", "/"); body != "plain" {
+	if _, body := Get(t, ce, H1, "app.test", "/"); body != "plain" {
 		t.Fatalf("new request after reloads: %q", body)
 	}
 }
@@ -198,19 +198,19 @@ func TestIdleConnectionsArePooledPerRouteAndDroppedOnCleanup(t *testing.T) {
 	})
 
 	for range 3 {
-		get(t, ce, H2, "one.test", "/")
+		Get(t, ce, H2, "one.test", "/")
 	}
 	if n := svc.Conns(); n != 1 {
 		t.Fatalf("3 requests for one Route used %d Service connections, want 1 (pooled)", n)
 	}
-	get(t, ce, H2, "two.test", "/")
+	Get(t, ce, H2, "two.test", "/")
 	if n := svc.Conns(); n != 2 {
 		t.Fatalf("a second Route used %d connections in all, want 2 (pooled per Route)", n)
 	}
 
 	// A reload runs Cleanup on the old transport, which drops what is idle.
 	ce.Reload(t)
-	get(t, ce, H2, "one.test", "/")
+	Get(t, ce, H2, "one.test", "/")
 	if n := svc.Conns(); n != 3 {
 		t.Fatalf("after a reload %d connections, want 3 (idle ones dropped)", n)
 	}

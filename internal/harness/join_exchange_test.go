@@ -33,26 +33,10 @@ func outpostStateFile(t *testing.T, dir string) map[string]any {
 	return m
 }
 
-// edgePeers lists the public keys (hex) of the Edge's WireGuard peers.
-func edgePeers(t *testing.T, re *RealEdge) []string {
-	t.Helper()
-	out, err := re.Tunnel.Dev.IpcGet()
-	if err != nil {
-		t.Fatal(err)
-	}
-	var ks []string
-	for _, line := range strings.Split(out, "\n") {
-		if k, ok := strings.CutPrefix(line, "public_key="); ok {
-			ks = append(ks, k)
-		}
-	}
-	return ks
-}
-
 func reachService(t *testing.T, re *RealEdge, j *JoinedOutpost) {
 	t.Helper()
 	svc := NewEchoService(t)
-	conn, err := re.Dial(ctx(t), j.Outpost, wire.Header{Service: svc.Addr(), Hostname: "app.example.com"})
+	conn, err := re.Dial(Ctx(t), j.Outpost, wire.Header{Service: svc.Addr(), Hostname: "app.example.com"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +88,7 @@ func TestJoinSwapsInTheOutpostsOwnKeyAndForgetsTheOneTimeKey(t *testing.T) {
 	if o.OneTimeKey != nil || !o.TokenExpires.IsZero() {
 		t.Errorf("the Edge kept the one-time key: %+v", o)
 	}
-	peers := edgePeers(t, re)
+	peers := EdgePeers(t, re)
 	if len(peers) != 1 || peers[0] != priv.Public().Hex() {
 		t.Errorf("WireGuard peers %v, want only %s", peers, priv.Public().Hex())
 	}
@@ -148,7 +132,7 @@ func TestRestartWithTheSameTokenStillSetReconnectsFromTheState(t *testing.T) {
 	before := outpostStateFile(t, dir)
 	j.Stop()
 
-	logs := &lockedBuf{}
+	logs := &LockedBuf{}
 	j2, err := re.TryConnectWith(t, "laptop", tok, dir, ConnectOptions{LogOut: logs, JoinTimeout: 2 * time.Second})
 	if err != nil {
 		t.Fatal(err)
@@ -169,7 +153,7 @@ func TestATokenForAnotherOutpostJoinsAsThatOutpostAndReplacesTheState(t *testing
 	re.Connect(t, "laptop", tok, dir).Stop()
 	tok2 := re.AddOutpost(t, "nas")
 
-	logs := &lockedBuf{}
+	logs := &LockedBuf{}
 	j, err := re.TryConnectWith(t, "nas", tok2, dir, ConnectOptions{LogOut: logs})
 	if err != nil {
 		t.Fatal(err)
@@ -203,7 +187,7 @@ func TestAJoinedOutpostCallingTheJoinPathAgainGets403(t *testing.T) {
 func TestTheStartLogLineCarriesTheOutpostsName(t *testing.T) {
 	re := StartEdge(t)
 	tok := re.AddOutpost(t, "laptop")
-	logs := &lockedBuf{}
+	logs := &LockedBuf{}
 	if _, err := re.TryConnectWith(t, "laptop", tok, mustTempDir(t), ConnectOptions{LogOut: logs}); err != nil {
 		t.Fatal(err)
 	}

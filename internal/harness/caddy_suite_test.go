@@ -29,7 +29,6 @@ package harness
 
 import (
 	"bufio"
-	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -51,13 +50,6 @@ import (
 
 // shrunk is the research check's setting: every Caddy timeout at 2 s.
 var shrunk = caddyx.Timeouts{ReadHeader: 2 * time.Second, Idle: 2 * time.Second, ReadIdle: 2 * time.Second, WriteIdle: 2 * time.Second}
-
-func ctxFor(t *testing.T, d time.Duration) context.Context {
-	t.Helper()
-	c, cancel := context.WithTimeout(context.Background(), d)
-	t.Cleanup(cancel)
-	return c
-}
 
 // suiteService is the Service of the suite.
 //
@@ -154,7 +146,7 @@ type sseRun struct {
 
 func readSSE(t *testing.T, ce *CaddyEdge, proto Proto, gaps string) sseRun {
 	var res sseRun
-	req, err := http.NewRequestWithContext(ctxFor(t, time.Minute), "GET", "https://app.test/sse?gaps="+gaps, nil)
+	req, err := http.NewRequestWithContext(CtxFor(t, time.Minute), "GET", "https://app.test/sse?gaps="+gaps, nil)
 	if err != nil {
 		res.err = err
 		return res
@@ -328,7 +320,7 @@ func (r uploadResult) String() string {
 func upload(t *testing.T, ce *CaddyEdge, proto Proto, body *patternReader, size int64, query string) uploadResult {
 	start := time.Now()
 	var res uploadResult
-	req, err := http.NewRequestWithContext(ctxFor(t, 2*time.Minute), "POST", "https://app.test/upload?"+query, body)
+	req, err := http.NewRequestWithContext(CtxFor(t, 2*time.Minute), "POST", "https://app.test/upload?"+query, body)
 	if err != nil {
 		res.err = err
 		return res
@@ -445,7 +437,7 @@ func TestRequestBodiesStreamToTheServiceUnbuffered(t *testing.T) {
 			default:
 			}
 			pr, pw := io.Pipe()
-			req, err := http.NewRequestWithContext(ctxFor(t, 30*time.Second), "POST", "https://app.test/", pr)
+			req, err := http.NewRequestWithContext(CtxFor(t, 30*time.Second), "POST", "https://app.test/", pr)
 			if err != nil {
 				t.Fatal(err)
 			}

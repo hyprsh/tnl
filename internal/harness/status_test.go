@@ -1,7 +1,6 @@
 package harness
 
 import (
-	"bytes"
 	"net/http"
 	"strings"
 	"testing"
@@ -9,21 +8,7 @@ import (
 
 	"github.com/hyprsh/tnl/internal/api"
 	"github.com/hyprsh/tnl/internal/edge/liveness"
-	"github.com/hyprsh/tnl/internal/render"
 )
-
-func edgeStatus(t *testing.T, re *RealEdge) (api.EdgeStatus, string) {
-	t.Helper()
-	s, err := api.Call[api.EdgeStatus](ctx(t), re.API, http.MethodGet, api.PathStatus, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var b bytes.Buffer
-	if err := render.EdgeStatus(&b, s); err != nil {
-		t.Fatal(err)
-	}
-	return s, b.String()
-}
 
 // A healthy Edge prints its summary and that nothing needs attention, which is
 // exit 0.
@@ -33,9 +18,9 @@ func TestStatusOfAHealthyEdgePrintsTheSummaryAndNothingNeedsAttention(t *testing
 	re.AddZone(t, "test")
 	re.JoinOutpost(t, "nas")
 	re.AddOutpost(t, "newbox")
-	re.AddRoute(t, photos, "http://"+svc.Addr(), "nas")
+	re.AddRoute(t, Photos, "http://"+svc.Addr(), "nas")
 
-	s, text := edgeStatus(t, re)
+	s, text := EdgeStatus(t, re)
 	if len(s.Attention) != 0 {
 		t.Fatalf("attention: %+v", s.Attention)
 	}
@@ -53,7 +38,7 @@ func TestStatusOfAHealthyEdgePrintsTheSummaryAndNothingNeedsAttention(t *testing
 // An Offline Outpost, an Incompatible one and a waiting line each add a line.
 func TestStatusNamesAnOfflineOutpostAnIncompatibleOneAndAWaitingLine(t *testing.T) {
 	svc := NewHTTPService(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
-	re := StartEdgeWith(t, EdgeOptions{OfflineAfter: testOfflineAfter})
+	re := StartEdgeWith(t, EdgeOptions{OfflineAfter: ShortOfflineAfter})
 	re.AddZone(t, "test")
 	gone := re.JoinOutpost(t, "gone")
 	old, err := re.TryConnectWith(t, "old", re.AddOutpost(t, "old"), mustTempDir(t), ConnectOptions{JoinTimeout: 3 * time.Second, Version: harnessVersion})
@@ -61,26 +46,26 @@ func TestStatusNamesAnOfflineOutpostAnIncompatibleOneAndAWaitingLine(t *testing.
 		t.Fatal(err)
 	}
 	re.JoinOutpost(t, "nas")
-	re.AddRoute(t, photos, "http://"+svc.Addr(), "nas")
+	re.AddRoute(t, Photos, "http://"+svc.Addr(), "nas")
 	re.AddRoute(t, "app.test", "http://"+svc.Addr(), "gone")
 	re.ConnectWith(t, "newbox", re.AddOutpost(t, "newbox"),
-		ConnectOptions{Declaration: []outpostLine{DeclaredLine("PHOTOS", photos, "http://"+svc.Addr())}})
+		ConnectOptions{Declaration: []OutpostLine{DeclaredLine("PHOTOS", Photos, "http://"+svc.Addr())}})
 	reconnectAs(t, re, "old", old, "9.0.0")
 	gone.Stop()
-	waitFor(t, "gone to be Offline", 5*testOfflineAfter, func() bool { return re.Liveness.State("gone") == liveness.Offline })
-	waitFor(t, "old to be Incompatible", 5*time.Second, func() bool { return re.Liveness.State("old") == liveness.Incompatible })
+	WaitFor(t, "gone to be Offline", 5*ShortOfflineAfter, func() bool { return re.Liveness.State("gone") == liveness.Offline })
+	WaitFor(t, "old to be Incompatible", 5*time.Second, func() bool { return re.Liveness.State("old") == liveness.Incompatible })
 
 	var s api.EdgeStatus
 	var text string
-	waitFor(t, "the line to wait", 5*time.Second, func() bool {
-		s, text = edgeStatus(t, re)
+	WaitFor(t, "the line to wait", 5*time.Second, func() bool {
+		s, text = EdgeStatus(t, re)
 		return len(s.Attention) == 3
 	})
 	for _, want := range []string{
 		"  - Outpost gone is offline, last seen ",
 		", 1 Route\n",
 		"  - Outpost old is incompatible, last seen ",
-		"  - newbox declares " + photos + ", which nas holds\n",
+		"  - newbox declares " + Photos + ", which nas holds\n",
 		"\nNeeds attention\n",
 	} {
 		if !strings.Contains(text, want) {

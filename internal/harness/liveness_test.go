@@ -2,7 +2,6 @@ package harness
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -14,54 +13,20 @@ import (
 	"github.com/hyprsh/tnl/internal/state"
 )
 
-const testOfflineAfter = 600 * time.Millisecond
-
-func waitFor(t *testing.T, what string, within time.Duration, cond func() bool) {
-	t.Helper()
-	deadline := time.Now().Add(within)
-	for !cond() {
-		if time.Now().After(deadline) {
-			t.Fatalf("timed out waiting for %s", what)
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-}
-
-func eventService(t *testing.T) *Service {
-	return NewHTTPService(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/sse" {
-			fmt.Fprint(w, "ok")
-			return
-		}
-		w.Header().Set("Content-Type", "text/event-stream")
-		rc := http.NewResponseController(w)
-		for {
-			if _, err := fmt.Fprint(w, "data: x\n\n"); err != nil || rc.Flush() != nil {
-				return
-			}
-			select {
-			case <-time.After(20 * time.Millisecond):
-			case <-r.Context().Done():
-				return
-			}
-		}
-	}))
-}
-
 // Stopping an Outpost turns its Routes to 503 within the Offline window and
 // closes its open streams; when it comes back its Routes serve again and the
 // Edge logs the outage.
 func TestStoppingAnOutpostTurnsItsRoutesTo503AndItComesBack(t *testing.T) {
-	svc := eventService(t)
-	log := new(lockedBuf)
-	re := StartEdgeWith(t, EdgeOptions{Pebble: StartPebble(t, PebbleOptions{}), OfflineAfter: testOfflineAfter, LogOut: log, LogLevel: slog.LevelInfo})
+	svc := EventService(t)
+	log := new(LockedBuf)
+	re := StartEdgeWith(t, EdgeOptions{Pebble: StartPebble(t, PebbleOptions{}), OfflineAfter: ShortOfflineAfter, LogOut: log, LogLevel: slog.LevelInfo})
 	re.AddZone(t, "test")
 	o := re.JoinOutpost(t, "nas")
 	re.AddRoute(t, "app.test", "http://"+svc.Addr(), "nas")
-	if resp, body := get(t, re.Caddy, H1, "app.test", "/"); resp.StatusCode != 200 || body != "ok" {
+	if resp, body := Get(t, re.Caddy, H1, "app.test", "/"); resp.StatusCode != 200 || body != "ok" {
 		t.Fatalf("before: %d %q", resp.StatusCode, body)
 	}
-	next := openStream(t, re, "app.test")
+	next := OpenStream(t, re, "app.test")
 	if !next() {
 		t.Fatal("the stream did not start")
 	}
@@ -69,23 +34,23 @@ func TestStoppingAnOutpostTurnsItsRoutesTo503AndItComesBack(t *testing.T) {
 	if err := o.Stop(); err != nil {
 		t.Fatal(err)
 	}
-	waitFor(t, "the stream to be closed", 5*testOfflineAfter+time.Second, func() bool { return !next() })
-	waitFor(t, "the Outpost to be Offline", 5*testOfflineAfter, func() bool { return re.Liveness.State("nas") == liveness.Offline })
+	WaitFor(t, "the stream to be closed", 5*ShortOfflineAfter+time.Second, func() bool { return !next() })
+	WaitFor(t, "the Outpost to be Offline", 5*ShortOfflineAfter, func() bool { return re.Liveness.State("nas") == liveness.Offline })
 	start := time.Now()
-	resp, _ := get(t, re.Caddy, H1, "app.test", "/")
+	resp, _ := Get(t, re.Caddy, H1, "app.test", "/")
 	if resp.StatusCode != 503 || time.Since(start) > 2*time.Second {
 		t.Fatalf("offline: %d after %v, want 503 at once", resp.StatusCode, time.Since(start))
 	}
-	waitFor(t, "the Offline line", 2*time.Second, func() bool {
+	WaitFor(t, "the Offline line", 2*time.Second, func() bool {
 		return strings.Contains(log.String(), "level=warn msg=\"outpost offline\" outpost=nas")
 	})
 
 	re.Connect(t, "nas", "", o.StateDir)
-	waitFor(t, "the Route to serve again", 10*time.Second, func() bool {
-		resp, _ := get(t, re.Caddy, H1, "app.test", "/")
+	WaitFor(t, "the Route to serve again", 10*time.Second, func() bool {
+		resp, _ := Get(t, re.Caddy, H1, "app.test", "/")
 		return resp.StatusCode == 200
 	})
-	if line := lineWith(log.String(), "back online"); !strings.Contains(line, "level=info") || !strings.Contains(line, "outpost=nas") || !strings.Contains(line, "gone=") {
+	if line := LineWith(log.String(), "back online"); !strings.Contains(line, "level=info") || !strings.Contains(line, "outpost=nas") || !strings.Contains(line, "gone=") {
 		t.Fatalf("no back-online line with the outage in:\n%s", log)
 	}
 }
@@ -93,13 +58,13 @@ func TestStoppingAnOutpostTurnsItsRoutesTo503AndItComesBack(t *testing.T) {
 // An Outpost that goes silent without closing anything (a dead link) has its
 // open stream closed by the Edge once the Offline window is up, not before.
 func TestAnOutpostThatGoesSilentHasItsStreamsClosedWhenItGoesOffline(t *testing.T) {
-	svc := eventService(t)
-	re := StartEdgeWith(t, EdgeOptions{Pebble: StartPebble(t, PebbleOptions{}), OfflineAfter: testOfflineAfter})
+	svc := EventService(t)
+	re := StartEdgeWith(t, EdgeOptions{Pebble: StartPebble(t, PebbleOptions{}), OfflineAfter: ShortOfflineAfter})
 	re.AddZone(t, "test")
 	o := re.JoinOutpost(t, "nas")
 	re.AddRoute(t, "app.test", "http://"+svc.Addr(), "nas")
-	get(t, re.Caddy, H1, "app.test", "/") // pays for the certificate
-	next := openStream(t, re, "app.test")
+	Get(t, re.Caddy, H1, "app.test", "/") // pays for the certificate
+	next := OpenStream(t, re, "app.test")
 	if !next() {
 		t.Fatal("the stream did not start")
 	}
@@ -112,21 +77,12 @@ func TestAnOutpostThatGoesSilentHasItsStreamsClosedWhenItGoesOffline(t *testing.
 	cut := time.Now()
 	for next() {
 	}
-	if d := time.Since(cut); d < testOfflineAfter/2 || d > 5*time.Second {
+	if d := time.Since(cut); d < ShortOfflineAfter/2 || d > 5*time.Second {
 		t.Fatalf("the stream ended %v after the link was cut, want about the Offline window", d)
 	}
 	if re.Liveness.State("nas") != liveness.Offline {
 		t.Fatal("the Outpost is not Offline")
 	}
-}
-
-func lineWith(log, sub string) string {
-	for _, l := range strings.Split(log, "\n") {
-		if strings.Contains(l, sub) {
-			return l
-		}
-	}
-	return ""
 }
 
 // The Edge's start counts as hearing from every Outpost, before any ping.
@@ -184,7 +140,7 @@ func TestAnOutpostThatConnectedJustBeforeAnEdgeRestartIsNotNeverConnected(t *tes
 // the Outpost has connected before.
 func waitForEndpointSaved(t *testing.T, re *RealEdge, name string) {
 	t.Helper()
-	waitFor(t, "the endpoint to be saved", 5*time.Second, func() bool {
+	WaitFor(t, "the endpoint to be saved", 5*time.Second, func() bool {
 		for _, o := range re.Store.Snapshot().Outposts {
 			if o.Name == name {
 				return o.Endpoint.IsValid()
@@ -196,7 +152,7 @@ func waitForEndpointSaved(t *testing.T, re *RealEdge, name string) {
 
 func lsOutpost(t *testing.T, re *RealEdge, name string) api.OutpostInfo {
 	t.Helper()
-	l, err := api.Call[api.OutpostList](ctx(t), re.API, http.MethodGet, api.PathOutposts, nil)
+	l, err := api.Call[api.OutpostList](Ctx(t), re.API, http.MethodGet, api.PathOutposts, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -213,14 +169,14 @@ func lsOutpost(t *testing.T, re *RealEdge, name string) api.OutpostInfo {
 // starts, not counted online by `tnl status`, and Offline once the window
 // passes. It is online once it connects.
 func TestADeclaredOutpostThatNeverConnectedIsNotOnlineAfterTheEdgeStarts(t *testing.T) {
-	d := newDeclaredEdge(t)
-	line, _ := d.outpost(t, "nas")
-	re := StartEdgeWith(t, d.options(EdgeOptions{OfflineAfter: 3 * time.Second, Outposts: []state.DeclaredOutpost{line}}))
+	d := NewDeclaredEdge(t)
+	line, _ := d.Outpost(t, "nas")
+	re := StartEdgeWith(t, d.Options(EdgeOptions{OfflineAfter: 3 * time.Second, Outposts: []state.DeclaredOutpost{line}}))
 
 	if o := lsOutpost(t, re, "nas"); o.State != api.StateNeverConnected || o.LastSeen != nil || o.Endpoint != "" {
 		t.Fatalf("outpost ls: %+v", o)
 	}
-	s, text := edgeStatus(t, re)
+	s, text := EdgeStatus(t, re)
 	if s.Outposts.Online != 0 || s.Outposts.NeverConnected != 1 || len(s.Attention) != 0 {
 		t.Fatalf("status: %+v %+v", s.Outposts, s.Attention)
 	}
@@ -228,8 +184,8 @@ func TestADeclaredOutpostThatNeverConnectedIsNotOnlineAfterTheEdgeStarts(t *test
 		t.Fatalf("no never connected in\n%s", text)
 	}
 
-	waitFor(t, "the Outpost to be Offline", 10*time.Second, func() bool { return lsOutpost(t, re, "nas").State == api.StateOffline })
-	s, _ = edgeStatus(t, re)
+	WaitFor(t, "the Outpost to be Offline", 10*time.Second, func() bool { return lsOutpost(t, re, "nas").State == api.StateOffline })
+	s, _ = EdgeStatus(t, re)
 	if s.Outposts.Offline != 1 || s.Outposts.NeverConnected != 0 || len(s.Attention) != 1 || s.Attention[0].Kind != api.AttentionOutpostOffline {
 		t.Fatalf("status past the window: %+v %+v", s.Outposts, s.Attention)
 	}
@@ -238,12 +194,12 @@ func TestADeclaredOutpostThatNeverConnectedIsNotOnlineAfterTheEdgeStarts(t *test
 // A ping tells the Edge the Outpost's version and a new public endpoint is
 // logged at info.
 func TestPingsCarryTheVersionAndANewEndpointIsLogged(t *testing.T) {
-	log := new(lockedBuf)
+	log := new(LockedBuf)
 	re := StartEdgeWith(t, EdgeOptions{LogOut: log, LogLevel: slog.LevelInfo})
 	re.JoinOutpost(t, "nas")
-	waitFor(t, "the Outpost's version", 5*time.Second, func() bool { return re.Liveness.Info("nas").Version == harnessVersion })
-	waitFor(t, "the endpoint line", 5*time.Second, func() bool { return strings.Contains(log.String(), "new public endpoint") })
-	if line := lineWith(log.String(), "new public endpoint"); !strings.Contains(line, "level=info") || !strings.Contains(line, "outpost=nas") || !strings.Contains(line, "endpoint=127.0.0.1:") {
+	WaitFor(t, "the Outpost's version", 5*time.Second, func() bool { return re.Liveness.Info("nas").Version == harnessVersion })
+	WaitFor(t, "the endpoint line", 5*time.Second, func() bool { return strings.Contains(log.String(), "new public endpoint") })
+	if line := LineWith(log.String(), "new public endpoint"); !strings.Contains(line, "level=info") || !strings.Contains(line, "outpost=nas") || !strings.Contains(line, "endpoint=127.0.0.1:") {
 		t.Fatalf("endpoint line: %s", line)
 	}
 	if re.Liveness.Info("nas").Endpoint.Addr().String() != "127.0.0.1" {
@@ -253,11 +209,11 @@ func TestPingsCarryTheVersionAndANewEndpointIsLogged(t *testing.T) {
 
 // `route add` on an Offline Outpost saves the Route and warns.
 func TestRouteAddOnAnOfflineOutpostWarns(t *testing.T) {
-	re := StartEdgeWith(t, EdgeOptions{OfflineAfter: testOfflineAfter})
+	re := StartEdgeWith(t, EdgeOptions{OfflineAfter: ShortOfflineAfter})
 	re.AddZone(t, "test")
 	o := re.JoinOutpost(t, "nas")
 	o.Stop()
-	waitFor(t, "the Outpost to go Offline", 5*time.Second, func() bool { return re.Liveness.State("nas") == liveness.Offline })
+	WaitFor(t, "the Outpost to go Offline", 5*time.Second, func() bool { return re.Liveness.State("nas") == liveness.Offline })
 	r, err := api.Call[api.RouteAddReply](context.Background(), re.API, http.MethodPost, api.PathRoutes,
 		api.RouteAddRequest{Hostname: "app.test", Service: "http://localhost:3000", Outpost: "nas"})
 	if err != nil {

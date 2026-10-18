@@ -26,13 +26,13 @@ func cutLink(t *testing.T, o *JoinedOutpost, re *RealEdge) {
 // Edge still ends the Visitor's stream within the bound, long before the
 // Offline window (here the default 60 s) is up.
 func TestAStreamEndsWithinTheBoundWhenTheOutpostsClosesNeverArrive(t *testing.T) {
-	svc := eventService(t)
+	svc := EventService(t)
 	re := StartEdgeWith(t, EdgeOptions{Pebble: StartPebble(t, PebbleOptions{})})
 	re.AddZone(t, "test")
 	o := re.JoinOutpost(t, "nas")
 	re.AddRoute(t, "app.test", "http://"+svc.Addr(), "nas")
-	get(t, re.Caddy, H1, "app.test", "/")
-	next := openStream(t, re, "app.test")
+	Get(t, re.Caddy, H1, "app.test", "/")
+	next := OpenStream(t, re, "app.test")
 	if !next() {
 		t.Fatal("the stream did not start")
 	}
@@ -59,13 +59,13 @@ const restartBound = 3 * time.Second
 // first ping carries a new session id, and the Edge closes the connections
 // through it, without waiting for TCP keepalive.
 func TestAnOutpostRestartEndsOlderStreamsThroughIt(t *testing.T) {
-	svc := eventService(t)
+	svc := EventService(t)
 	re := StartEdgeWith(t, EdgeOptions{Pebble: StartPebble(t, PebbleOptions{})})
 	re.AddZone(t, "test")
 	o := re.JoinOutpost(t, "nas")
 	re.AddRoute(t, "app.test", "http://"+svc.Addr(), "nas")
-	get(t, re.Caddy, H1, "app.test", "/")
-	next := openStream(t, re, "app.test")
+	Get(t, re.Caddy, H1, "app.test", "/")
+	next := OpenStream(t, re, "app.test")
 	if !next() {
 		t.Fatal("the stream did not start")
 	}
@@ -79,8 +79,8 @@ func TestAnOutpostRestartEndsOlderStreamsThroughIt(t *testing.T) {
 	if d := time.Since(restarted); d > restartBound {
 		t.Fatalf("the old stream ended %v after the restart, want within %v", d, restartBound)
 	}
-	waitFor(t, "the Route to serve again", 10*time.Second, func() bool {
-		resp, _ := get(t, re.Caddy, H1, "app.test", "/")
+	WaitFor(t, "the Route to serve again", 10*time.Second, func() bool {
+		resp, _ := Get(t, re.Caddy, H1, "app.test", "/")
 		return resp.StatusCode == 200
 	})
 }
@@ -88,13 +88,13 @@ func TestAnOutpostRestartEndsOlderStreamsThroughIt(t *testing.T) {
 // A stopped Outpost lets its closes leave through WireGuard before it tears
 // the Tunnel down, so a Visitor's stream ends at once, not after keepalive.
 func TestStoppingAnOutpostEndsAVisitorsStreamAtOnce(t *testing.T) {
-	svc := eventService(t)
+	svc := EventService(t)
 	re := StartEdgeWith(t, EdgeOptions{Pebble: StartPebble(t, PebbleOptions{})})
 	re.AddZone(t, "test")
 	o := re.JoinOutpost(t, "nas")
 	re.AddRoute(t, "app.test", "http://"+svc.Addr(), "nas")
-	get(t, re.Caddy, H1, "app.test", "/")
-	next := openStream(t, re, "app.test")
+	Get(t, re.Caddy, H1, "app.test", "/")
+	next := OpenStream(t, re, "app.test")
 	if !next() {
 		t.Fatal("the stream did not start")
 	}
@@ -111,13 +111,13 @@ func TestStoppingAnOutpostEndsAVisitorsStreamAtOnce(t *testing.T) {
 // With the Edge unreachable the closes cannot leave, and the Outpost still
 // exits within the drain cap.
 func TestStoppingAnOutpostWhoseEdgeIsUnreachableStillExitsWithinTheCap(t *testing.T) {
-	svc := eventService(t)
+	svc := EventService(t)
 	re := StartEdgeWith(t, EdgeOptions{Pebble: StartPebble(t, PebbleOptions{})})
 	re.AddZone(t, "test")
 	o := re.JoinOutpost(t, "nas")
 	re.AddRoute(t, "app.test", "http://"+svc.Addr(), "nas")
-	get(t, re.Caddy, H1, "app.test", "/")
-	next := openStream(t, re, "app.test")
+	Get(t, re.Caddy, H1, "app.test", "/")
+	next := OpenStream(t, re, "app.test")
 	if !next() {
 		t.Fatal("the stream did not start")
 	}

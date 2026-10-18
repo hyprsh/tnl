@@ -56,11 +56,11 @@ func TestEdgeRestoredFromABackupServesItsRoutesAndOutpostsReconnect(t *testing.T
 	re.AddZone(t, "test")
 	nas := re.JoinOutpost(t, "nas")
 	re.AddRoute(t, "app.test", "http://"+svc.Addr(), "nas")
-	if resp, body := get(t, re.Caddy, H1, "app.test", "/"); resp.StatusCode != 200 {
+	if resp, body := Get(t, re.Caddy, H1, "app.test", "/"); resp.StatusCode != 200 {
 		t.Fatalf("before the backup: %d %q", resp.StatusCode, body)
 	}
 
-	body, _, err := re.API.Download(ctx(t), api.PathBackup)
+	body, _, err := re.API.Download(Ctx(t), api.PathBackup)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +80,7 @@ func TestEdgeRestoredFromABackupServesItsRoutesAndOutpostsReconnect(t *testing.T
 	again := StartEdgeWith(t, EdgeOptions{StateDir: restored, WireGuardPort: port, Pebble: pb})
 	// The Outpost starts from its own state, with no token: no rekeying.
 	again.Connect(t, "nas", "", nas.StateDir)
-	resp, text := get(t, again.Caddy, H1, "app.test", "/")
+	resp, text := Get(t, again.Caddy, H1, "app.test", "/")
 	if resp.StatusCode != 200 || text != "hello from app.test" {
 		t.Fatalf("after the restore: %d %q", resp.StatusCode, text)
 	}

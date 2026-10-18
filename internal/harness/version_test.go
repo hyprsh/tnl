@@ -31,8 +31,8 @@ func reconnectAs(t *testing.T, re *RealEdge, name string, j *JoinedOutpost, vers
 // Incompatible: its Routes answer 503, its API calls are refused with the
 // spec's message, and the Edge warns once.
 func TestAnOutpostOutsideTheVersionWindowIsIncompatible(t *testing.T) {
-	svc := eventService(t)
-	log := new(lockedBuf)
+	svc := EventService(t)
+	log := new(LockedBuf)
 	re := StartEdgeWith(t, EdgeOptions{Pebble: StartPebble(t, PebbleOptions{}), Version: "0.3.4", LogOut: log, LogLevel: slog.LevelInfo})
 	re.AddZone(t, "test")
 	tok := re.AddOutpost(t, "nas")
@@ -41,8 +41,8 @@ func TestAnOutpostOutsideTheVersionWindowIsIncompatible(t *testing.T) {
 		t.Fatal(err)
 	}
 	re.AddRoute(t, "app.test", "http://"+svc.Addr(), "nas")
-	waitFor(t, "the Outpost's version", 5*time.Second, func() bool { return re.Liveness.Info("nas").Version == "0.3.1" })
-	if resp, body := get(t, re.Caddy, H1, "app.test", "/"); resp.StatusCode != 200 || body != "ok" {
+	WaitFor(t, "the Outpost's version", 5*time.Second, func() bool { return re.Liveness.Info("nas").Version == "0.3.1" })
+	if resp, body := Get(t, re.Caddy, H1, "app.test", "/"); resp.StatusCode != 200 || body != "ok" {
 		t.Fatalf("inside the window: %d %q", resp.StatusCode, body)
 	}
 	if _, err := api.Call[api.ZoneList](context.Background(), j.API, http.MethodGet, api.PathZones, nil); err != nil {
@@ -50,9 +50,9 @@ func TestAnOutpostOutsideTheVersionWindowIsIncompatible(t *testing.T) {
 	}
 
 	j = reconnectAs(t, re, "nas", j, "0.4.0")
-	waitFor(t, "the Outpost to be Incompatible", 5*time.Second, func() bool { return re.Liveness.State("nas") == liveness.Incompatible })
+	WaitFor(t, "the Outpost to be Incompatible", 5*time.Second, func() bool { return re.Liveness.State("nas") == liveness.Incompatible })
 
-	resp, _ := get(t, re.Caddy, H1, "app.test", "/")
+	resp, _ := Get(t, re.Caddy, H1, "app.test", "/")
 	if resp.StatusCode != 503 {
 		t.Fatalf("incompatible: %d, want 503", resp.StatusCode)
 	}
@@ -67,7 +67,7 @@ func TestAnOutpostOutsideTheVersionWindowIsIncompatible(t *testing.T) {
 	if n := strings.Count(log.String(), "outpost is incompatible"); n != 1 {
 		t.Fatalf("%d warnings, want 1:\n%s", n, log)
 	}
-	line := lineWith(log.String(), "outpost is incompatible")
+	line := LineWith(log.String(), "outpost is incompatible")
 	for _, w := range []string{"level=warn", "outpost=nas", "edge_version=0.3.4", "outpost_version=0.4.0"} {
 		if !strings.Contains(line, w) {
 			t.Errorf("warning lacks %q: %s", w, line)
@@ -81,7 +81,7 @@ func TestAnOutpostOutsideTheVersionWindowIsIncompatible(t *testing.T) {
 	if _, err := re2.TryConnectWith(t, "nas", "", j.StateDir, ConnectOptions{Version: "0.4.0"}); err != nil {
 		t.Fatal(err)
 	}
-	waitFor(t, "the Outpost to be online again", 5*time.Second, func() bool {
+	WaitFor(t, "the Outpost to be online again", 5*time.Second, func() bool {
 		return re2.Liveness.State("nas") == liveness.Online && re2.Liveness.Info("nas").Version == "0.4.0"
 	})
 }
@@ -107,13 +107,13 @@ func TestAnOutpostRefusesAnEdgeOfAnOlderMajor(t *testing.T) {
 	j.Stop()
 	re2.Stop()
 	back := StartEdgeWith(t, EdgeOptions{StateDir: re2.StateDir, Version: "1.4.2", WireGuardPort: re2.Port})
-	log := new(lockedBuf)
+	log := new(LockedBuf)
 	again, err := back.TryConnectWith(t, "nas", "", dir, ConnectOptions{Version: "2.0.0", LogOut: log})
 	if err != nil {
 		t.Fatal(err)
 	}
-	waitFor(t, "the error", 10*time.Second, func() bool { return strings.Contains(log.String(), "this Edge is too old for this Outpost") })
-	if line := lineWith(log.String(), "this Edge is too old for this Outpost"); !strings.Contains(line, "level=error") || !strings.Contains(line, "1.4.2") || !strings.Contains(line, "2.0.0") {
+	WaitFor(t, "the error", 10*time.Second, func() bool { return strings.Contains(log.String(), "this Edge is too old for this Outpost") })
+	if line := LineWith(log.String(), "this Edge is too old for this Outpost"); !strings.Contains(line, "level=error") || !strings.Contains(line, "1.4.2") || !strings.Contains(line, "2.0.0") {
 		t.Fatalf("error line: %q", line)
 	}
 	// It does not exit, and says it once.
@@ -130,7 +130,7 @@ func TestAnOutpostRefusesAnEdgeOfAnOlderMajor(t *testing.T) {
 	// Rolled forward, the same Outpost process is Online again.
 	back.Stop()
 	fwd := StartEdgeWith(t, EdgeOptions{StateDir: re2.StateDir, Version: "2.0.0", WireGuardPort: re2.Port})
-	waitFor(t, "the Outpost to be online again", 15*time.Second, func() bool {
+	WaitFor(t, "the Outpost to be online again", 15*time.Second, func() bool {
 		return fwd.Liveness.State("nas") == liveness.Online && fwd.Liveness.Info("nas").Version == "2.0.0"
 	})
 	if err := again.Stop(); err != nil {

@@ -29,7 +29,7 @@ func rows(t *testing.T, print func(*bytes.Buffer) error) []string {
 
 func outpostRows(t *testing.T, c *api.Client) []string {
 	t.Helper()
-	l, err := api.Call[api.OutpostList](ctx(t), c, http.MethodGet, api.PathOutposts, nil)
+	l, err := api.Call[api.OutpostList](Ctx(t), c, http.MethodGet, api.PathOutposts, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,7 +50,7 @@ func rowOf(t *testing.T, lines []string, prefix string) string {
 // A real Edge with a real Outpost in each state prints each state in the
 // spec's forms.
 func TestOutpostLsShowsOnlineOfflineIncompatibleAndNotJoined(t *testing.T) {
-	re := StartEdgeWith(t, EdgeOptions{Version: "0.3.4", OfflineAfter: testOfflineAfter})
+	re := StartEdgeWith(t, EdgeOptions{Version: "0.3.4", OfflineAfter: ShortOfflineAfter})
 	opts := func(v string) ConnectOptions { return ConnectOptions{JoinTimeout: 3 * time.Second, Version: v} }
 	connect := func(name, v string) *JoinedOutpost {
 		j, err := re.TryConnectWith(t, name, re.AddOutpost(t, name), mustTempDir(t), opts(v))
@@ -65,9 +65,9 @@ func TestOutpostLsShowsOnlineOfflineIncompatibleAndNotJoined(t *testing.T) {
 	re.AddOutpost(t, "newbox")
 	reconnectAs(t, re, "old", old, "0.4.0")
 	gone.Stop()
-	waitFor(t, "gone to be Offline", 5*testOfflineAfter, func() bool { return re.Liveness.State("gone") == liveness.Offline })
-	waitFor(t, "old to be Incompatible", 5*time.Second, func() bool { return re.Liveness.State("old") == liveness.Incompatible })
-	waitFor(t, "up's version", 5*time.Second, func() bool { return re.Liveness.Info("up").Version == "0.3.4" })
+	WaitFor(t, "gone to be Offline", 5*ShortOfflineAfter, func() bool { return re.Liveness.State("gone") == liveness.Offline })
+	WaitFor(t, "old to be Incompatible", 5*time.Second, func() bool { return re.Liveness.State("old") == liveness.Incompatible })
+	WaitFor(t, "up's version", 5*time.Second, func() bool { return re.Liveness.Info("up").Version == "0.3.4" })
 
 	lines := outpostRows(t, re.API)
 	if lines[0] != "NAME STATE LAST SEEN ENDPOINT VERSION TUNNEL ADDRESS ROUTES" {
@@ -118,23 +118,23 @@ func TestRouteLsAndZoneLsOnAnOutpostPrintWhatTheEdgePrints(t *testing.T) {
 	re := StartEdge(t)
 	re.AddZone(t, "test")
 	nas := re.JoinOutpost(t, "nas")
-	re.AddRoute(t, photos, "http://"+svc.Addr(), "nas")
+	re.AddRoute(t, Photos, "http://"+svc.Addr(), "nas")
 	re.ConnectWith(t, "newbox", re.AddOutpost(t, "newbox"),
-		ConnectOptions{Declaration: []outpostLine{DeclaredLine("PHOTOS", photos, "http://"+svc.Addr())}})
+		ConnectOptions{Declaration: []OutpostLine{DeclaredLine("PHOTOS", Photos, "http://"+svc.Addr())}})
 
 	printed := func(c *api.Client) (routes, zones []string) {
-		rl, err := api.Call[api.RouteList](ctx(t), c, http.MethodGet, api.PathRoutes, nil)
+		rl, err := api.Call[api.RouteList](Ctx(t), c, http.MethodGet, api.PathRoutes, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
-		zl, err := api.Call[api.ZoneList](ctx(t), c, http.MethodGet, api.PathZones, nil)
+		zl, err := api.Call[api.ZoneList](Ctx(t), c, http.MethodGet, api.PathZones, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
 		return rows(t, func(b *bytes.Buffer) error { return render.Routes(b, rl) }),
 			rows(t, func(b *bytes.Buffer) error { return render.Zones(b, zl) })
 	}
-	waitFor(t, "the line to wait", 5*time.Second, func() bool {
+	WaitFor(t, "the line to wait", 5*time.Second, func() bool {
 		r, _ := printed(re.API)
 		return len(r) == 3
 	})
@@ -144,10 +144,10 @@ func TestRouteLsAndZoneLsOnAnOutpostPrintWhatTheEdgePrints(t *testing.T) {
 		t.Fatalf("on the Outpost:\n%s\n%s\non the Edge:\n%s\n%s", strings.Join(or, "\n"), strings.Join(oz, "\n"), strings.Join(er, "\n"), strings.Join(ez, "\n"))
 	}
 	// A move: one Hostname, two rows, the Route first.
-	if er[1] != photos+" nas http://"+svc.Addr()+" – ok" {
+	if er[1] != Photos+" nas http://"+svc.Addr()+" – ok" {
 		t.Errorf("the Route row: %q", er[1])
 	}
-	if !strings.HasPrefix(er[2], photos+" newbox ") || !strings.HasSuffix(er[2], "waiting: taken by nas") {
+	if !strings.HasPrefix(er[2], Photos+" newbox ") || !strings.HasSuffix(er[2], "waiting: taken by nas") {
 		t.Errorf("the waiting row: %q", er[2])
 	}
 	if ez[1] != "test per-hostname – 1 certificate" {

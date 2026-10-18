@@ -41,7 +41,7 @@ func TestEdgeUnderTheUnitsEnvironmentWritesOnlyTnlLinesToStderr(t *testing.T) {
 
 	start := func() *skewProc {
 		p := startSkewProc(t, env, bin, "edge", "--address", "127.0.0.1", "--state-dir", stateDir, "--wireguard-port", fmt.Sprint(wgPort), "--log-level", "info")
-		waitFor(t, "the Edge's socket", 30*time.Second, func() bool {
+		WaitFor(t, "the Edge's socket", 30*time.Second, func() bool {
 			select {
 			case <-p.done:
 				t.Fatalf("the Edge exited:\n%s", p.out)

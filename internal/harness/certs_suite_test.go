@@ -33,12 +33,12 @@ func TestCaddySuiteRouteHostnameRenewsInTheBackground(t *testing.T) {
 	if err := ce.Certs().Manage("app.test"); err != nil {
 		t.Fatal(err)
 	}
-	waitFor(t, "the first certificate", 30*time.Second, func() bool {
+	WaitFor(t, "the first certificate", 30*time.Second, func() bool {
 		st, _ := ce.Certs().Status("app.test")
 		return st.Obtained >= 1
 	})
 	first, _ := ce.Certs().Status("app.test")
-	waitFor(t, "the background renewal", 30*time.Second, func() bool {
+	WaitFor(t, "the background renewal", 30*time.Second, func() bool {
 		st, _ := ce.Certs().Status("app.test")
 		return st.Obtained >= 2
 	})
@@ -62,7 +62,7 @@ func TestCaddySuiteBothCertificateEventsReachTheManager(t *testing.T) {
 	if err := ce.Certs().Manage("app.test"); err != nil {
 		t.Fatal(err)
 	}
-	waitFor(t, "cert_failed", 30*time.Second, func() bool {
+	WaitFor(t, "cert_failed", 30*time.Second, func() bool {
 		st, _ := ce.Certs().Status("app.test")
 		return st.Failed >= 1
 	})
@@ -77,7 +77,7 @@ func TestCaddySuiteBothCertificateEventsReachTheManager(t *testing.T) {
 	if err := ce.Certs().Wait(ctx, "app.test"); err != nil {
 		t.Fatal(err)
 	}
-	waitFor(t, "cert_obtained", 5*time.Second, func() bool {
+	WaitFor(t, "cert_obtained", 5*time.Second, func() bool {
 		st, _ := ce.Certs().Status("app.test")
 		return st.Obtained >= 1 && st.Failures == 0
 	})
@@ -95,7 +95,7 @@ func TestCaddySuiteStopEndsRenewalWithoutAReload(t *testing.T) {
 	}
 	// The stopped Hostname goes as soon as its certificate is in; the kept one
 	// may still be being issued.
-	waitFor(t, "the stopped Hostname's certificate", 30*time.Second, func() bool {
+	WaitFor(t, "the stopped Hostname's certificate", 30*time.Second, func() bool {
 		st, _ := ce.Certs().Status("gone.test")
 		return st.Obtained >= 1
 	})
@@ -109,7 +109,7 @@ func TestCaddySuiteStopEndsRenewalWithoutAReload(t *testing.T) {
 	if _, ok := ce.Certs().Status("gone.test"); ok {
 		t.Error("the stopped Hostname still has a status")
 	}
-	waitFor(t, "the kept Hostname's renewal", 30*time.Second, func() bool {
+	WaitFor(t, "the kept Hostname's renewal", 30*time.Second, func() bool {
 		st, _ := ce.Certs().Status("kept.test")
 		return st.Obtained >= 2
 	})

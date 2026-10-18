@@ -20,7 +20,7 @@ func TestFollowingAnOutpostsLogsDeliversNewLinesAsTheyAreLogged(t *testing.T) {
 	re.AddZone(t, "test")
 	nas := re.ConnectWith(t, "nas", re.AddOutpost(t, "nas"), ConnectOptions{})
 
-	fctx, cancel := context.WithCancel(ctx(t))
+	fctx, cancel := context.WithCancel(Ctx(t))
 	pr, pw := io.Pipe()
 	done := make(chan error, 1)
 	go func() {
@@ -38,7 +38,7 @@ func TestFollowingAnOutpostsLogsDeliversNewLinesAsTheyAreLogged(t *testing.T) {
 
 	// A route change through the Outpost's CLI is a line the Outpost logs.
 	req := api.RouteAddRequest{Hostname: "app.test", Service: "http://127.0.0.1:1", Outpost: "nas"}
-	if _, err := api.Call[api.RouteAddReply](ctx(t), nas.CLI, http.MethodPost, api.PathRoutes, req); err != nil {
+	if _, err := api.Call[api.RouteAddReply](Ctx(t), nas.CLI, http.MethodPost, api.PathRoutes, req); err != nil {
 		t.Fatal(err)
 	}
 	for i := 0; i < 20; i++ {

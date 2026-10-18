@@ -13,13 +13,13 @@ import (
 // names the reason, and a request cut because the Outpost's connection dropped
 // gets a line of its own.
 func TestRequestLinesForAnOfflineOutpostAndForACutConnection(t *testing.T) {
-	svc := eventService(t)
-	log := new(lockedBuf)
-	re := StartEdgeWith(t, EdgeOptions{Pebble: StartPebble(t, PebbleOptions{}), OfflineAfter: testOfflineAfter, LogOut: log, LogLevel: slog.LevelInfo})
+	svc := EventService(t)
+	log := new(LockedBuf)
+	re := StartEdgeWith(t, EdgeOptions{Pebble: StartPebble(t, PebbleOptions{}), OfflineAfter: ShortOfflineAfter, LogOut: log, LogLevel: slog.LevelInfo})
 	re.AddZone(t, "test")
 	o := re.JoinOutpost(t, "nas")
 	re.AddRoute(t, "app.test", "http://"+svc.Addr(), "nas")
-	next := openStream(t, re, "app.test")
+	next := OpenStream(t, re, "app.test")
 	if !next() {
 		t.Fatal("the stream did not start")
 	}
@@ -29,10 +29,10 @@ func TestRequestLinesForAnOfflineOutpostAndForACutConnection(t *testing.T) {
 	if err := o.Tunnel.Dev.IpcSet("public_key=" + edgeKey + "\nremove=true\n"); err != nil {
 		t.Fatal(err)
 	}
-	waitFor(t, "the stream to be closed", 5*testOfflineAfter+time.Second, func() bool { return !next() })
-	waitFor(t, "the Outpost to be Offline", 5*testOfflineAfter, func() bool { return re.Liveness.State("nas") == liveness.Offline })
+	WaitFor(t, "the stream to be closed", 5*ShortOfflineAfter+time.Second, func() bool { return !next() })
+	WaitFor(t, "the Outpost to be Offline", 5*ShortOfflineAfter, func() bool { return re.Liveness.State("nas") == liveness.Offline })
 
-	waitFor(t, "the request line of the cut stream", 2*time.Second, func() bool {
+	WaitFor(t, "the request line of the cut stream", 2*time.Second, func() bool {
 		for _, l := range strings.Split(log.String(), "\n") {
 			if strings.Contains(l, "msg=request") && strings.Contains(l, "path=/sse") {
 				return strings.Contains(l, "level=info") && strings.Contains(l, `reason="outpost offline"`) && strings.Contains(l, "outpost=nas")
@@ -41,7 +41,7 @@ func TestRequestLinesForAnOfflineOutpostAndForACutConnection(t *testing.T) {
 		return false
 	})
 
-	if resp, _ := get(t, re.Caddy, H1, "app.test", "/"); resp.StatusCode != 503 {
+	if resp, _ := Get(t, re.Caddy, H1, "app.test", "/"); resp.StatusCode != 503 {
 		t.Fatalf("offline: %d, want 503", resp.StatusCode)
 	}
 	var line string

@@ -13,7 +13,7 @@ import (
 
 func zoneRm(t *testing.T, re *RealEdge, name string, with bool) (api.ZoneRmReply, error) {
 	t.Helper()
-	return api.Call[api.ZoneRmReply](ctx(t), re.API, http.MethodPost, api.PathZoneRm, api.ZoneRmRequest{Name: name, WithRoutes: with})
+	return api.Call[api.ZoneRmReply](Ctx(t), re.API, http.MethodPost, api.PathZoneRm, api.ZoneRmRequest{Name: name, WithRoutes: with})
 }
 
 func hello() http.Handler {
@@ -31,7 +31,7 @@ func TestZoneRmMovesARouteToTheParentWithoutATLSError(t *testing.T) {
 	re.AddZone(t, "lab.example.test")
 	re.JoinOutpost(t, "nas")
 	re.AddRoute(t, "app.lab.example.test", "http://"+svc.Addr(), "nas")
-	if resp, body := get(t, re.Caddy, H1, "app.lab.example.test", "/"); resp.StatusCode != 200 || body != "hello" {
+	if resp, body := Get(t, re.Caddy, H1, "app.lab.example.test", "/"); resp.StatusCode != 200 || body != "hello" {
 		t.Fatalf("before: %d %q", resp.StatusCode, body)
 	}
 	orders, loads := pb.Orders(), caddyx.Loads()
@@ -41,7 +41,7 @@ func TestZoneRmMovesARouteToTheParentWithoutATLSError(t *testing.T) {
 		t.Fatalf("%+v %v", r, err)
 	}
 	for _, proto := range Protos {
-		if resp, body := get(t, re.Caddy, proto, "app.lab.example.test", "/"); resp.StatusCode != 200 || body != "hello" {
+		if resp, body := Get(t, re.Caddy, proto, "app.lab.example.test", "/"); resp.StatusCode != 200 || body != "hello" {
 			t.Fatalf("%s after zone rm: %d %q", proto, resp.StatusCode, body)
 		}
 	}
@@ -60,13 +60,13 @@ func TestZoneRmMovesARouteToTheParentWithoutATLSError(t *testing.T) {
 // nothing changes. With --with-routes they go, their open streams close and
 // their certificates stop renewing.
 func TestZoneRmWithRoutesClosesStreamsAndStopsTheCertificates(t *testing.T) {
-	stream := NewHTTPService(t, http.HandlerFunc(sseHandler))
+	stream := NewHTTPService(t, http.HandlerFunc(SSEHandler))
 	re := StartEdgeWith(t, EdgeOptions{Pebble: StartPebble(t, PebbleOptions{})})
 	re.AddZone(t, "example.test")
 	re.JoinOutpost(t, "nas")
 	re.AddRoute(t, "s.example.test", "http://"+stream.Addr(), "nas")
 	re.AddRoute(t, "t.example.test", "http://"+stream.Addr(), "nas")
-	next := openStream(t, re, "s.example.test")
+	next := OpenStream(t, re, "s.example.test")
 	if !next() {
 		t.Fatal("stream did not start")
 	}
@@ -111,7 +111,7 @@ func TestRouteRmStopsManagingTheHostname(t *testing.T) {
 	re.JoinOutpost(t, "nas")
 	re.AddRoute(t, "a.example.test", "http://127.0.0.1:1", "nas")
 	re.AddRoute(t, "b.example.test", "http://127.0.0.1:1", "nas")
-	if _, err := api.Call[api.RouteInfo](ctx(t), re.API, http.MethodPost, api.PathRouteRm, api.RouteRmRequest{Hostname: "a.example.test"}); err != nil {
+	if _, err := api.Call[api.RouteInfo](Ctx(t), re.API, http.MethodPost, api.PathRouteRm, api.RouteRmRequest{Hostname: "a.example.test"}); err != nil {
 		t.Fatal(err)
 	}
 	if re.Certs.Managing() != 1 {

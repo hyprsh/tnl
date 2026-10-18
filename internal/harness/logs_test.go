@@ -36,10 +36,10 @@ func TestLogsServesTheEdgesOwnLinesAndFollowsNewOnes(t *testing.T) {
 	nas := re.ConnectWith(t, "nas", re.AddOutpost(t, "nas"), ConnectOptions{})
 
 	// An Outpost's Tunnel call to a local-only path is refused, and logged.
-	if _, err := api.Call[api.OutpostList](ctx(t), nas.API, http.MethodGet, api.PathOutposts, nil); err == nil {
+	if _, err := api.Call[api.OutpostList](Ctx(t), nas.API, http.MethodGet, api.PathOutposts, nil); err == nil {
 		t.Fatal("an Outpost listed Outposts")
 	}
-	body, _, err := re.API.Download(ctx(t), api.PathLogs+"?level=warn")
+	body, _, err := re.API.Download(Ctx(t), api.PathLogs+"?level=warn")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,7 +50,7 @@ func TestLogsServesTheEdgesOwnLinesAndFollowsNewOnes(t *testing.T) {
 	body.Close()
 
 	// Follow: a line logged after the call arrives.
-	fctx, cancel := context.WithCancel(ctx(t))
+	fctx, cancel := context.WithCancel(Ctx(t))
 	defer cancel()
 	fb, _, err := re.API.Download(fctx, api.PathLogs+"?follow=1&n=1&level=warn")
 	if err != nil {
@@ -59,7 +59,7 @@ func TestLogsServesTheEdgesOwnLinesAndFollowsNewOnes(t *testing.T) {
 	defer fb.Close()
 	fsc := bufio.NewScanner(fb)
 	readLine(t, fsc) // the last line held
-	api.Call[api.OutpostList](ctx(t), nas.API, http.MethodGet, api.PathOutposts, nil)
+	api.Call[api.OutpostList](Ctx(t), nas.API, http.MethodGet, api.PathOutposts, nil)
 	if l := readLine(t, fsc); !strings.Contains(l, "request refused") {
 		t.Errorf("followed line = %q", l)
 	}
@@ -68,7 +68,7 @@ func TestLogsServesTheEdgesOwnLinesAndFollowsNewOnes(t *testing.T) {
 func TestAnOutpostCannotReadTheEdgesLogsThroughTheTunnel(t *testing.T) {
 	re := StartEdgeWith(t, EdgeOptions{})
 	nas := re.ConnectWith(t, "nas", re.AddOutpost(t, "nas"), ConnectOptions{})
-	_, _, err := nas.API.Download(ctx(t), api.PathLogs)
+	_, _, err := nas.API.Download(Ctx(t), api.PathLogs)
 	if ae, ok := err.(*api.Error); !ok || ae.Status != http.StatusForbidden {
 		t.Fatalf("err = %v, want 403", err)
 	}
@@ -78,7 +78,7 @@ func TestLogsOnAnOutpostAreItsOwnAndNotTheEdges(t *testing.T) {
 	re := StartEdgeWith(t, EdgeOptions{})
 	nas := re.ConnectWith(t, "nas", re.AddOutpost(t, "nas"), ConnectOptions{})
 
-	body, _, err := nas.CLI.Download(ctx(t), api.PathLogs)
+	body, _, err := nas.CLI.Download(Ctx(t), api.PathLogs)
 	if err != nil {
 		t.Fatal(err)
 	}

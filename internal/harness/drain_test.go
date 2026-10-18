@@ -46,16 +46,16 @@ func newDrainService(t *testing.T) *drainService {
 
 // drainEdge is a real Edge with Caddy, a Route app.test and an Outpost, with its
 // log captured and the drain shortened to timeout.
-func drainEdge(t *testing.T, timeout time.Duration) (*RealEdge, *drainService, *lockedBuf) {
+func drainEdge(t *testing.T, timeout time.Duration) (*RealEdge, *drainService, *LockedBuf) {
 	t.Helper()
 	svc := newDrainService(t)
-	logs := &lockedBuf{}
+	logs := &LockedBuf{}
 	re := StartEdgeWith(t, EdgeOptions{Pebble: StartPebble(t, PebbleOptions{}), LogOut: logs, LogLevel: slog.LevelInfo, DrainTimeout: timeout})
 	re.AddZone(t, "test")
 	re.JoinOutpost(t, "nas")
 	re.AddRoute(t, "app.test", "http://"+svc.Addr(), "nas")
 	// The first request pays for the certificate.
-	get(t, re.Caddy, H1, "app.test", "/warm")
+	Get(t, re.Caddy, H1, "app.test", "/warm")
 	return re, svc, logs
 }
 
@@ -65,7 +65,7 @@ func TestSIGTERMEndsStreamsAtOnceAndLetsASlowUploadFinish(t *testing.T) {
 			re, svc, logs := drainEdge(t, 0)
 			client := re.Caddy.Client(t, proto)
 
-			req, _ := http.NewRequestWithContext(ctx(t), "GET", "https://app.test/events", nil)
+			req, _ := http.NewRequestWithContext(Ctx(t), "GET", "https://app.test/events", nil)
 			req.Header.Set("Accept", "text/event-stream")
 			sse, err := client.Do(req)
 			if err != nil {
@@ -77,7 +77,7 @@ func TestSIGTERMEndsStreamsAtOnceAndLetsASlowUploadFinish(t *testing.T) {
 			}
 
 			pr, pw := io.Pipe()
-			upReq, _ := http.NewRequestWithContext(ctx(t), "POST", "https://app.test/upload", pr)
+			upReq, _ := http.NewRequestWithContext(Ctx(t), "POST", "https://app.test/upload", pr)
 			type result struct {
 				code int
 				body string
@@ -150,7 +150,7 @@ func TestARequestStillRunningAfterTheDrainIsClosed(t *testing.T) {
 			failed := make(chan error, 1)
 			go func() {
 				defer wg.Done()
-				req, _ := http.NewRequestWithContext(ctx(t), "GET", "https://app.test/hang", nil)
+				req, _ := http.NewRequestWithContext(Ctx(t), "GET", "https://app.test/hang", nil)
 				resp, err := client.Do(req)
 				if err == nil {
 					_, err = io.Copy(io.Discard, resp.Body)
