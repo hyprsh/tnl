@@ -27,6 +27,8 @@ scripts/check-outpost-deps.sh
 # The version the check against the latest release stamps on the current tree.
 sh scripts/next-release_test.sh
 sh scripts/skew-window_test.sh
+# Which CI scope a change gets (ci.yml).
+sh scripts/ci-scope_test.sh
 
 # Real Edge and Outpost processes of other versions, and of the latest release tag.
 scripts/check-skew.sh
